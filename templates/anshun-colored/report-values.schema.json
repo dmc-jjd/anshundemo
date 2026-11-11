@@ -1,0 +1,505 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "安顺月报五色模板逐项值",
+  "type": "object",
+  "properties": {
+    "B5_COVER": {
+      "type": "string",
+      "description": "计算数据：2026年第8期"
+    },
+    "B8_COVER": {
+      "type": "string",
+      "description": "计算数据：中共安顺市委网信办                                                  2026年9月3日"
+    },
+    "B12_COVER": {
+      "type": "string",
+      "description": "计算数据：安顺市2026年8月网络舆情分析报告"
+    },
+    "B17_RED_01": {
+      "type": "number",
+      "description": "境内全网涉安顺原始记录数，按万条显示"
+    },
+    "B17_RED_02": {
+      "type": "number",
+      "description": "正面原始记录数"
+    },
+    "B17_RED_03": {
+      "type": "number",
+      "description": "正面原始记录占比"
+    },
+    "B17_RED_04": {
+      "type": "number",
+      "description": "中性原始记录数"
+    },
+    "B17_RED_05": {
+      "type": "number",
+      "description": "中性原始记录占比"
+    },
+    "B17_RED_06": {
+      "type": "number",
+      "description": "负面原始记录数"
+    },
+    "B17_RED_07": {
+      "type": "string",
+      "description": "负面原始记录占比"
+    },
+    "B17_RED_08": {
+      "type": "string",
+      "description": "本月信息量峰值日期"
+    },
+    "B17_GREEN_09": {
+      "type": "string",
+      "description": "峰值日代表事件的来源概要"
+    },
+    "B17_RED_10": {
+      "type": "number",
+      "description": "负面单一重点预警去重事件数"
+    },
+    "B17_RED_11": {
+      "type": "string",
+      "description": "重点预警已确认事件数占全量原始记录比例"
+    },
+    "B17_YELLOW_12": {
+      "type": "string",
+      "description": "第一部分（一）重点预警事件的主要聚类主题"
+    },
+    "CHART_1": {
+      "type": "string",
+      "description": "舆情调性分布图"
+    },
+    "CHART_2": {
+      "type": "string",
+      "description": "每日信息量图"
+    },
+    "B26_RED_01": {
+      "type": "number",
+      "description": "计算数据：8"
+    },
+    "B26_MAGENTA_02": {
+      "type": "string",
+      "description": "媒体环节现有字段的名称或列表"
+    },
+    "B26_MAGENTA_03": {
+      "type": "string",
+      "description": "媒体环节现有字段的名称或列表"
+    },
+    "B26_RED_04": {
+      "type": "number",
+      "description": "移动客户端原始记录数"
+    },
+    "B26_RED_05": {
+      "type": "number",
+      "description": "移动客户端原始记录占比"
+    },
+    "B26_MAGENTA_06": {
+      "type": "string",
+      "description": "媒体环节现有字段的名称或列表"
+    },
+    "B26_RED_07": {
+      "type": "number",
+      "description": "微信公众号原始记录数"
+    },
+    "B26_RED_08": {
+      "type": "number",
+      "description": "微信公众号原始记录占比"
+    },
+    "B26_MAGENTA_09": {
+      "type": "string",
+      "description": "媒体环节现有字段的名称或列表"
+    },
+    "B26_RED_10": {
+      "type": "number",
+      "description": "网站原始记录数"
+    },
+    "B26_RED_11": {
+      "type": "number",
+      "description": "网站原始记录占比"
+    },
+    "B26_MAGENTA_12": {
+      "type": "string",
+      "description": "媒体环节现有字段的名称或列表"
+    },
+    "B26_RED_13": {
+      "type": "number",
+      "description": "微博原始记录数"
+    },
+    "B26_RED_14": {
+      "type": "number",
+      "description": "微博原始记录占比"
+    },
+    "B26_MAGENTA_15": {
+      "type": "string",
+      "description": "媒体环节现有字段的名称或列表"
+    },
+    "B26_RED_16": {
+      "type": "number",
+      "description": "视频原始记录数"
+    },
+    "B26_RED_17": {
+      "type": "number",
+      "description": "视频原始记录占比"
+    },
+    "B26_MAGENTA_18": {
+      "type": "string",
+      "description": "媒体环节现有字段的名称或列表"
+    },
+    "B26_RED_19": {
+      "type": "number",
+      "description": "纸媒原始记录数"
+    },
+    "B26_RED_20": {
+      "type": "number",
+      "description": "纸媒原始记录占比"
+    },
+    "B26_MAGENTA_21": {
+      "type": "string",
+      "description": "媒体环节现有字段的名称或列表"
+    },
+    "B26_RED_22": {
+      "type": "number",
+      "description": "电视原始记录数"
+    },
+    "B26_RED_23": {
+      "type": "string",
+      "description": "电视原始记录占比"
+    },
+    "B26_YELLOW_24": {
+      "type": "string",
+      "description": "事件聚类主题候选及确认名称"
+    },
+    "B26_LIGHTGRAY_25": {
+      "type": "string",
+      "description": "本月代表事件原文概述"
+    },
+    "B26_MAGENTA_26": {
+      "type": "string",
+      "description": "媒体环节现有字段的名称或列表"
+    },
+    "CHART_3": {
+      "type": "string",
+      "description": "媒体环节分布图"
+    },
+    "B29_RED_01": {
+      "type": "number",
+      "description": "计算数据：8"
+    },
+    "B29_MAGENTA_02": {
+      "type": "string",
+      "description": "媒体级别或来源媒体名称"
+    },
+    "B29_YELLOW_03": {
+      "type": "string",
+      "description": "事件聚类主题候选及确认名称"
+    },
+    "B29_LIGHTGRAY_04": {
+      "type": "string",
+      "description": "本月代表事件原文概述"
+    },
+    "B30_RED_01": {
+      "type": "number",
+      "description": "敏感及负面舆情已去重事件数"
+    },
+    "B30_RED_02": {
+      "type": "string",
+      "description": "负面重点预警事件同比变化的文字判断"
+    },
+    "B30_YELLOW_03": {
+      "type": "string",
+      "description": "事件聚类主题候选及确认名称"
+    },
+    "B30_RED_04": {
+      "type": "number",
+      "description": "文化旅游类敏感及负面确认事件占比"
+    },
+    "B30_RED_05": {
+      "type": "string",
+      "description": "文化旅游类突出问题概述"
+    },
+    "B30_YELLOW_06": {
+      "type": "string",
+      "description": "事件聚类主题候选及确认名称"
+    },
+    "B30_RED_07": {
+      "type": "number",
+      "description": "市区敏感及负面确认事件数"
+    },
+    "B30_RED_08": {
+      "type": "number",
+      "description": "市区敏感及负面确认事件占比"
+    },
+    "B30_RED_09": {
+      "type": "number",
+      "description": "西秀区敏感及负面确认事件数"
+    },
+    "B30_RED_10": {
+      "type": "number",
+      "description": "西秀区敏感及负面确认事件占比"
+    },
+    "B30_RED_11": {
+      "type": "number",
+      "description": "黄果树旅游区敏感及负面确认事件数"
+    },
+    "B30_RED_12": {
+      "type": "number",
+      "description": "黄果树旅游区敏感及负面确认事件占比"
+    },
+    "B30_RED_13": {
+      "type": "number",
+      "description": "关岭县敏感及负面确认事件数"
+    },
+    "B30_RED_14": {
+      "type": "number",
+      "description": "关岭县敏感及负面确认事件占比"
+    },
+    "B30_RED_15": {
+      "type": "number",
+      "description": "平坝区敏感及负面确认事件数"
+    },
+    "B30_RED_16": {
+      "type": "number",
+      "description": "平坝区敏感及负面确认事件占比"
+    },
+    "B30_RED_17": {
+      "type": "number",
+      "description": "紫云县敏感及负面确认事件数"
+    },
+    "B30_RED_18": {
+      "type": "number",
+      "description": "紫云县敏感及负面确认事件占比"
+    },
+    "B30_RED_19": {
+      "type": "number",
+      "description": "普定县敏感及负面确认事件数"
+    },
+    "B30_RED_20": {
+      "type": "number",
+      "description": "普定县敏感及负面确认事件占比"
+    },
+    "B30_RED_21": {
+      "type": "number",
+      "description": "镇宁县敏感及负面确认事件数"
+    },
+    "B30_RED_22": {
+      "type": "number",
+      "description": "镇宁县敏感及负面确认事件占比"
+    },
+    "B30_RED_23": {
+      "type": "number",
+      "description": "安顺经开区敏感及负面确认事件数"
+    },
+    "B30_RED_24": {
+      "type": "number",
+      "description": "安顺经开区敏感及负面确认事件占比"
+    },
+    "CHART_4": {
+      "type": "string",
+      "description": "负面事件类别分布图"
+    },
+    "TOP10_01_EVENT": {
+      "type": "string",
+      "description": "TOP10 第 1 位代表事件标题"
+    },
+    "TOP10_01_HEAT": {
+      "type": "string",
+      "description": "TOP10 第 1 位热度标识"
+    },
+    "TOP10_02_EVENT": {
+      "type": "string",
+      "description": "TOP10 第 2 位代表事件标题"
+    },
+    "TOP10_02_HEAT": {
+      "type": "string",
+      "description": "TOP10 第 2 位热度标识"
+    },
+    "TOP10_03_EVENT": {
+      "type": "string",
+      "description": "TOP10 第 3 位代表事件标题"
+    },
+    "TOP10_03_HEAT": {
+      "type": "string",
+      "description": "TOP10 第 3 位热度标识"
+    },
+    "TOP10_04_EVENT": {
+      "type": "string",
+      "description": "TOP10 第 4 位代表事件标题"
+    },
+    "TOP10_04_HEAT": {
+      "type": "string",
+      "description": "TOP10 第 4 位热度标识"
+    },
+    "TOP10_05_EVENT": {
+      "type": "string",
+      "description": "TOP10 第 5 位代表事件标题"
+    },
+    "TOP10_05_HEAT": {
+      "type": "string",
+      "description": "TOP10 第 5 位热度标识"
+    },
+    "TOP10_06_EVENT": {
+      "type": "string",
+      "description": "TOP10 第 6 位代表事件标题"
+    },
+    "TOP10_06_HEAT": {
+      "type": "string",
+      "description": "TOP10 第 6 位热度标识"
+    },
+    "TOP10_07_EVENT": {
+      "type": "string",
+      "description": "TOP10 第 7 位代表事件标题"
+    },
+    "TOP10_07_HEAT": {
+      "type": "string",
+      "description": "TOP10 第 7 位热度标识"
+    },
+    "TOP10_08_EVENT": {
+      "type": "string",
+      "description": "TOP10 第 8 位代表事件标题"
+    },
+    "TOP10_08_HEAT": {
+      "type": "string",
+      "description": "TOP10 第 8 位热度标识"
+    },
+    "TOP10_09_EVENT": {
+      "type": "string",
+      "description": "TOP10 第 9 位代表事件标题"
+    },
+    "TOP10_09_HEAT": {
+      "type": "string",
+      "description": "TOP10 第 9 位热度标识"
+    },
+    "TOP10_10_EVENT": {
+      "type": "string",
+      "description": "TOP10 第 10 位代表事件标题"
+    },
+    "TOP10_10_HEAT": {
+      "type": "string",
+      "description": "TOP10 第 10 位热度标识"
+    },
+    "CHART_5": {
+      "type": "string",
+      "description": "确认事件属地分布图"
+    },
+    "B40_NARRATIVE": {
+      "type": "string",
+      "description": "事件原文概述：从8月份网络舆情监测信息来看，网民主要通过视频、移动客户端、微博、微信公众号、网站等平台发表诉求，负面舆情内容主要涉及文化旅游、交通管理、社"
+    },
+    "B42_NARRATIVE": {
+      "type": "string",
+      "description": "事件原文概述：1.警惕主汛期末段秋汛地质灾害与涉水安全风险。9月我市仍处于主汛期收尾阶段，局地短时强降水、雷雨大风天气时有发生。近日，气象台已发布大风蓝色"
+    },
+    "B43_NARRATIVE": {
+      "type": "string",
+      "description": "事件原文概述：2.警惕中秋国庆“双节”叠加涉旅舆情与服务安全风险。中秋、国庆两节相连，而黄果树、龙宫两大5A景区正处于旺季运营期。当前黄果树景区水帘洞每日"
+    },
+    "B44_NARRATIVE": {
+      "type": "string",
+      "description": "事件原文概述：3.警惕秋季开学季校园安全与教育民生诉求舆情风险。9月初秋季学期全面开学，校园食品安全、食堂伙食质量、课后服务安排、收费公示、校舍安全、寄宿"
+    },
+    "B45_NARRATIVE": {
+      "type": "string",
+      "description": "事件原文概述：4.警惕秋收农忙与秸秆禁烧引发火情及大气污染舆情风险。9月安顺进入秋收关键期，玉米、水稻等作物陆续收获，秸秆集中产生，部分农户受传统习惯影响"
+    }
+  },
+  "required": [
+    "B5_COVER",
+    "B8_COVER",
+    "B12_COVER",
+    "B17_RED_01",
+    "B17_RED_02",
+    "B17_RED_03",
+    "B17_RED_04",
+    "B17_RED_05",
+    "B17_RED_06",
+    "B17_RED_07",
+    "B17_RED_08",
+    "B17_GREEN_09",
+    "B17_RED_10",
+    "B17_RED_11",
+    "B17_YELLOW_12",
+    "CHART_1",
+    "CHART_2",
+    "B26_RED_01",
+    "B26_MAGENTA_02",
+    "B26_MAGENTA_03",
+    "B26_RED_04",
+    "B26_RED_05",
+    "B26_MAGENTA_06",
+    "B26_RED_07",
+    "B26_RED_08",
+    "B26_MAGENTA_09",
+    "B26_RED_10",
+    "B26_RED_11",
+    "B26_MAGENTA_12",
+    "B26_RED_13",
+    "B26_RED_14",
+    "B26_MAGENTA_15",
+    "B26_RED_16",
+    "B26_RED_17",
+    "B26_MAGENTA_18",
+    "B26_RED_19",
+    "B26_RED_20",
+    "B26_MAGENTA_21",
+    "B26_RED_22",
+    "B26_RED_23",
+    "B26_YELLOW_24",
+    "B26_LIGHTGRAY_25",
+    "B26_MAGENTA_26",
+    "CHART_3",
+    "B29_RED_01",
+    "B29_MAGENTA_02",
+    "B29_YELLOW_03",
+    "B29_LIGHTGRAY_04",
+    "B30_RED_01",
+    "B30_RED_02",
+    "B30_YELLOW_03",
+    "B30_RED_04",
+    "B30_RED_05",
+    "B30_YELLOW_06",
+    "B30_RED_07",
+    "B30_RED_08",
+    "B30_RED_09",
+    "B30_RED_10",
+    "B30_RED_11",
+    "B30_RED_12",
+    "B30_RED_13",
+    "B30_RED_14",
+    "B30_RED_15",
+    "B30_RED_16",
+    "B30_RED_17",
+    "B30_RED_18",
+    "B30_RED_19",
+    "B30_RED_20",
+    "B30_RED_21",
+    "B30_RED_22",
+    "B30_RED_23",
+    "B30_RED_24",
+    "CHART_4",
+    "TOP10_01_EVENT",
+    "TOP10_01_HEAT",
+    "TOP10_02_EVENT",
+    "TOP10_02_HEAT",
+    "TOP10_03_EVENT",
+    "TOP10_03_HEAT",
+    "TOP10_04_EVENT",
+    "TOP10_04_HEAT",
+    "TOP10_05_EVENT",
+    "TOP10_05_HEAT",
+    "TOP10_06_EVENT",
+    "TOP10_06_HEAT",
+    "TOP10_07_EVENT",
+    "TOP10_07_HEAT",
+    "TOP10_08_EVENT",
+    "TOP10_08_HEAT",
+    "TOP10_09_EVENT",
+    "TOP10_09_HEAT",
+    "TOP10_10_EVENT",
+    "TOP10_10_HEAT",
+    "CHART_5",
+    "B40_NARRATIVE",
+    "B42_NARRATIVE",
+    "B43_NARRATIVE",
+    "B44_NARRATIVE",
+    "B45_NARRATIVE"
+  ],
+  "additionalProperties": false
+}

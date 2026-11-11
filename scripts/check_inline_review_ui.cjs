@@ -1,0 +1,26 @@
+const {chromium}=require('../data/ui-check/node_modules/playwright-core');
+const assert=require('node:assert/strict');
+(async()=>{const browser=await chromium.launch({executablePath:'C:/Users/57676/AppData/Local/ms-playwright/chromium-1234/chrome-win64/chrome.exe',headless:true});try{
+ const page=await browser.newPage({viewport:{width:1432,height:964}}),errors=[],base='http://127.0.0.1:8877',tid='d2511637eb694125a92616d2a276bd08',url=base+`/api/tasks/${tid}`;
+ page.on('pageerror',e=>errors.push(e.message));const get=async suffix=>(await (await page.request.get(url+suffix)).json());
+ const before=await get('/draft-view'),usage=await get('/usage');await page.goto(base+'/?task='+tid);await page.getByRole('button',{name:'双审核与人工终审',exact:true}).click();
+ const numbers=()=>page.locator('.writing-finding .review-number').allTextContents();await page.locator('[data-issue-id="retain"]').waitFor();assert.deepEqual(await numbers(),['1. ','2. ','3. ']);
+ await page.locator('[data-issue-id="retain"]').getByRole('button',{name:'已核对，保留当前内容',exact:true}).click();
+ await page.locator('[data-issue-id="retain"]').waitFor({state:'detached'});await page.locator('[data-issue-id="inline-a"] textarea').waitFor();assert.deepEqual(await numbers(),['2. ','3. ']);assert.equal(await page.locator('#dialogNotice').textContent(),'');
+ const a=page.locator('[data-issue-id="inline-a"]'),b=page.locator('[data-issue-id="inline-b"]');const qa=await a.locator('textarea').inputValue(),qb=await b.locator('textarea').inputValue();
+ const replacementA='人工核查：'+qa,replacementB='人工核查后保留限定：'+qb;await b.locator('textarea').fill(replacementB);await a.locator('textarea').fill(replacementA);
+ await a.locator('textarea').scrollIntoViewIfNeeded();await page.screenshot({path:'data/inline-review-edit-ui.png'});
+ await a.getByRole('button',{name:'保存本处修改并覆盖终稿',exact:true}).click();await a.waitFor({state:'detached'});
+ assert.equal(await b.locator('textarea').inputValue(),replacementB);assert.deepEqual(await numbers(),['3. ']);
+ const middle=await get('/draft-view');const expectedMiddle=[...before.draft.slot_values.monthly_recommendations.value];expectedMiddle[1]=expectedMiddle[1].replace(qa,replacementA);
+ assert.deepEqual(middle.draft.slot_values.monthly_recommendations.value,expectedMiddle);
+ await b.getByRole('button',{name:'保存本处修改并覆盖终稿',exact:true}).click();await b.waitFor({state:'detached'});await page.getByRole('button',{name:'确认报告并终审',exact:true}).waitFor();
+ const after=await get('/draft-view'),expected=[...expectedMiddle];expected[1]=expected[1].replace(qb,replacementB);assert.deepEqual(after.draft.slot_values.monthly_recommendations.value,expected);
+ assert.equal(after.draft.fact_ref,before.draft.fact_ref);assert.deepEqual(after.draft.chart_refs,before.draft.chart_refs);
+ for(const [key,value] of Object.entries(before.draft.slot_values))if(key!=='monthly_recommendations')assert.deepEqual(after.draft.slot_values[key],value);
+ assert.equal((await get('/usage')).requests,usage.requests);assert.deepEqual(errors,[]);
+ const exported=await page.request.post(url+'/exports',{data:{mode:'draft'}});assert.equal(exported.status(),200);const link=(await exported.json()).download_url;
+ const file=await page.request.get(base+link);assert.equal(file.status(),200);require('node:fs').writeFileSync('data/inline-review-ui-export.docx',await file.body());
+ await page.screenshot({path:'data/inline-review-complete-ui.png'});
+ console.log(JSON.stringify({stable_numbering:true,retain_without_note:true,inline_replacement_saved:true,other_unsaved_excerpt_preserved:true,other_paragraphs_and_fields_unchanged:true,word_exported:true,new_model_requests:0,page_errors:errors}));
+}finally{await browser.close()}})().catch(e=>{console.error(e);process.exit(1)});

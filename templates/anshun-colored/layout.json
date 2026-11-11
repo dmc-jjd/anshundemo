@@ -1,0 +1,14 @@
+{
+  "source_docx": "source-2026-08.docx",
+  "template_docx": "template-with-placeholders.docx",
+  "preserve_original_styles": true,
+  "editable_top10_table": true,
+  "chart_slots": [
+    "CHART_1",
+    "CHART_2",
+    "CHART_3",
+    "CHART_4",
+    "CHART_5"
+  ],
+  "visual_qa": "pending_renderer"
+}

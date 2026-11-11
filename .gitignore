@@ -1,0 +1,18 @@
+data/
+.env
+__pycache__/
+.pytest_cache/
+*.pyc
+backups/
+.screenshots/
+
+
+
+# --- refactor baseline (JJD) ---
+.tools/
+.conda/
+report_work/
+交付成果/
+*.xlsx
+*.pptx
+*.docx.bak

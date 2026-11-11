@@ -1,0 +1,14 @@
+# Exact direct-package versions verified in the local Python 3.13.11 environment.
+# Transitive dependencies are not pinned here; this is not a full resolver lock.
+fastapi==0.142.2
+pydantic==2.13.5
+langgraph==1.0.1
+uvicorn==0.41.0
+lxml==6.1.1
+python-multipart==0.0.32
+Pillow==12.2.0
+jsonschema==4.26.0
+pytest==9.0.3
+httpx==0.28.1
+matplotlib==3.11.2
+
