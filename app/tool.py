@@ -8,6 +8,11 @@ import hashlib,re,statistics,base64,io
 from .schemas import ToolSpec, ToolResult
 from .ooxml import read_xlsx
 from .template_compare import parse_report_document,compare_reports
+from core.tools import vocabulary
+REQUIRED_COLUMNS=vocabulary.required_columns()
+COLUMN_MAP=vocabulary.column_map()
+SUMMARY_COLUMNS=vocabulary.summary_columns()
+LOCALITIES=vocabulary.localities()
 
 def _words(text:str)->set[str]:
     text=re.sub(r'\s+','',str(text or '').lower())
@@ -27,7 +32,8 @@ def import_records(args,ctx):
     path=Path(args['path']); sheet=int(args.get('sheet_index',3))
     book=read_xlsx(path,sheet_index=sheet)
     rows=book['rows']; header=rows[0]['cells']
-    if '标题' not in header or '舆情调性' not in header: raise ValueError('missing_required_columns')
+    for column in REQUIRED_COLUMNS:
+        if column not in header: raise ValueError('missing_required_columns')
     records=[]; file_hash=hashlib.sha256(path.read_bytes()).hexdigest()
     for row in rows[1:]:
         cells=row['cells']; data={key:(cells[i] if i<len(cells) else '') for i,key in enumerate(header)}
@@ -37,7 +43,14 @@ def import_records(args,ctx):
         if re.fullmatch(r'\d+(?:\.\d+)?',published):
             try:published=(datetime(1899,12,30)+timedelta(days=float(published))).isoformat(timespec='minutes')
             except (ValueError,OverflowError):pass
-        records.append({'id':rid,'title':data.get('标题',''),'published':published,'source':data.get('来源信息',''),'author':data.get('作者',''),'source_id':data.get('作者Id',''),'category':data.get('事件分类',''),'url':data.get('网址',''),'platform':data.get('媒体环节',''),'media_attribute':data.get('媒体属性',''),'media_level':data.get('媒体级别',''),'sentiment':data.get('舆情调性',''),'warning':data.get('是否预警',''),'summary':data.get('摘要') or data.get('原文内容','')[:1200],'source_ref':{'file_hash':file_hash,'sheet':book['sheet'],'row':row['excel_row']}})
+        mapped={field:data.get(column,'') for column,field in COLUMN_MAP.items()}
+        mapped['published']=published
+        records.append({
+            'id':rid,
+            **mapped,
+            'summary':data.get(SUMMARY_COLUMNS[0]) or (data.get(SUMMARY_COLUMNS[1],'') or '')[:1200],
+            'source_ref':{'file_hash':file_hash,'sheet':book['sheet'],'row':row['excel_row']},
+        })
     ref=ctx.store.put_artifact(ctx.task_id,'records',{'records':records,'file_hash':file_hash,'header':header,'sheet':book['sheet']})
     return ToolResult(status='ok',data_ref=ref,method=f'OOXML sheet {sheet}; every nonempty source row retained',warnings=[f'{len(records)} source rows'])
 
@@ -59,7 +72,7 @@ def filter_records(args,ctx):
     return ToolResult(status='ok',data_ref=ref,method=f'exact field filter: {scope}',warnings=[f'{len(selected)} selected of {len(records)}'])
 
 def resolve_locality(args,ctx):
-    records=_records(ctx,args['records_ref']); terms={'西秀区':['西秀区'],'平坝区':['平坝区'],'普定县':['普定县'],'镇宁自治县':['镇宁'],'关岭自治县':['关岭'],'紫云自治县':['紫云'],'黄果树旅游区':['黄果树'],'安顺经开区':['经开区','开发区']}
+    records=_records(ctx,args['records_ref']); terms=LOCALITIES
     results=[]; unresolved=[]
     for r in records:
         text=r['title']+' '+r.get('summary',''); hits=[k for k,ws in terms.items() if any(w in text for w in ws)]
@@ -165,20 +178,7 @@ def classify_records(args,ctx):
     missing=sum(x['category'] is None for x in items)
     return ToolResult(status='needs_review' if missing else 'ok',data_ref=ref,method='source event category field; blanks remain blank',warnings=[f'{missing} blank source categories'] if missing else [],unresolved=[{'kind':'missing_source_category','question':'原始分类为空；请运行独立聚类候选工具并人工确认'}] if missing else [])
 
-CLUSTER_TERMS={
-    '交通管理':['交通','公交','停车','道路','司机','车辆','驾考'],
-    '文化旅游':['景区','游客','黄果树','旅游','门票','民宿'],
-    '社会民生':['物业','供水','停水','工资','住房','社保','房产','首付','欠薪'],
-    '市场监管':['商家','消费','价格','退货','商品','食品','退款','餐饮','汉堡','售后'],
-    '社会治安':['盗窃','诈骗','治安','报警','殴打','寻人','失踪'],
-    '安全生产':['火灾','消防','矿井','生产安全','爆炸'],
-    '教育管理':['学校','学生','教师','校园','考试'],
-    '医疗卫生':['医院','医生','治疗','医疗','药品'],
-    '环境保护':['污染','排污','环保','河流','垃圾'],
-    '城市管理':['城管','违建','市容','环卫'],
-    '执政形象':['干部','政务','公职','行政执法','作风'],
-    '自然灾害':['洪灾','洪水','地震','滑坡','泥石流','暴雨'],
-}
+CLUSTER_TERMS=vocabulary.cluster_terms()
 
 def cluster_event_themes(args,ctx):
     """Independent lexical theme clustering, with no claim that the source category is populated."""
@@ -298,3 +298,10 @@ def get_tool_specs()->list[ToolSpec]:
 def get_tool_handler(name:str):
     get_tool_specs()
     return HANDLERS[name]
+
+__all__ = ['import_records','filter_records','resolve_locality','group_events',
+           'propose_keyword_event_candidates','propose_vector_event_neighbors','calculate_metrics',
+           'classify_records','cluster_event_themes','discover_topics','select_materials','read_evidence',
+           'render_chart','build_table','parse_report_document_tool','compare_report_structures',
+           'CLUSTER_TERMS','HANDLERS','READ_ONLY','ARGUMENTS','DESCRIPTIONS',
+           'get_tool_specs','get_tool_handler']

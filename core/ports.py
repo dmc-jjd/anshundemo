@@ -300,22 +300,33 @@ class Manifest:
 # --------------------------------------------------------------------------- #
 # 解耦门禁：基座代码不许出现客户业务词（计划书 §10）
 # --------------------------------------------------------------------------- #
+#
+# 为什么禁词表不写在这里：
+# 门禁会扫描 `core/**/*.py`。若禁词以字面量定义在 core 内，扫描必然命中定义本身，
+# 形成自指、永远 5 条命中（S2-A 实测如此）。因此禁词表移到 `scripts/forbidden_terms.json`，
+# 本文件只保留算法。这也让禁词表成为可替换的数据，而不是程序的一部分。
 
-#: 默认禁词。客户包实现里允许出现，`core/` 里出现即失败。
-DEFAULT_FORBIDDEN_TERMS = (
-    "安顺",
-    "西秀",
-    "舆情调性",
-    "b40_analysis_paragraph",
-    "CLUSTER_TERMS",
-)
+
+def load_forbidden_terms(path: "str | Path") -> tuple[str, ...]:
+    """从 JSON 数组文件读禁词表。缺文件即抛错，不静默降级。"""
+    import json
+    from pathlib import Path as _Path
+
+    data = json.loads(_Path(path).read_text(encoding="utf-8-sig"))
+    if not isinstance(data, list) or not all(isinstance(x, str) and x for x in data):
+        raise ValueError("forbidden_terms_must_be_non_empty_string_list")
+    return tuple(data)
 
 
 def scan_forbidden_terms(
     texts: Iterable[tuple[str, str]],
-    terms: Iterable[str] = DEFAULT_FORBIDDEN_TERMS,
+    terms: Iterable[str],
 ) -> list[str]:
-    """texts 为 (文件名, 文本) 二元组流；返回 `文件:词` 形式的问题列表。"""
+    """texts 为 (文件名, 文本) 二元组流；返回 `文件:词` 形式的问题列表。
+
+    `terms` 必须显式传入（见 `load_forbidden_terms`），不设默认值——
+    任何默认值都会把禁词字面量带回 core 内，重新造成自指。
+    """
     banned = tuple(terms)
     problems: list[str] = []
     for name, text in texts:

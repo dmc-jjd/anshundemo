@@ -9,7 +9,6 @@ from __future__ import annotations
 import pytest
 
 from core.ports import (
-    DEFAULT_FORBIDDEN_TERMS,
     REJECT_PHASE_NOT_ALLOWED,
     REJECT_TOOL_NOT_ALLOWED,
     GraphNode,
@@ -18,6 +17,7 @@ from core.ports import (
     ToolPolicy,
     ToolResult,
     ToolSpec,
+    load_forbidden_terms,
     scan_forbidden_terms,
 )
 
@@ -127,17 +127,30 @@ def test_graph_requires_entry():
 
 
 def test_scan_flags_client_words_in_core_text():
-    problems = scan_forbidden_terms([("core/x.py", "if name == '安顺': pass")])
+    problems = scan_forbidden_terms([("core/x.py", "if name == '安顺': pass")], ["安顺"])
     assert problems == ["core/x.py:安顺"]
 
 
 def test_scan_is_clean_for_client_neutral_text():
-    assert scan_forbidden_terms([("core/y.py", "def classify(records): pass")]) == []
+    assert scan_forbidden_terms([("core/y.py", "def classify(records): pass")], ["安顺"]) == []
 
 
-def test_default_forbidden_terms_cover_plan_acceptance_list():
+def test_forbidden_terms_live_outside_core_and_cover_acceptance_list():
+    """禁词表必须定义在 core 之外，否则门禁扫 core 时会命中定义本身（自指）。
+
+    S2-A 实测过这个缺陷：core/ports.py 内置字面量表 → 永远 5 条命中。
+    """
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parent.parent
+    terms = load_forbidden_terms(repo / "scripts" / "forbidden_terms.json")
+
     for term in ("安顺", "西秀", "舆情调性", "b40_analysis_paragraph", "CLUSTER_TERMS"):
-        assert term in DEFAULT_FORBIDDEN_TERMS
+        assert term in terms
+
+    # 关键：定义门禁的那个文件自身不能被扫描命中
+    ports_src = (repo / "core" / "ports.py").read_text(encoding="utf-8")
+    assert scan_forbidden_terms([("core/ports.py", ports_src)], terms) == []
 
 
 # --- 数据契约结构兼容性 -------------------------------------------------------
