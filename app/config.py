@@ -34,6 +34,8 @@ MODEL_THINKING = os.getenv('REPORT_MODEL_THINKING', 'enabled')
 MODEL_REASONING_EFFORT = os.getenv('REPORT_MODEL_REASONING_EFFORT', 'low')
 MAX_TOOL_CALLS = int(os.getenv('REPORT_MAX_TOOL_CALLS', '40'))
 MAX_PLANNING_CALLS = int(os.getenv('REPORT_MAX_PLANNING_CALLS', '12'))
-PACKAGE = 'anshun_monthly'
+# 包选择点：P7「只加包、不动基座」要求换客户包不改代码，所以这里必须是环境变量。
+# 缺省仍是 anshun_monthly，现有行为零变化。
+PACKAGE = os.getenv('REPORT_PACKAGE', 'anshun_monthly')
 PACKAGE_DIR = ROOT / 'packages' / PACKAGE
 
