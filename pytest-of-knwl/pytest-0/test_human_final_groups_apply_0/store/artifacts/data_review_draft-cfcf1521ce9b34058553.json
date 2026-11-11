@@ -1,0 +1,1 @@
+{"briefs": {}, "groups": [{"id": "a", "member_ids": ["a", "b"], "representative_id": "a", "title": "a"}, {"id": "c", "member_ids": ["c"], "representative_id": "c", "title": "c"}], "groups_dirty": true, "merge_decisions": {"ab": "same", "ac": "different"}, "themes": [{"candidate_theme": "交通管理", "member_ids": ["a", "b"]}, {"candidate_theme": "待人工分类", "member_ids": ["c"]}]}

@@ -1,0 +1,1 @@
+{"after_hash": "e3f035d093235b1d140693d434efd84f71019f4fe4ccc0994ad6eaa838ea8814", "before_hash": "bcd98bb10ca8e34d318c86acdd9d46df4c2c67a223031de0bf4bdb7983a2dd79", "patches": [{"after": "气温变化时相关风险可能增加，应提前排查隐患。", "before": "这一判断基于季节机制的推演，相关风险可能增加。", "field_id": "w1", "issue_ids": ["ebd6ad46ca2c4cd39cf8114235d7f44d"], "source_refs": ["facts-a776995b4fb40601e99d"]}]}

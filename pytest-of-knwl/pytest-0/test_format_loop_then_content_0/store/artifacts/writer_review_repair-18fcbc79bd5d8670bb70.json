@@ -1,0 +1,1 @@
+{"after_hash": "272b5992040f94c6e8bc9b130ce1c2bd5f04f5714e10f184be705ba83ca8bf14", "before_hash": "c080b3ded02e33dcf70965fce753a40a2e639cff4f0341db20eb78deee219fe4", "patches": [{"after": "格式与事实均已核验，相关风险可能增加。", "before": "格式已修正，相关风险可能增加。", "field_id": "w1", "issue_ids": ["1de0a449600749fe9156febd83168446"], "source_refs": ["facts-a776995b4fb40601e99d"]}]}
