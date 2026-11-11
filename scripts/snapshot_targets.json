@@ -1,0 +1,31 @@
+{
+  "root": ".",
+  "comment": "L1 门禁的快照目标。S0 先只覆盖文档；S2 起逐步加入真实产物（图表 PNG、统计 JSON、TOP10 表、来源绑定结果）。optional=true 表示当前阶段还没产出，不算失败。",
+  "targets": [
+    {
+      "name": "docs-team",
+      "globs": ["docs/team/*.md"],
+      "optional": true
+    },
+    {
+      "name": "chart-png",
+      "globs": ["data/artifacts/**/*.png", "report_work/*.png"],
+      "optional": true
+    },
+    {
+      "name": "stats-json",
+      "globs": ["data/artifacts/**/*statistics*.json", "report_work/*statistics*.json"],
+      "optional": true
+    },
+    {
+      "name": "top10-table",
+      "globs": ["data/artifacts/**/*top10*", "report_work/*top10*"],
+      "optional": true
+    }
+  ],
+  "exclude_globs": [
+    "**/__pycache__/**",
+    "**/.git/**",
+    "**/.omd/**"
+  ]
+}
