@@ -1,0 +1,18 @@
+{
+  "id": "lieflat-less-ai-tone",
+  "kind": "style",
+  "module": "report_lieflat_detector",
+  "provenance": "PROJECT-PROVENANCE.json",
+  "rules_anchor": "## 改写原则",
+  "assets": {
+    "skill": "SKILL.md",
+    "criteria": "references/semantic-criteria.md",
+    "entry": "scripts/detect.py"
+  },
+  "labels": {
+    "rename": ["0组", "1组", "2组", "3组及以上", "无法判断"],
+    "cohesion": ["表面有连接词实际关系不清", "明确承接", "有关但转换突然", "主题跳转缺少说明", "无法判断"],
+    "colon": ["引语或人物发言", "标题时间比例元数据或版式用途", "定义或解释", "空转提示", "结论提示", "其他正文冒号", "无法判断"],
+    "iso3": ["高度同构", "部分同构", "只有词语重复句法不同", "只有语义并列句法不同", "无同构关系", "无法判断"]
+  }
+}
