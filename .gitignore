@@ -24,3 +24,7 @@ pytest-of-*/
 .pytest_cache/
 
 .omd/
+
+s3chart-*/
+s3mpl-*/
+tmp*/
