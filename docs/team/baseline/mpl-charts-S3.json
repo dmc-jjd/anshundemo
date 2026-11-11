@@ -1,0 +1,35 @@
+{
+ "input": "tests/test_frozen_writer.py::fixture",
+ "charts": {
+  "sentiment": {
+   "sha256": "980a9a4a8aa0fff9224a14df37f958371ccb7d81a1e258a4f504373df4f09da1",
+   "bytes": 40642,
+   "style": "pie"
+  },
+  "daily": {
+   "sha256": "4f6dde78aa0629ced004833c0f30a7fc3a0c1b9f21860a9def7667d34ea5cbba",
+   "bytes": 29087,
+   "style": "line"
+  },
+  "platform": {
+   "sha256": "c616ef84b5da84f8cca2be27532a14a1c858c3483a40f63aed88b1f7b664dd0e",
+   "bytes": 30837,
+   "style": "pie"
+  },
+  "theme": {
+   "sha256": "2c8554635c0d2bac79c291e8034e663f756252393fe887b3994c7caf6ec31741",
+   "bytes": 37402,
+   "style": "bar"
+  },
+  "locality": {
+   "sha256": "ebb7c799c86be635c8f6f24be74bba74897bfb9705bfe463bd132856c7cfed49",
+   "bytes": 30409,
+   "style": "barh"
+  }
+ },
+ "composite": "d4d58d44726c9290c2e03d8029f9f0bae1bcc00c779e5a36aebe94d72dd59e9d",
+ "module": "app.writer_tools",
+ "matplotlib": "3.11.2",
+ "python": "3.13.18",
+ "recorded_at": "2026-11-11T20:05:06"
+}
