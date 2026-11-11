@@ -221,3 +221,52 @@ def test_compile_does_not_mutate_spec():
     assert compiled.spec is spec
     # state 形状由调用方给：core 不认识客户包的键（`dict` 会整体替换 state，不能当默认）
     assert compiled.state_schema is _State
+
+# --- 回归：条件边的快乐路径（B 包漏测的那条） ---------------------------------
+#
+# 为什么必须存在：B 包唯一跑图的用例是「未声明出口」，而异常发生在路由函数内部、
+# langgraph 还没接管，所以 `_router_for` 返回目标节点 id 的 bug 完全没暴露。
+# 实际后果是三张图第一次走条件边就 KeyError（实测 langgraph 1.0.1 `_branch.py:_finish`
+# 用路由返回值去 path_map 查目标）。
+
+
+class _FlowState(TypedDict, total=False):
+    x: int
+
+
+def test_conditional_edge_happy_path_routes_to_declared_target():
+    def double(state):
+        return {"x": state["x"] * 2}
+
+    def bump(state):
+        return {"x": state["x"] + 1}
+
+    spec = _spec(
+        GraphNode("start", "agent", next=()),
+        GraphNode("left", "agent", next=()),
+        GraphNode("right", "agent", next=()),
+        entry="start",
+    )
+    compiled = compiler.compile_graph(
+        spec,
+        actions={"start": double, "left": bump, "right": bump},
+        edges={"start": (lambda state: "go_left", {"go_left": "left", "go_right": "right"})},
+        state_schema=_FlowState,
+    )
+    assert compiled.compile().invoke({"x": 2})["x"] == 5   # 2*2=4，再 +1=5
+
+
+def test_conditional_edge_unknown_outcome_still_raises_at_runtime():
+    spec = _spec(
+        GraphNode("start", "agent", next=()),
+        GraphNode("left", "agent", next=()),
+        entry="start",
+    )
+    compiled = compiler.compile_graph(
+        spec,
+        actions={"start": lambda state: {"x": 1}, "left": lambda state: {"x": 2}},
+        edges={"start": (lambda state: "boom", {"go_left": "left"})},
+        state_schema=_FlowState,
+    )
+    with pytest.raises(ValueError, match=r"graph_unknown_outcome:start:boom"):
+        compiled.compile().invoke({"x": 0})

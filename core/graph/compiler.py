@@ -39,11 +39,33 @@ def _route(
     return outcomes[outcome]
 
 
+def _outcome_for(
+    origin: str,
+    router: Callable[[Any], str],
+    outcomes: Mapping[str, str],
+) -> Callable[[Any], str]:
+    """给 langgraph 的路由器：**返回出口名本身**，由 path_map 查到目标节点。
+
+    为什么不能返回目标节点 id：`add_conditional_edges(origin, router, path_map)` 在
+    path_map 是 dict 时，langgraph（1.0.1 `graph/_branch.py:_finish`）会拿 router 的**返回值**
+    去 path_map 里查目标。若 router 返回的是目标节点 id，就成了"用 id 去查出口名表"，
+    第一次走条件边必然 KeyError（实测：`KeyError: 'b'`）。
+    """
+    def route(state: Any) -> str:
+        outcome = router(state)
+        if outcome not in outcomes:
+            raise ValueError(f"graph_unknown_outcome:{origin}:{outcome}")
+        return outcome
+
+    return route
+
+
 def _router_for(
     origin: str,
     router: Callable[[Any], str],
     outcomes: Mapping[str, str],
 ) -> Callable[[Any], str]:
+    """返回值已解析为目标节点 id 的路由器（供 `resolve()` 这类静态查询用）。"""
     def route(state: Any) -> str:
         return _route(origin, router, outcomes, state)
 
@@ -79,7 +101,8 @@ class CompiledGraph:
                 graph.add_edge(node.id, target)
         graph.add_edge(START, self.spec.entry)
         for origin, (router, outcomes) in self.edges.items():
-            graph.add_conditional_edges(origin, _router_for(origin, router, outcomes), dict(outcomes))
+            # 传出口名路由器（不是 _router_for）：langgraph 要拿返回值去 path_map 查目标
+            graph.add_conditional_edges(origin, _outcome_for(origin, router, outcomes), dict(outcomes))
         return graph.compile()
 
 
