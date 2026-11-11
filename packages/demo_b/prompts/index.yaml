@@ -1,0 +1,15 @@
+agent_prompts:
+  historical_researcher.plan: agent/historical_researcher.plan.md
+  historical_researcher.research: agent/historical_researcher.research.md
+  writer.analysis: agent/writer.analysis.md
+  writer.outlook: agent/writer.outlook.md
+  template_analyst.template: agent/template_analyst.template.md
+  event_judge.pairs: agent/event_judge.pairs.md
+  event_judge.top10: agent/event_judge.top10.md
+  event_judge.repair: agent/event_judge.repair.md
+  event_classifier.classify: agent/event_classifier.classify.md
+  event_summarizer.summary: agent/event_summarizer.summary.md
+template_policy: {}
+report_prompt_profiles:
+  demo_b: {}
+default_prompt_profile: demo_b

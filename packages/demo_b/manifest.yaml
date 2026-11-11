@@ -1,0 +1,23 @@
+package: demo_b
+report_type: 演示月报（假包）
+version: 0.0.1
+template: template.json
+prompts: prompts/
+tools:
+  allow:
+    - import_records
+    - filter_records
+    - resolve_locality
+    - group_events
+    - calculate_metrics
+    - classify_records
+    - cluster_event_themes
+    - discover_topics
+    - select_materials
+  budgets: { default: 40 }
+charts:
+  pack: chart-core
+  use: [sentiment, daily, platform]
+skills:
+  pack: skill-core
+  use: [lieflat-less-ai-tone]

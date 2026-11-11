@@ -1,0 +1,62 @@
+{
+  "package": "demo_b",
+  "version": "0.0.1",
+  "data_contract": {
+    "sheet_index": 3,
+    "required_columns": ["标题", "舆情调性"],
+    "summary_columns": ["摘要"],
+    "column_map": {
+      "标题": "title", "发布时间": "published", "来源信息": "source",
+      "事件分类": "category", "媒体环节": "platform", "媒体级别": "media_level",
+      "舆情调性": "sentiment", "是否预警": "warning", "摘要": "summary"
+    },
+    "dedup": { "threshold": 0.65, "candidate_floor_ratio": 0.6 }
+  },
+  "vocabulary": {
+    "localities": {
+      "景区片区": ["景区", "游客"], "中心城区": ["中心城区"]
+    },
+    "cluster_terms": {
+      "景区服务": ["景区", "游客", "投诉"],
+      "公共服务": ["学校", "医院", "社区"]
+    }
+  },
+  "charts": [
+    {
+      "id": "sentiment",
+      "title": "舆情调性分布（演示包B）",
+      "draft_title": "舆情情绪分布（演示包B·原始记录）",
+      "final_title": "舆情调性分布（演示包B）",
+      "family": "pie",
+      "style": "pie",
+      "binding": { "source": "metrics.sentiment" },
+      "unit": "条",
+      "scope": "all_records",
+      "axis_label": "调性"
+    },
+    {
+      "id": "daily",
+      "title": "每日信息量（演示包B）",
+      "draft_title": "每日信息量（演示包B·原始记录）",
+      "final_title": "每日信息量（演示包B）",
+      "family": "line",
+      "style": "line",
+      "binding": { "source": "metrics.daily_count" },
+      "unit": "条",
+      "scope": "all_records",
+      "axis_label": "日期"
+    },
+    {
+      "id": "platform",
+      "title": "传播平台分布（演示包B）",
+      "draft_title": "媒体环节分布（演示包B·原始记录）",
+      "final_title": "传播平台分布（演示包B）",
+      "family": "pie",
+      "style": "pie",
+      "binding": { "source": "metrics.platform" },
+      "unit": "条",
+      "scope": "all_records",
+      "axis_label": "传播平台"
+    }
+  ]
+}
