@@ -12,6 +12,9 @@ from .storage import Store,ConflictError
 from .workflow import Dependencies,run_report_graph,run_template_graph,freeze_facts,make_draft,make_preview_with_charts
 from .export import export_docx
 from .report_validation import validate_draft
+from .api_views.data_review import apply_event_settings
+from .api_views.template import apply_definition_patch,confirm_candidate
+from .api_views.writing import apply_slot_values,assemble_review_view
 
 store=Store(); deps=Dependencies(store)
 app=FastAPI(title='安顺月报工作台 Demo')
@@ -296,33 +299,9 @@ def edit_writing_review_excerpt(task_id:str,issue_id:str,req:ReviewExcerptEdit):
 
 @app.get('/api/tasks/{task_id}/writing-review')
 def writing_review_view(task_id:str):
-    from .reviewers import active_issues,review_ready
-    from .writing_review import excerpt_locations
     state=get_task(task_id)
     if not state.draft_ref:raise HTTPException(409,'draft_missing')
-    draft=store.get_artifact(state.draft_ref)
-    detection=store.get_artifact(state.metadata['style_detection_ref']) if state.metadata.get('style_detection_ref') else None
-    run=state.metadata.get('writing_review_run',{})
-    report=state.metadata.get('review_report',{})
-    review_hashes={draft['content_hash'],report.get('model_reviewed_hash')}|{r.get('draft_hash') for r in report.get('reviewers',{}).values()}
-    order=list(run.get('review_item_order',[])) or [i['id'] for i in state.review_items if i.get('kind')=='writing_review' and i.get('status')!='superseded' and i.get('draft_hash') in review_hashes]
-    for issue in active_issues(state):
-        if issue['id'] not in order:order.append(issue['id'])
-    issues=[{**i,'number':order.index(i['id'])+1,'locations':excerpt_locations(draft,i)} for i in active_issues(state)]
-    by_id={i['id']:i for i in state.review_items if i.get('kind')=='writing_review'}
-    resolved_issues=[{**by_id[key],'number':order.index(key)+1,'locations':excerpt_locations(draft,by_id[key])}
-        for key in run.get('review_item_order',[]) if key in by_id and by_id[key].get('status')=='resolved']
-    history=[{'ref':ref,**store.get_artifact(ref)} for ref in run.get('style_refs',[])]
-    hashes={item['draft_hash'] for item in history}
-    repairs=[]
-    for event in store.events(task_id):
-        if event['type']=='writer_review_repair':
-            patch=store.get_artifact(event['ref'])
-            if patch['before_hash'] in hashes or patch['after_hash'] in hashes:repairs.append({'ref':event['ref'],**patch})
-    return {'draft_hash':draft['content_hash'],'report':state.metadata.get('review_report'),
-        'run':run,'issues':issues,'resolved_issues':resolved_issues,'style_history':history,'repairs':repairs,
-        'style':detection,'ready':review_ready(state,draft['content_hash']),
-        'graph_nodes':[e for e in store.events(task_id) if e['type']=='graph_node'][-48:]}
+    return assemble_review_view(store,state)
 
 @app.post('/api/tasks/{task_id}/pause')
 def pause(task_id:str):
@@ -384,44 +363,10 @@ class EventSettings(BaseModel):
 @app.post('/api/tasks/{task_id}/event-settings')
 async def event_settings(task_id:str,req:EventSettings,background_tasks:BackgroundTasks):
     state=get_task(task_id)
-    if state.fact_ref:raise HTTPException(409,'frozen_facts')
-    if state.phase not in ('awaiting_review','analysis_pending','failed'):raise HTTPException(409,'analysis_in_progress')
-    if state.revision!=req.expected_revision:raise HTTPException(409,'stale_decision')
-    if req.threshold is None and req.groups is None:raise HTTPException(422,'event_settings_required')
-    if req.groups is not None:
-        local=store.get_artifact(state.result_refs['group_events'])
-        ids=[rid for group in req.groups for rid in group.get('member_ids',[])]
-        if len(ids)!=len(set(ids)) or set(ids)!=set(local['all_record_ids']):raise HTTPException(422,'review_members_must_cover_records_once')
-        group_ids=[g.get('id') for g in req.groups]
-        if any(not key for key in group_ids) or len(group_ids)!=len(set(group_ids)) or any(g.get('representative_id') not in g['member_ids'] for g in req.groups):
-            raise HTTPException(422,'invalid_event_group_identity')
-        prior=store.get_artifact(state.result_refs['event_analysis']) if state.result_refs.get('event_analysis') else {}
-        from .data_review import save_review_draft
-        draft_payload={'groups':req.groups,'merge_decisions':req.merge_decisions,'briefs':req.briefs,'groups_dirty':True}
-        if req.themes is not None:draft_payload['themes']=req.themes
-        try:saved=save_review_draft(store,state,draft_payload,req.draft_version)
-        except (ValueError,ConflictError) as exc:raise HTTPException(409,str(exc))
-        draft=store.get_artifact(saved['data_ref'])
-        req.merge_decisions=draft['merge_decisions']
-        pending=saved['pending_relationships'];conflicts=saved['conflicting_relationships']
-        if pending or conflicts:
-            raise HTTPException(409,f'已保存 {len(req.merge_decisions)} 项人工判断。仍有 {len(pending)} 项未判断、{len(conflicts)} 项与当前分组冲突；数据尚未锁定，可继续处理或刷新后恢复草稿。')
-        from .data_review import apply_human_review
-        apply_human_review(store,state,draft)
-        return state
-    if req.threshold is not None:
-        state.metadata['human_review_final']=False
-        state.metadata['event_threshold']=req.threshold
-        state.result_refs.pop('group_events',None)
-    for key in ('event_analysis','event_analysis_checkpoint','confirmed_event_groups','confirmed_theme_groups'):
-        state.result_refs.pop(key,None)
-    for item in state.review_items:
-        if item['kind']=='data_review':item.update(status='superseded',blocking=False)
-    state.metadata['reprocess_events']=True;state.metadata['analysis_pending']=True;state.phase='queued'
-    store.put_task(state,state.revision)
-    store.append_event(task_id,{'type':'event_rules_changed','threshold':state.metadata.get('event_threshold',.65),'human_adjusted':req.groups is not None})
-    background_tasks.add_task(run_report_graph,deps,task_id)
-    return state
+    error,result=apply_event_settings(store,state,req)
+    if error:raise HTTPException(*error)
+    if result['run_graph']:background_tasks.add_task(run_report_graph,deps,task_id)
+    return result['state']
 
 
 class ReviewDraftRequest(BaseModel):
@@ -510,35 +455,9 @@ def set_report_parameters(task_id:str,req:ReportParameters):
 @app.post('/api/tasks/{task_id}/slot-values')
 def fill_slot_values(task_id:str,req:SlotValuePatch):
     state=get_task(task_id)
-    if not state.draft_ref: raise HTTPException(409,'draft_missing')
-    if state.template_ref!='anshun-monthly-colored':
-        from .writing_review import edit_structured
-        try:return edit_structured(store,task_id,req.values,req.expected_hash)
-        except (ValueError,KeyError) as exc:raise HTTPException(409,str(exc))
-    from .slot_writer import WRITER_SLOT_IDS
-    import re
-    if state.phase not in ('awaiting_final_review','facts_frozen'):raise HTTPException(409,'report_not_editable_in_current_phase')
-    for slot_id,value in req.values.items():
-        if slot_id not in WRITER_SLOT_IDS: raise HTTPException(422,'unknown_writer_slot:'+slot_id)
-        if not isinstance(value,str):raise HTTPException(422,'invalid_slot_value:'+slot_id)
-        if not value.strip() or re.search(r'\{\{|\}\}',value): raise HTTPException(422,'invalid_slot_value:'+slot_id)
-    draft=store.get_artifact(state.draft_ref)
-    previous_hash=draft['content_hash']
-    if req.expected_hash and req.expected_hash!=previous_hash:raise HTTPException(409,'stale_draft_hash')
-    for slot_id,value in req.values.items():
-        draft['slot_values'][slot_id]={'value':value.strip(),'source_refs':['human_edit']}
-    version=DraftVersion.model_validate(draft)
-    version.content_hash=hashlib.sha256(version.model_dump_json(exclude={'content_hash'}).encode()).hexdigest()
-    state.draft_ref=store.put_artifact(task_id,'human_filled_draft',version.model_dump())
-    remaining=[x for x in state.metadata.get('writer_issues',[]) if x.get('slot_id') not in req.values]
-    state.metadata['writer_issues']=remaining
-    state.metadata['missing_fields']=[x['slot_id'] for x in remaining]
-    state.metadata['preview_only']=bool(remaining)
-    store.put_task(state,state.revision)
-    from .reviewers import after_human_change
-    after_human_change(store,task_id,previous_hash,set(req.values))
-    store.append_event(task_id,{'type':'human_slot_values','filled':sorted(req.values)})
-    return {'draft_ref':state.draft_ref,'missing':state.metadata['missing_fields'],'preview_only':state.metadata['preview_only']}
+    error,result=apply_slot_values(store,state,req)
+    if error:raise HTTPException(*error)
+    return result
 
 class TemplateConfirm(BaseModel):
     expected_revision:int
@@ -640,71 +559,17 @@ class TemplateDefinitionPatch(BaseModel):
 
 @app.put('/api/templates/{task_id}/definition')
 def revise_template_definition(task_id:str,req:TemplateDefinitionPatch):
-    from .structured_template import revise_candidate
     state=get_task(task_id)
-    if state.revision!=req.expected_revision: raise HTTPException(409,'stale_template_revision')
-    if state.metadata.get('confirmed_template_ref'): raise HTTPException(409,'immutable_confirmed_template')
-    ref=state.metadata.get('structured_template_ref')
-    if not ref: raise HTTPException(404,'structured_template_missing')
-    if not state.metadata.get('template_validation_ref'):raise HTTPException(409,'template_semantic_review_required')
-    if any(set(patch)-{'display_name'} for patch in req.fields.values()):raise HTTPException(422,'semantic_changes_require_model_review')
-    try:
-        candidate=revise_candidate(store.get_artifact(ref),req.fields)
-        if req.chart_styles is not None:
-            from .chart_spec import with_styles
-            candidate=with_styles(candidate,req.chart_styles)
-        if req.rules is not None:
-            from .review_service import check_rules
-            candidate['rules']=check_rules(req.rules)
-    except ValueError as exc: raise HTTPException(422,str(exc))
-    state.metadata['structured_template_ref']=store.put_artifact(task_id,'structured_template_candidate',candidate)
-    from .template_review import digest
-    validation=store.get_artifact(state.metadata['template_validation_ref'])
-    validation.update(candidate_ref=state.metadata['structured_template_ref'],candidate_hash=digest(candidate))
-    state.metadata['template_validation_ref']=store.put_artifact(task_id,'template_validation',validation)
-    store.put_task(state,state.revision)
+    error,_=apply_definition_patch(store,state,req)
+    if error: raise HTTPException(*error)
     return template_definition(task_id)
 
 @app.post('/api/templates/{task_id}/confirm')
 def confirm_template(task_id:str,req:TemplateConfirm):
     state=get_task(task_id)
-    if state.kind!='template': raise HTTPException(422,'not_template_task')
-    if state.revision!=req.expected_revision: raise HTTPException(409,'stale_task_revision')
-    if state.metadata.get('confirmed_template_ref'):return state
-    if state.phase!='awaiting_template_confirmation':raise HTTPException(409,'template_semantic_review_required')
-    if not state.metadata.get('comparison_ref'): raise HTTPException(409,'comparison_missing')
-    if not state.metadata.get('structured_template_ref'): raise HTTPException(409,'structured_template_missing')
-    if req.candidate_ref!=state.metadata['structured_template_ref']:raise HTTPException(409,'stale_template_candidate')
-    candidate=store.get_artifact(state.metadata['structured_template_ref'])
-    from .template_review import digest,POLICY_VERSION
-    validation_ref=state.metadata.get('template_validation_ref')
-    if not validation_ref:raise HTTPException(409,'template_semantic_review_required')
-    validation=store.get_artifact(validation_ref)
-    if (validation.get('validation')!='passed' or validation.get('candidate_hash')!=digest(candidate)
-        or validation.get('candidate_ref')!=req.candidate_ref or validation.get('policy_version')!=POLICY_VERSION
-        or validation.get('input_ref')!=state.metadata.get('template_input_ref')
-        or validation.get('input_hash')!=digest(store.get_artifact(validation['input_ref']))
-        or not validation.get('review_refs')):raise HTTPException(409,'template_semantic_review_required')
-    if any(hashlib.sha256(Path(s['path']).read_bytes()).hexdigest()!=s['sha256'] for s in candidate['source_reports']):
-        raise HTTPException(409,'template_source_changed')
-    for item in state.review_items:
-        if item['kind']=='template_business_question' and item['status']!='resolved':
-            answer=req.resolutions.get(item['id'],'').strip()
-            if not answer:raise HTTPException(409,'unresolved_template_review')
-            item.update(status='resolved',decision={'action':'confirm','answer':answer,'reason':req.reason})
-    if any(x['blocking'] and x['status']!='resolved' and x['kind']!='template_candidate' for x in state.review_items): raise HTTPException(409,'unresolved_template_review')
-    from .structured_template import apply_top10_rule
-    candidate=apply_top10_rule(candidate)
-    from .review_service import check_rules
-    try:candidate['rules']=check_rules(req.rules or candidate.get('rules'))
-    except (ValueError,TypeError) as exc:raise HTTPException(422,str(exc))
-    for item in state.review_items:
-        if item['kind']=='template_candidate':item.update(status='resolved',decision={'action':'confirm','reason':req.reason})
-    business_decisions=[{'question':i['question'],'answer':i.get('decision',{}).get('answer') or i.get('decision',{}).get('payload',{}).get('answer','')} for i in state.review_items if i['kind']=='template_business_question']
-    ref=store.put_artifact(task_id,'template_version',{**candidate,'version':1,'status':'confirmed_by_human','model_analysis':state.metadata.get('model_analysis'),'source_file_ids':state.input_refs,'human_reason':req.reason,'template_validation_ref':validation_ref,'human_resolutions':req.resolutions,'business_decisions':business_decisions})
-    state.metadata['confirmed_template_ref']=ref; state.phase='template_confirmed'; store.put_task(state,state.revision)
-    store.append_event(task_id,{'type':'template_confirmed','template_ref':ref,'reason':req.reason})
-    return state
+    error,result=confirm_candidate(store,state,req)
+    if error: raise HTTPException(*error)
+    return result
 
 @app.post('/api/tasks/{task_id}/approve')
 def approve(task_id:str,req:Approval):
