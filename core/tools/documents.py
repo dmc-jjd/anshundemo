@@ -1,8 +1,7 @@
 """documents 域工具：报告文档解析与结构比对。自 `app/tool.py` 原样搬出，逻辑未改。
 
-S2 临时债（RISK-8）：`app.template_compare` 的两个纯函数仍留在 app，本模块顶部回指它。
-S6 随 template_compare 一并上移时消除。不改成依赖注入（会改 handler 的 (args, ctx) 签名），
-也不复制实现（会引入行为分叉）——两者风险都比这条临时回指大。
+原 S2 临时债（RISK-8：顶部回指 `app.template_compare`）已在 S7-B 消除——
+`template_compare` 已上移到 `core.tools.template_compare`，本模块与 app 零依赖。
 """
 
 from __future__ import annotations

@@ -1,6 +1,7 @@
 """metrics 域工具：指标计算与 TOP10 可编辑表。自 `app/tool.py` 原样搬出，逻辑未改。
 
-`calculate_metrics` 里的预警真值集仍是字面量——数据化属 S7，本轮不动（见任务分解 §6 D3）。
+`calculate_metrics` 里的预警真值集仍是字面量，尚未数据化——属保留债（见
+`docs/team/S7-债务台账.md`），数据化会改变确定性层产物，须单独成包并重录 G-GOLDEN。
 """
 
 from __future__ import annotations

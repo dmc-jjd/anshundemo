@@ -1,6 +1,6 @@
 {
   "core_files": 32,
-  "core_hash": "84b07a42bac55c6cc2db4cca0a79540ef8caaed749dcf37502fcef8ccf3eebde",
+  "core_hash": "1a9ab70640f1a914d58ffb0180b3f980397350c4ba45ddfe6f677beab6bf0a20",
   "core_files_detail": {
     "core/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "core/charts/__init__.py": "6c0ab59d7635c39906645dea2f672c6fe8918dc060ae3f89c2ae6cc07643df0a",
@@ -24,11 +24,11 @@
     "core/tools/_shared.py": "9ff4d1abc635c3515d056c768c2784398cbbadbaf673e22301268e7a19b0ae12",
     "core/tools/contracts.py": "d485d76512e757d1e18255563b69a8b5b7212c00169c11ebadc797266b465464",
     "core/tools/dedup.py": "d8480d0d4d8b098c06a9b8583f24587d10a714f089b0f352610f218e77155484",
-    "core/tools/documents.py": "4c10d445aa89bc1a8d0dea487f467644b4ffee9cd73445b75a41ad2e95f920e0",
+    "core/tools/documents.py": "ea81d65db6b24d47c4f379aed9d9f4a72298e984543f7cb8b4b460a16f308e73",
     "core/tools/events.py": "542186192f31371c129fd1b00ee98fa8d9e5ad0ba54756d3ab6d3e846cacae89",
     "core/tools/hints.py": "1db98f1aafc78e4e396ad78d8242da400e8a3cb6142f39c14a39ba18823fe60d",
     "core/tools/locality.py": "c7f22827e4f59551e3e027beb2513bc8c344c934eff791bdbf45bd0125dd019d",
-    "core/tools/metrics.py": "a5aaa1bac4363cbe7946ceab8fd075cbe3e9ece176414f8d0c56dea0dacd7e0a",
+    "core/tools/metrics.py": "2062a56e2d5466c75e8184b0b2e4c679fcf6fe5d4c116177994b3fc98c4c756a",
     "core/tools/ooxml.py": "7e9f5b5aa7105b12ca34c3d3ce3dd97e9c37be027ddfac681bbc2eea625604ff",
     "core/tools/records.py": "a51eb98494ad097363f3f7c3e71a40f81961a4a2be70a36141b9a0d64d8c5750",
     "core/tools/registry.py": "422d9aa47fa1df601712b211c6ec60aedbdcbe47c977d4ec5802ce301bf27bfe",
@@ -94,5 +94,5 @@
     "app/writing_review.py": "c11a4cccaf78e032298f9e0b8d0ed9d47626020b78a49b87b87c1f62cf09f47d"
   },
   "python": "3.13.18",
-  "recorded_at": "2026-11-12T05:56:32+08:00"
+  "recorded_at": "2026-11-12T06:36:58+08:00"
 }
