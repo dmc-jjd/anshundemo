@@ -12,7 +12,9 @@ from .storage import Store,ConflictError
 from .workflow import Dependencies,run_report_graph,run_template_graph,freeze_facts,make_draft,make_preview_with_charts
 from .export import export_docx
 from .report_validation import validate_draft
+from .api_views.approval import approval_gate
 from .api_views.data_review import apply_event_settings
+from .api_views.task_resume import resume_plan
 from .api_views.template import apply_definition_patch,confirm_candidate
 from .api_views.writing import apply_slot_values,assemble_review_view
 
@@ -319,37 +321,13 @@ def pause(task_id:str):
 @app.post('/api/tasks/{task_id}/resume')
 async def resume(task_id:str,background_tasks:BackgroundTasks):
     state=get_task(task_id)
-    if state.phase=='paused':
-        previous=state.metadata.pop('paused_from_phase',state.phase)
-        state.metadata.pop('paused_at',None)
-        from .reviewers import ACTIVE_PHASES
-        template_active={'queued','processing','template_parsing','template_local_ready','template_model_reviewing','template_review_failed','failed'}
-        report_active={'queued','processing','analyzing','analysis_pending','failed'}
-        if state.kind=='template' and previous in template_active:
-            state.phase='queued';store.put_task(state,state.revision,allow_resume=True)
-            background_tasks.add_task(run_template_graph,deps,task_id)
-        elif state.kind=='report' and not state.fact_ref and previous in report_active:
-            state.phase='queued';store.put_task(state,state.revision,allow_resume=True)
-            background_tasks.add_task(run_report_graph,deps,task_id)
-        elif state.kind=='report' and previous in ACTIVE_PHASES:
-            state.phase=previous;store.put_task(state,state.revision,allow_resume=True)
-            background_tasks.add_task(generate_draft,task_id,state.metadata.get('writing_review_run',{}).get('review_only',False))
-        else:
-            state.phase=previous;store.put_task(state,state.revision,allow_resume=True)
-        store.append_event(task_id,{'type':'task_resumed','to_phase':state.phase})
-        return state
-    if state.kind=='template' and not state.metadata.get('confirmed_template_ref'):
-        if state.phase not in ('template_review_failed','awaiting_template_confirmation','awaiting_review','failed'):
-            raise HTTPException(409,'template_analysis_in_progress')
-        state.phase='queued';store.put_task(state,state.revision)
-        background_tasks.add_task(run_template_graph,deps,task_id)
-        return state
-    if state.kind=='report' and state.phase=='facts_frozen':return await preview_draft(task_id,background_tasks)
-    if state.kind=='report' and state.result_refs.get('event_analysis') and state.phase=='awaiting_review':return state
-    if state.kind=='report' and not state.fact_ref and state.phase in ('awaiting_review','failed','analysis_pending'):
-        state.phase='queued';store.put_task(state,state.revision)
-        background_tasks.add_task(run_report_graph,deps,task_id)
-    return get_task(task_id)
+    error,plan=resume_plan(store,state)
+    if error:raise HTTPException(*error)
+    if plan['respond']=='preview':return await preview_draft(task_id,background_tasks)
+    if plan['graph']=='template':background_tasks.add_task(run_template_graph,deps,task_id)
+    elif plan['graph']=='report':background_tasks.add_task(run_report_graph,deps,task_id)
+    elif plan['graph']=='draft':background_tasks.add_task(generate_draft,task_id,plan['review_only'])
+    return state if plan['respond']=='state' else get_task(task_id)
 
 class EventSettings(BaseModel):
     expected_revision:int
@@ -574,28 +552,9 @@ def confirm_template(task_id:str,req:TemplateConfirm):
 @app.post('/api/tasks/{task_id}/approve')
 def approve(task_id:str,req:Approval):
     state=get_task(task_id)
-    from .reviewers import ACTIVE_PHASES
-    if state.phase in ACTIVE_PHASES:raise HTTPException(409,'writing_in_progress')
-    if not state.fact_ref:raise HTTPException(409,'data_review_required')
-    if not state.draft_ref: raise HTTPException(409,'draft_missing')
-    if state.metadata.get('preview_only'): raise HTTPException(409,'preview_cannot_be_approved')
-    draft=store.get_artifact(state.draft_ref)
-    if state.template_ref=='anshun-monthly-colored':
-        from .slot_writer import WRITER_SLOT_IDS
-        unfilled=[s for s in sorted(WRITER_SLOT_IDS) if not (draft.get('slot_values',{}).get(s) or {}).get('value')]
-        if unfilled: raise HTTPException(409,'writer_slots_unfilled:'+','.join(unfilled))
-    if req.draft_hash!=draft['content_hash']: raise HTTPException(409,'stale_draft')
-    problems=validate_draft(DraftVersion.model_validate(draft),store.get_artifact(draft['fact_ref']))
-    if any(x.severity=='blocking' for x in problems): raise HTTPException(409,'draft_validation_failed')
-    if any(x['blocking'] and x['status']!='resolved' for x in state.review_items): raise HTTPException(409,'unresolved_blockers')
-    if draft.get('structured_template_ref'):
-        try:export_docx(draft,store.get_artifact(state.fact_ref),None,'final',[],local_store=store)
-        except (ValueError,KeyError) as exc:raise HTTPException(409,'report_incomplete:'+str(exc))
-    from .reviewers import review_ready
-    if not review_ready(state,draft['content_hash']):raise HTTPException(409,'writing_review_required')
-    state.metadata['approval_hash']=req.draft_hash; state.phase='approved'; store.put_task(state,state.revision)
-    store.append_event(task_id,{'type':'final_approval','draft_hash':req.draft_hash})
-    return state
+    error,result=approval_gate(store,state,req,validate_draft=validate_draft,export_docx=export_docx)
+    if error:raise HTTPException(*error)
+    return result
 
 class ExportRequest(BaseModel): mode:str='draft'
 @app.post('/api/tasks/{task_id}/exports')
