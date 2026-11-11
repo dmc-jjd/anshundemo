@@ -1,0 +1,60 @@
+{
+  "fixture": "docs/team/baseline/skill-S4-fixture.json",
+  "packet_sha256": "a7a07dbfc8a8e71b8de75151e3cd2962f3853ff11bf373bfae9bd68c381275cc",
+  "ref": "style_detection-a7a07dbfc8a8e71b8de7",
+  "packet_bytes": 7021,
+  "skill": {
+    "name": "lieflat-less-ai-tone",
+    "commit": "53160078a04926d98de57a233549612d1b89bdc9",
+    "sha256": "11fb295225e5a8df37d6109c0a7c19f37efe4cf694bcee7cd0da99b4ca3d468f"
+  },
+  "documents": [
+    "analysis_paragraph",
+    "monthly_recommendations",
+    "name_only_paragraph",
+    "empty_paragraph"
+  ],
+  "counts": {
+    "rename": 3,
+    "cohesion": 2,
+    "colon": 1,
+    "iso3": 1,
+    "candidates": 7,
+    "project_findings": 1
+  },
+  "labels": {
+    "rename": [
+      "0组",
+      "1组",
+      "2组",
+      "3组及以上",
+      "无法判断"
+    ],
+    "cohesion": [
+      "表面有连接词实际关系不清",
+      "明确承接",
+      "有关但转换突然",
+      "主题跳转缺少说明",
+      "无法判断"
+    ],
+    "colon": [
+      "引语或人物发言",
+      "标题时间比例元数据或版式用途",
+      "定义或解释",
+      "空转提示",
+      "结论提示",
+      "其他正文冒号",
+      "无法判断"
+    ],
+    "iso3": [
+      "高度同构",
+      "部分同构",
+      "只有词语重复句法不同",
+      "只有语义并列句法不同",
+      "无同构关系",
+      "无法判断"
+    ]
+  },
+  "python": "3.13.18",
+  "recorded_at": "2026-11-11T22:37:23+08:00"
+}

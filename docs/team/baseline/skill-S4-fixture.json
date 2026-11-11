@@ -1,0 +1,29 @@
+{
+  "note": "G-SKILL 固定输入。录制后只读；改动一个字都会让 G-SKILL 基线失效。",
+  "draft": {
+    "content_hash": "skill-gate-v1",
+    "slot_values": {
+      "analysis_paragraph": {
+        "value": [
+          "今年以来全区持续推进风险隐患排查整治，相关工作机制不断完善，责任分工进一步明确。工作机制：由属地负责，部门联动推进。",
+          "这一判断基于季节机制和地形条件推演，已有资料仅作背景参考。风险可能增加。",
+          "有的地方重视不够，排查浮于表面。有的地方措施不实，整改流于形式。有的地方督促不力，问题久拖未决。"
+        ],
+        "source_refs": ["facts-1"]
+      },
+      "monthly_recommendations": {"value": "下一步建议加强监测预警，完善应急响应机制。", "source_refs": ["facts-1"]},
+      "name_only_paragraph": {"value": "相关工作正按计划推进，各项任务均已落实到具体责任单位。", "source_refs": ["facts-1"]},
+      "general_paragraph": {"value": "这是普通概述段落，不属于第二部分正文内容。", "source_refs": ["facts-1"]},
+      "human_paragraph": {"value": ["这一判断基于季节机制和地形条件推演，已有资料仅作背景参考。风险可能增加。"], "source_refs": ["human_edit"]},
+      "empty_paragraph": {"value": "", "source_refs": ["facts-1"]}
+    }
+  },
+  "fields": [
+    {"id": "analysis_paragraph", "kind": "analysis", "display_name": "研判分析", "owner": "writer"},
+    {"id": "monthly_recommendations", "kind": "text", "display_name": "下步建议", "owner": "writer"},
+    {"id": "name_only_paragraph", "kind": "text", "display_name": "研判分析", "owner": "writer"},
+    {"id": "general_paragraph", "kind": "text", "display_name": "概述", "owner": "writer"},
+    {"id": "human_paragraph", "kind": "analysis", "display_name": "研判分析", "owner": "writer"},
+    {"id": "empty_paragraph", "kind": "paragraph_list", "display_name": "其他", "owner": "writer"}
+  ]
+}
