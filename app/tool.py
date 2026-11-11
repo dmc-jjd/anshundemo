@@ -1,85 +1,19 @@
 """Public business tools. Each handler consumes artifacts and never dispatches another tool."""
 from __future__ import annotations
 from collections import Counter,defaultdict
-from datetime import datetime,timedelta
 from math import sqrt
-from pathlib import Path
-import hashlib,re,statistics,base64,io
+import base64,io
 from .schemas import ToolSpec, ToolResult
-from .ooxml import read_xlsx
 from .template_compare import parse_report_document,compare_reports
 from core.tools import vocabulary
+from core.tools._shared import records_of as _records, words as _words
+from core.tools.records import import_records,filter_records,classify_records,select_materials,read_evidence
+from core.tools.locality import resolve_locality
+from core.tools.metrics import calculate_metrics,build_table
 REQUIRED_COLUMNS=vocabulary.required_columns()
 COLUMN_MAP=vocabulary.column_map()
 SUMMARY_COLUMNS=vocabulary.summary_columns()
 LOCALITIES=vocabulary.localities()
-
-def _words(text:str)->set[str]:
-    text=re.sub(r'\s+','',str(text or '').lower())
-    chinese=re.findall(r'[\u4e00-\u9fff]{2,}|[a-z0-9]{3,}',text)
-    out=set()
-    for chunk in chinese:
-        if re.fullmatch(r'[\u4e00-\u9fff]+',chunk):
-            out.update(chunk[i:i+2] for i in range(len(chunk)-1))
-        else: out.add(chunk)
-    return out
-
-def _records(ctx,ref):
-    obj=ctx.store.get_artifact(ref)
-    return obj['records'] if isinstance(obj,dict) and 'records' in obj else obj
-
-def import_records(args,ctx):
-    path=Path(args['path']); sheet=int(args.get('sheet_index',3))
-    book=read_xlsx(path,sheet_index=sheet)
-    rows=book['rows']; header=rows[0]['cells']
-    for column in REQUIRED_COLUMNS:
-        if column not in header: raise ValueError('missing_required_columns')
-    records=[]; file_hash=hashlib.sha256(path.read_bytes()).hexdigest()
-    for row in rows[1:]:
-        cells=row['cells']; data={key:(cells[i] if i<len(cells) else '') for i,key in enumerate(header)}
-        if not any(data.values()): continue
-        rid=f'{file_hash[:12]}:{book["sheet"]}:{row["excel_row"]}'
-        published=data.get('发布时间','')
-        if re.fullmatch(r'\d+(?:\.\d+)?',published):
-            try:published=(datetime(1899,12,30)+timedelta(days=float(published))).isoformat(timespec='minutes')
-            except (ValueError,OverflowError):pass
-        mapped={field:data.get(column,'') for column,field in COLUMN_MAP.items()}
-        mapped['published']=published
-        records.append({
-            'id':rid,
-            **mapped,
-            'summary':data.get(SUMMARY_COLUMNS[0]) or (data.get(SUMMARY_COLUMNS[1],'') or '')[:1200],
-            'source_ref':{'file_hash':file_hash,'sheet':book['sheet'],'row':row['excel_row']},
-        })
-    ref=ctx.store.put_artifact(ctx.task_id,'records',{'records':records,'file_hash':file_hash,'header':header,'sheet':book['sheet']})
-    return ToolResult(status='ok',data_ref=ref,method=f'OOXML sheet {sheet}; every nonempty source row retained',warnings=[f'{len(records)} source rows'])
-
-def filter_records(args,ctx):
-    records=_records(ctx,args['records_ref']); scope=args.get('scope','negative')
-    if scope=='negative': selected=[r for r in records if '负' in r.get('sentiment','')]
-    elif scope=='positive': selected=[r for r in records if r.get('sentiment')=='正面']
-    elif scope=='neutral': selected=[r for r in records if r.get('sentiment')=='中性']
-    elif scope in ('warning','negative_warning','negative_or_warning'):
-        vals={str(r.get('warning','')).strip() for r in records}
-        if scope!='negative_or_warning' and not any(v in ('是','已预警','1','true','TRUE','预警') for v in vals):
-            return ToolResult(status='needs_review',method='warning field examined',unresolved=[{'kind':'warning_rule','question':'预警字段没有可确认的真值规则','values':sorted(vals)[:20]}])
-        truth=('是','已预警','1','true','TRUE','预警')
-        if scope=='negative_or_warning': selected=[r for r in records if '负' in r.get('sentiment','') or str(r.get('warning','')).strip() in truth]
-        else: selected=[r for r in records if str(r.get('warning','')).strip() in truth and (scope=='warning' or '负' in r.get('sentiment',''))]
-    elif scope=='media': selected=[r for r in records if r.get('media_level')==args.get('media_level')]
-    else: raise ValueError('unknown_scope')
-    ref=ctx.store.put_artifact(ctx.task_id,'records',{'records':selected,'scope':scope,'parent_ref':args['records_ref']})
-    return ToolResult(status='ok',data_ref=ref,method=f'exact field filter: {scope}',warnings=[f'{len(selected)} selected of {len(records)}'])
-
-def resolve_locality(args,ctx):
-    records=_records(ctx,args['records_ref']); terms=LOCALITIES
-    results=[]; unresolved=[]
-    for r in records:
-        text=r['title']+' '+r.get('summary',''); hits=[k for k,ws in terms.items() if any(w in text for w in ws)]
-        results.append({'record_id':r['id'],'candidates':hits,'evidence':hits})
-        if len(hits)!=1: unresolved.append({'kind':'locality','record_ids':[r['id']],'question':'属地不唯一或缺失','candidates':hits})
-    ref=ctx.store.put_artifact(ctx.task_id,'locality',{'items':results,'source_records_ref':args['records_ref']})
-    return ToolResult(status='needs_review' if unresolved else 'ok',data_ref=ref,method='explicit district term match; no inferred locality',unresolved=unresolved[:20],warnings=[f'{len(unresolved)} locality rows need review'] if unresolved else [])
 
 def propose_keyword_event_candidates(args,ctx):
     """Stage 1: rare keyword overlap forms review candidates, preserving singleton records."""
@@ -141,29 +75,6 @@ def propose_vector_event_neighbors(args,ctx):
     ref=ctx.store.put_artifact(ctx.task_id,'vector_neighbors',{'neighbors':list(pairs.values()),'keyword_candidates_ref':args['keyword_candidates_ref'],'all_record_ids':prior['all_record_ids'],'method':{'type':'sparse TF-IDF-like cosine','min_score':min_score,'max_neighbors':max_neighbors,'max_candidates_per_record':max_candidates,'evaluated_pairs':evaluated,'time_window':'not enforced; calibrate with real adjudicated cases'}})
     return ToolResult(status='needs_review',data_ref=ref,method='inverted-index sparse vector neighbor search across keyword groups; similarity only proposes review',warnings=[f'{evaluated} candidate pairs scored; {len(pairs)} neighbors emitted'],unresolved=[{'kind':'event_confirmation','question':'向量近邻含跨日跟进候选，需人工合并、拆分、独立或排除'}])
 
-def calculate_metrics(args,ctx):
-    records=_records(ctx,args['records_ref']); sentiment=Counter(r['sentiment'] or '未知' for r in records); platform=Counter(r['platform'] or '未知' for r in records)
-    metrics={'record_count':len(records),'sentiment':dict(sentiment),'platform':dict(platform),'warning_raw_count':sum(str(r.get('warning','')).strip() in ('是','已预警','1','true','TRUE','预警') for r in records)}
-    day=Counter()
-    for r in records:
-        value=str(r.get('published',''))
-        try:
-            if re.fullmatch(r'\d+(?:\.\d+)?',value):
-                key=(datetime(1899,12,30)+timedelta(days=float(value))).date().isoformat()
-            else: key=value[:10]
-            if key: day[key]+=1
-        except (ValueError,OverflowError): pass
-    metrics['daily_count']=dict(sorted(day.items()))
-    metrics['peak_day']=max(day,key=day.get) if day else None
-    if args.get('negative_ref'): metrics['negative_count']=len(_records(ctx,args['negative_ref']))
-    if args.get('confirmed_event_groups_ref'):
-        groups=ctx.store.get_artifact(args['confirmed_event_groups_ref'])['groups']; metrics['confirmed_event_count']=len(groups)
-        metrics['confirmed_event_member_ids']=[x for g in groups for x in g['member_ids']]
-    denom=args.get('denominator')
-    if denom is not None: metrics['ratio']=None if not denom else len(records)/denom
-    ref=ctx.store.put_artifact(ctx.task_id,'metrics',metrics)
-    return ToolResult(status='needs_review' if denom==0 else 'ok',data_ref=ref,method='source record counts and separately confirmed event counts',unresolved=[{'kind':'zero_denominator','question':'分母为零，比例缺失'}] if denom==0 else [])
-
 def group_events(args,ctx):
     from .event_grouping import group_by_representative
     records=_records(ctx,args['records_ref'])
@@ -171,12 +82,6 @@ def group_events(args,ctx):
     result['source_records_ref']=args['records_ref']
     ref=ctx.store.put_artifact(ctx.task_id,'automatic_event_groups',result)
     return ToolResult(status='ok',data_ref=ref,method='title + summary cosine against immutable group representative; automatic grouping')
-
-def classify_records(args,ctx):
-    records=_records(ctx,args['records_ref']); items=[{'record_id':r['id'],'category':r['category'] or None} for r in records]
-    ref=ctx.store.put_artifact(ctx.task_id,'classifications',{'items':items,'all_record_ids':[r['id'] for r in records]})
-    missing=sum(x['category'] is None for x in items)
-    return ToolResult(status='needs_review' if missing else 'ok',data_ref=ref,method='source event category field; blanks remain blank',warnings=[f'{missing} blank source categories'] if missing else [],unresolved=[{'kind':'missing_source_category','question':'原始分类为空；请运行独立聚类候选工具并人工确认'}] if missing else [])
 
 CLUSTER_TERMS=vocabulary.cluster_terms()
 
@@ -199,16 +104,6 @@ def discover_topics(args,ctx):
     candidates=ctx.store.get_artifact(args['cluster_ref'])['groups'] if args.get('cluster_ref') else []
     ref=ctx.store.put_artifact(ctx.task_id,'topics',{'source_categories':dict(counts),'candidate_clusters':candidates,'record_ids':[r['id'] for r in records],'status':'requires_semantic_review'})
     return ToolResult(status='needs_review',data_ref=ref,method='source category frequency and separately supplied clustering candidates; naming unconfirmed',unresolved=[{'kind':'topic_naming','question':'主题名称需模型或人工确认'}])
-
-def select_materials(args,ctx):
-    records=_records(ctx,args['records_ref']); limit=int(args.get('limit',10))
-    items=[{'record_id':r['id'],'title':r['title'],'source_ref':r['source_ref']} for r in records[:limit]]
-    ref=ctx.store.put_artifact(ctx.task_id,'materials',{'items':items,'selection_rule':'source row order; representative quality unconfirmed'})
-    return ToolResult(status='needs_review',data_ref=ref,method='source order preview only',unresolved=[{'kind':'selection_rule','question':'代表材料和 TOP10 排序规则待确认'}])
-
-def read_evidence(args,ctx):
-    data=ctx.store.get_artifact(args['data_ref']); ref=ctx.store.put_artifact(ctx.task_id,'evidence',data)
-    return ToolResult(status='ok',data_ref=ref,method='local artifact read',tool_version='1')
 
 def render_chart(args,ctx):
     from PIL import Image,ImageDraw,ImageFont
@@ -253,17 +148,6 @@ def render_chart(args,ctx):
     buffer=io.BytesIO(); img.save(buffer,format='PNG')
     ref=ctx.store.put_artifact(ctx.task_id,'chart',{'chart_type':chart_type,'title':title,'values':values,'candidate':candidate,'metrics_ref':args['metrics_ref'],'source_refs':[x for x in (args.get('cluster_ref'),args.get('locality_ref')) if x],'png_base64':base64.b64encode(buffer.getvalue()).decode(),'style_version':2,'method':'Pillow chart; candidate labels shown when unconfirmed'})
     return ToolResult(status='needs_review' if candidate else 'ok',data_ref=ref,method='Pillow chart from referenced metrics; candidate watermark where applicable',unresolved=[{'kind':'chart_confirmation','question':'候选主题或属地图不能作为正式图表'}] if candidate else [])
-
-def build_table(args,ctx):
-    if not args.get('confirmed_event_groups_ref') or not args.get('ranking_rule'):
-        return ToolResult(status='needs_review',method='editable table requires confirmed events and ranking rule',unresolved=[{'kind':'top10_rule','question':'缺少确认事件组或 TOP10 排序规则'}])
-    groups=ctx.store.get_artifact(args['confirmed_event_groups_ref'])['groups']
-    if args['ranking_rule']!='member_count_desc':
-        return ToolResult(status='needs_review',method='unsupported ranking rule',unresolved=[{'kind':'top10_rule','question':'排序规则尚未实现或确认'}])
-    ordered=sorted(groups,key=lambda g:(-len(g['member_ids']),g['member_ids'][0] if g['member_ids'] else ''))[:10]
-    rows=[{'rank':i,'member_ids':g['member_ids'],'title':g.get('title') or '待核对代表标题','heat':None} for i,g in enumerate(ordered,1)]
-    ref=ctx.store.put_artifact(ctx.task_id,'top10_table',{'rows':rows,'ranking_rule':args['ranking_rule'],'fact_ref':args.get('fact_ref'),'editable_word_table':True})
-    return ToolResult(status='needs_review',data_ref=ref,method='confirmed-event member count ranking; heat still unconfirmed',unresolved=[{'kind':'heat_rule','question':'热度星级缺少来源规则'}])
 
 def parse_report_document_tool(args,ctx):
     data=parse_report_document(args['path']); ref=ctx.store.put_artifact(ctx.task_id,'parsed_document',data)
