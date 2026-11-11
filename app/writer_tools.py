@@ -2,9 +2,10 @@
 from .frozen_report import FrozenReport,Calculation,MaterialQuery,query_materials
 from .schemas import ToolResult
 from core.charts import registry
-from core.charts.renderers.matplotlib import ChartRequest,chart_payload,plot_frozen_chart  # noqa: F401  既有导入方依赖
+from core.charts.renderers.matplotlib import ChartRequest,chart_payload,configure_report_factory,plot_frozen_chart  # noqa: F401  既有导入方依赖
 
 CHARTS=[c['id'] for c in registry.charts()]
+configure_report_factory(FrozenReport)  # 渲染器的报告工厂由宿主注册（core 不 import app）
 
 def frozen_statistics(args,ctx):
     report=FrozenReport(ctx.store,ctx.task_id);data=report.calculate(Calculation.model_validate(args))

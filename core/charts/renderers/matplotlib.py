@@ -3,8 +3,8 @@ import base64,io,threading
 from pathlib import Path
 from pydantic import BaseModel,ConfigDict
 from typing import Literal
-from app.frozen_report import FrozenReport
-from app.schemas import ToolResult
+from core.tools.contracts import ToolResult
+from core import paths
 from core.charts import registry
 from core.charts.spec import styles_for
 
@@ -16,17 +16,22 @@ class ChartRequest(BaseModel):
 # 模块级常量：既有调用方按 list 使用（app.writer_tools 经 app 层 import，此时已 configure）
 CHARTS=[c['id'] for c in registry.charts()]
 _plot_lock=threading.Lock()
+# 报告对象工厂由宿主注入（`app/writer_tools.py` 注册 `FrozenReport`）——core 不 import app。
+_report_factory=None
+
+def configure_report_factory(factory):
+    global _report_factory
+    _report_factory=factory
 
 def chart_payload(report,kind,style=None):
     from matplotlib.figure import Figure
     from matplotlib.backends.backend_agg import FigureCanvasAgg
     from matplotlib.font_manager import FontProperties
-    from app.config import DATA
     if kind not in CHARTS:raise ValueError('unknown_chart_type')
     template=report.store.get_artifact(report.state.template_ref)
-    selected=styles_for(template,report.state.metadata.get('chart_styles'),data_root=DATA)[kind]
+    selected=styles_for(template,report.state.metadata.get('chart_styles'),data_root=paths.data_root())[kind]
     style=style or selected
-    styles_for(template,{kind:style},data_root=DATA)
+    styles_for(template,{kind:style},data_root=paths.data_root())
     chart=registry.chart(kind)
     _artifact,_,key=chart['binding']['source'].partition('.')
     # 三个一次性全算：dict 字面量保留现状语义，categories_for()/counties_for() 对所有 kind 都会调用
@@ -71,9 +76,10 @@ def chart_payload(report,kind,style=None):
             'png_base64':base64.b64encode(out.getvalue()).decode()}
 
 def plot_frozen_chart(args,ctx):
-    from app.config import DATA
-    request=ChartRequest.model_validate(args);report=FrozenReport(ctx.store,ctx.task_id)
-    chosen=styles_for(ctx.store.get_artifact(report.state.template_ref),report.state.metadata.get('chart_styles'),data_root=DATA)[request.chart_type]
+    request=ChartRequest.model_validate(args)
+    if _report_factory is None:raise RuntimeError('report_factory_not_configured')
+    report=_report_factory(ctx.store,ctx.task_id)
+    chosen=styles_for(ctx.store.get_artifact(report.state.template_ref),report.state.metadata.get('chart_styles'),data_root=paths.data_root())[request.chart_type]
     if request.style and request.style!=chosen:raise ValueError('chart_style_owned_by_template_or_human')
     data=chart_payload(report,request.chart_type,chosen)
     return ToolResult(status='ok',data_ref=ctx.store.put_artifact(ctx.task_id,'writer_chart',data),method='matplotlib_agg')

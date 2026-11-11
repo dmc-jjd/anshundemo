@@ -7,8 +7,8 @@ S6 随 template_compare 一并上移时消除。不改成依赖注入（会改 h
 
 from __future__ import annotations
 
-from app.schemas import ToolResult
-from app.template_compare import parse_report_document,compare_reports
+from core.tools.contracts import ToolResult
+from core.tools.template_compare import parse_report_document,compare_reports
 
 
 def parse_report_document_tool(args,ctx):

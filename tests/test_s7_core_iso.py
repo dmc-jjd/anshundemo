@@ -2,6 +2,9 @@
 
 期望值不在这里重复——尺子只有一把，基线只有一份（`core-S7-start.json`）。
 本文件只证明两件事：① 尺子量真 `core/` 的结果 = 基线；② 尺子本身不会失效（负向探针）。
+
+WP-S7-B 落地后（CORE-DEP 清零 = `core/` 按设计变动），两个基线用例的期望源改指
+`core-S7-preB.json`——这是 A 包声明过的第二档，不改变判据语义。
 """
 
 import importlib
@@ -13,7 +16,7 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts"))
 import gate_core_iso  # noqa: E402
 
-BASELINE = REPO / "docs" / "team" / "baseline" / "core-S7-start.json"
+BASELINE = REPO / "docs" / "team" / "baseline" / "core-S7-preB.json"
 
 
 def _baseline() -> dict:

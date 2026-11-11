@@ -24,7 +24,7 @@ READ_ONLY=set(registry.BASE_READ_ONLY)
 ARGUMENTS=dict(registry.BASE_ARGUMENTS)
 DESCRIPTIONS=dict(registry.BASE_DESCRIPTIONS)
 
-def get_tool_specs()->list[ToolSpec]: return registry.get_tool_specs(HANDLERS,READ_ONLY,ARGUMENTS,DESCRIPTIONS)
+def get_tool_specs()->list[ToolSpec]: from . import historical_web,writer_tools; return registry.get_tool_specs(HANDLERS,READ_ONLY,ARGUMENTS,DESCRIPTIONS,extra_modules=(writer_tools,historical_web))
 def get_tool_handler(name:str):
     get_tool_specs()
     return registry.get_tool_handler(name,HANDLERS)

@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from app.schemas import ToolResult
+from core.tools.contracts import ToolResult
 from core.tools import vocabulary
 from core.tools._shared import records_of
 

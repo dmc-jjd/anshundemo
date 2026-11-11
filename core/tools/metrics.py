@@ -9,7 +9,7 @@ import re
 from collections import Counter
 from datetime import datetime,timedelta
 
-from app.schemas import ToolResult
+from core.tools.contracts import ToolResult
 from core.tools._shared import records_of
 
 

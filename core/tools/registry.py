@@ -8,7 +8,7 @@ S3 之后再按 `core.ports.ToolRegistry` 改成只读注册表。
 
 from __future__ import annotations
 
-from app.schemas import ToolSpec
+from core.tools.contracts import ToolSpec
 
 #: 表序决定 `G-SPECS` 指纹，也决定 `workflow.py:200` 给模型的工具清单顺序，不得改动。
 TOOL_ORDER = ('import_records', 'filter_records', 'resolve_locality', 'group_events',
@@ -32,16 +32,15 @@ BASE_ARGUMENTS = {
 }
 
 
-def get_tool_specs(handlers, readonly, arguments, descriptions) -> list[ToolSpec]:
-    """把写作阶段与网络检索工具就地并入传入的表，再按表序产出 specs。
+def get_tool_specs(handlers, readonly, arguments, descriptions, *, extra_modules=()) -> list[ToolSpec]:
+    """把注入的工具模块就地并入传入的表，再按表序产出 specs。
 
-    调用期才 import：与现状一致（不在 import 期把 writer/web 拉进依赖图，防环），
-    且只有真正取 specs 时才付这次 import 的成本。
+    模块由组合根（`app/tool.py`）经 `extra_modules` 传入——core 不 import app。
+    扩表顺序的唯一决定处是这里的循环序（先 writer 后 web）：`G-SPECS` 的 21 项与指纹即判据。
     """
-    from app.writer_tools import HANDLERS as writers, SCHEMAS, DESCRIPTIONS as descriptions_writer
-    handlers.update(writers); readonly.update(writers); arguments.update(SCHEMAS); descriptions.update(descriptions_writer)
-    from app.historical_web import HANDLERS as web, SCHEMAS as web_schemas, DESCRIPTIONS as descriptions_web
-    handlers.update(web); readonly.update(web); arguments.update(web_schemas); descriptions.update(descriptions_web)
+    for module in extra_modules:
+        handlers.update(module.HANDLERS); readonly.update(module.HANDLERS)
+        arguments.update(module.SCHEMAS); descriptions.update(module.DESCRIPTIONS)
     requirements = {'propose_vector_event_neighbors': ['keyword_event_candidates'], 'propose_keyword_event_candidates': ['normalized_records'], 'cluster_event_themes': ['normalized_records']}
     products = {'import_records': ['normalized_records'], 'propose_keyword_event_candidates': ['keyword_event_candidates'], 'propose_vector_event_neighbors': ['vector_event_neighbors'], 'cluster_event_themes': ['theme_cluster_candidates']}
     return [ToolSpec(name=n, version='2' if n == 'group_events' else '1', description=descriptions.get(n, n.replace('_', ' ')), required_capabilities=requirements.get(n, []), produced_capabilities=products.get(n, []), mutates_facts=n not in readonly, arguments_schema=arguments.get(n, {})) for n in handlers]

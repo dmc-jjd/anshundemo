@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections import Counter,defaultdict
 from math import sqrt
 
-from app.schemas import ToolResult
+from core.tools.contracts import ToolResult
 from . import vocabulary
 from ._shared import records_of,words
 

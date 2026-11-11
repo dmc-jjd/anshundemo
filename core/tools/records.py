@@ -10,8 +10,8 @@ import hashlib,re
 from datetime import datetime,timedelta
 from pathlib import Path
 
-from app.ooxml import read_xlsx
-from app.schemas import ToolResult
+from core.tools.ooxml import read_xlsx
+from core.tools.contracts import ToolResult
 from core.tools import vocabulary
 from core.tools._shared import records_of
 

@@ -2,15 +2,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Literal
 from pydantic import BaseModel, Field, model_validator
+from core.tools.contracts import SourceRef, ToolSpec, ToolResult
 
 def now() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-class SourceRef(BaseModel):
-    file_id: str
-    file_hash: str = ''
-    location: str = ''
-    record_ids: list[str] = Field(default_factory=list)
 
 class Placeholder(BaseModel):
     id: str
@@ -35,15 +30,6 @@ class TemplateVersion(BaseModel):
     created_at: str = Field(default_factory=now)
     content_hash: str = ''
 
-class ToolSpec(BaseModel):
-    name: str
-    description: str
-    version: str = '1'
-    required_capabilities: list[str] = Field(default_factory=list)
-    produced_capabilities: list[str] = Field(default_factory=list)
-    mutates_facts: bool = True
-    arguments_schema: dict[str,Any] = Field(default_factory=dict)
-
 class ToolCall(BaseModel):
     call_id: str
     tool_name: str
@@ -51,17 +37,6 @@ class ToolCall(BaseModel):
     input_refs: list[str] = Field(default_factory=list)
     reason: str = ''
     idempotency_key: str = ''
-
-class ToolResult(BaseModel):
-    status: Literal['ok','needs_review','error']
-    data_ref: str | None = None
-    source_refs: list[SourceRef] = Field(default_factory=list)
-    method: str = ''
-    warnings: list[str] = Field(default_factory=list)
-    unresolved: list[dict[str, Any]] = Field(default_factory=list)
-    tool_version: str = '1'
-    elapsed_ms: int = 0
-    error_code: str | None = None
 
 class ToolDecision(BaseModel):
     action: Literal['call_tool','request_human','finish_processing']

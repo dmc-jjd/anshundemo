@@ -2,7 +2,7 @@
 from __future__ import annotations
 import base64, io
 from collections import Counter
-from app.schemas import ToolResult
+from core.tools.contracts import ToolResult
 from core.charts import registry
 
 
