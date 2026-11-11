@@ -11,4 +11,6 @@ jsonschema==4.26.0
 pytest==9.0.3
 httpx==0.28.1
 matplotlib==3.11.2
+# S2 新增：manifest.yaml 加载依赖（D1 裁决，原为间接依赖，显式化以免换机即崩）
+pyyaml==6.0.3
 
