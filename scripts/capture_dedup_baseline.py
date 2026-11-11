@@ -97,11 +97,11 @@ def main() -> int:
         print(f"[error] 输入不存在: {xlsx}", file=sys.stderr)
         return 2
 
-    if args.workdir:
-        Path(args.workdir).mkdir(parents=True, exist_ok=True)
-    # ignore_cleanup_errors：Store 持有 sqlite 连接，Windows 上临时目录删不掉，
-    # 这是清理阶段的问题，不应让已算好的基线丢失。
-    with tempfile.TemporaryDirectory(dir=args.workdir or None, ignore_cleanup_errors=True) as tmp:
+    # 默认把临时工作目录放进 .conda：本机 TEMP 指向仓库根，不指定 dir 会在仓库里
+    # 堆出 tmp*/s3png-* 这类目录（已实际发生过）。
+    workdir = Path(args.workdir) if args.workdir else (repo / ".conda")
+    workdir.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=str(workdir), ignore_cleanup_errors=True) as tmp:
         payload = build(xlsx, args.sheet, args.scope, args.threshold, Path(tmp))
 
     digest = hashlib.sha256(canonical(payload).encode("utf-8")).hexdigest()
