@@ -1,4 +1,4 @@
-"""WP-S2-F：`app/tool.py` 收成纯薄壳——组合根 + `render_chart` + 两个转发函数。"""
+"""WP-S2-F：`app/tool.py` 收成纯薄壳——组合根 + 两个转发函数（`render_chart` 已迁 `core/charts/renderers/pillow.py`）。"""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ def test_shell_exposes_every_public_name_and_the_full_registry():
 
 
 def test_registry_logic_lives_outside_the_shell():
-    """实现已外迁：顶层只允许组合根转发函数与 `render_chart`（S3 才搬）这三个 def。"""
+    """实现已外迁：顶层只允许组合根两个转发函数这两个 def。"""
     tree = ast.parse(pathlib.Path(tool.__file__).read_text(encoding='utf-8'))
     assert {node.name for node in tree.body if isinstance(node, ast.FunctionDef)} == {
-        'render_chart', 'get_tool_specs', 'get_tool_handler'}
+        'get_tool_specs', 'get_tool_handler'}
