@@ -1,34 +1,18 @@
-"""Pinned upstream detection and rule loading, with auditable project findings."""
-import hashlib,importlib.util,json,re
-from functools import lru_cache
-from pathlib import Path
-from .config import ROOT
+"""文风技能薄壳：客户注入点 + 既有公开名。加载/指纹/标签全部在 core/skills/registry.py。
 
-SKILL_ROOT=ROOT/'skills/lieflat-less-ai-tone'
-UPSTREAM='https://github.com/larashero3-dotcom/lieflat-less-ai-tone'
-COMMIT='53160078a04926d98de57a233549612d1b89bdc9'
-LABELS={
- 'rename':['0组','1组','2组','3组及以上','无法判断'],
- 'cohesion':['表面有连接词实际关系不清','明确承接','有关但转换突然','主题跳转缺少说明','无法判断'],
- 'colon':['引语或人物发言','标题时间比例元数据或版式用途','定义或解释','空转提示','结论提示','其他正文冒号','无法判断'],
- 'iso3':['高度同构','部分同构','只有词语重复句法不同','只有语义并列句法不同','无同构关系','无法判断'],
-}
+待 S5：`is_second_section` 现在按「字段 id / kind / display_name」判断哪些字段算第二部分正文；
+计划书 §6.1 要求改读 `template.fields[].skill_scope == 'second_section'`，但该字段尚未在
+`template.json` 落地（S5 才填 fields/blocks），故本轮**行为保持不变**，只在此记明。
+"""
+import re
+from core.skills import registry as _registry
 
-@lru_cache(maxsize=1)
-def skill_context():
-    text=(SKILL_ROOT/'SKILL.md').read_text(encoding='utf-8')
-    criteria=(SKILL_ROOT/'references/semantic-criteria.md').read_text(encoding='utf-8')
-    rules=text[text.index('## 改写原则'):]
-    digest=hashlib.sha256((text+criteria+(SKILL_ROOT/'scripts/detect.py').read_text(encoding='utf-8')).encode()).hexdigest()
-    return {'name':'lieflat-less-ai-tone','upstream':UPSTREAM,'commit':COMMIT,'sha256':digest,'rules':rules,'semantic_criteria':criteria}
-
-@lru_cache(maxsize=1)
-def detector():
-    spec=importlib.util.spec_from_file_location('report_lieflat_detector',SKILL_ROOT/'scripts/detect.py')
-    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
-    return module
+LABELS=_registry.labels()
+skill_context=_registry.skill_context
+detector=_registry.detector
 
 def is_second_section(field):
+    """本文哪些字段算第二部分正文（客户语义，留在 app 层；S5 改读 field.skill_scope 后删除本函数）。"""
     return field['id'] in ('b40_analysis_paragraph','monthly_recommendations') or field.get('kind') in ('analysis','paragraph_list') or '研判分析' in field.get('display_name','')
 
 def detect_style(store,task_id,draft,fields):
