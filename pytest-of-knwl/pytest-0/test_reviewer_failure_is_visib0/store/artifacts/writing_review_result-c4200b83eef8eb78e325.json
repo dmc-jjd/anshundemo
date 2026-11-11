@@ -1,1 +1,0 @@
-{"draft_hash": "35b6ef5fb48d6c122350f6cbe1e1606e007d80ae889bda07f824e00a0fe316b9", "error": "RuntimeError: test provider unavailable", "issues": [], "model_called": true, "project_findings": [], "reviewer": "content_reviewer", "round": 1, "semantic_judgments": [], "status": "error", "summary": "模型审查未完成，需重试或最终人工核查。"}

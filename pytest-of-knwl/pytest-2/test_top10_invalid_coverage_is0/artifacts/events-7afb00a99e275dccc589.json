@@ -1,1 +1,0 @@
-{"all_record_ids": ["a", "b"], "borderline_candidates": [{"id": "pair", "score": 0.5, "source_group": "g1", "target_group": "g0"}], "groups": [{"id": "g0", "member_ids": ["a"], "representative_id": "a", "title": "未知情况甲"}, {"id": "g1", "member_ids": ["b"], "representative_id": "b", "title": "未知情况乙"}], "source_records_ref": "records-08853f60d61f0cfa35fd"}

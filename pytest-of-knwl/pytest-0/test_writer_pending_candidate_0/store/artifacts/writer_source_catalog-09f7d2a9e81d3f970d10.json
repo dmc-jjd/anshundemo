@@ -1,1 +1,0 @@
-{"protocol": "numbered-v1", "sources": [{"number": 1, "ref": "risk_knowledge-1b3b20153a67a38bd78c"}, {"number": 2, "ref": "risk_knowledge-803a17c20a24c4191810"}, {"number": 3, "ref": "risk_knowledge-cb9f8810dea5350753c3"}, {"number": 4, "ref": "risk_knowledge-1238b08fe5a612a51bf1"}], "stage": "structured_writer", "targets": ["monthly_recommendations"]}

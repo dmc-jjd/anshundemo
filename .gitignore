@@ -16,3 +16,10 @@ report_work/
 *.xlsx
 *.pptx
 *.docx.bak
+
+# omd team run worktrees（每运行一树，自动拆除）
+.omd/worktrees/
+
+pytest-of-*/
+.pytest_cache/
+

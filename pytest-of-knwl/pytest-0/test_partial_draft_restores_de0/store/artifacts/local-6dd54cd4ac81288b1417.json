@@ -1,1 +1,0 @@
-{"all_record_ids": ["a", "b", "c"], "groups": [{"id": "a", "member_ids": ["a"], "representative_id": "a", "title": "a"}, {"id": "b", "member_ids": ["b"], "representative_id": "b", "title": "b"}, {"id": "c", "member_ids": ["c"], "representative_id": "c", "title": "c"}], "method": {"threshold": 0.65}, "source_records_ref": "records-86351809845de9d57546"}

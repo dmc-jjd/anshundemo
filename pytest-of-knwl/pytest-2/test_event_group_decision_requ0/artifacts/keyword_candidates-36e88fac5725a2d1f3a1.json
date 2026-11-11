@@ -1,1 +1,0 @@
-{"all_record_ids": ["1", "2"], "groups": [{"candidate_id": "kw-1", "member_ids": ["1"], "status": "unresolved_singleton"}, {"candidate_id": "kw-2", "member_ids": ["2"], "status": "unresolved_singleton"}], "method": {"pair_count": 0, "threshold": 0.72, "token": "Chinese bigrams and alphanumeric terms"}, "records_ref": "records-cdce286f44c50fd9df76"}

@@ -1,1 +1,0 @@
-{"after_hash": "ce44d1d08f376486b4b4671c4366cd2130b4b1ec54f78cad5d190b31e28552f1", "before_hash": "87af1a438bbc3ce03e434532fd35a897e06fb44a31b302724f9880351c595f1c", "patches": [{"after": "格式已修正，相关风险可能增加。", "before": "这一判断基于季节机制的推演，相关风险可能增加。", "field_id": "w1", "issue_ids": ["90d7e4289b0f47498bf439187410ca0d"], "source_refs": ["facts-a776995b4fb40601e99d"]}]}

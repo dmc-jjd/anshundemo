@@ -1,1 +1,0 @@
-{"all_record_ids": ["1", "2"], "keyword_candidates_ref": "keyword_candidates-36e88fac5725a2d1f3a1", "method": {"evaluated_pairs": 0, "max_candidates_per_record": 200, "max_neighbors": 8, "min_score": 0.45, "time_window": "not enforced; calibrate with real adjudicated cases", "type": "sparse TF-IDF-like cosine"}, "neighbors": []}
