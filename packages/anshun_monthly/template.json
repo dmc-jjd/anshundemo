@@ -33,5 +33,68 @@
       "执政形象": ["干部","政务","公职","行政执法","作风"],
       "自然灾害": ["洪灾","洪水","地震","滑坡","泥石流","暴雨"]
     }
-  }
+  },
+  "charts": [
+    {
+      "id": "sentiment",
+      "title": "舆情调性分布",
+      "draft_title": "舆情情绪分布（原始记录）",
+      "final_title": "舆情调性分布",
+      "family": "pie",
+      "style": "pie",
+      "binding": { "source": "metrics.sentiment" },
+      "unit": "条",
+      "scope": "all_records",
+      "axis_label": "调性"
+    },
+    {
+      "id": "daily",
+      "title": "每日信息量",
+      "draft_title": "每日信息量（原始记录）",
+      "final_title": "每日舆情信息量",
+      "family": "line",
+      "style": "line",
+      "binding": { "source": "metrics.daily_count" },
+      "unit": "条",
+      "scope": "all_records",
+      "axis_label": "日期"
+    },
+    {
+      "id": "platform",
+      "title": "传播平台分布",
+      "draft_title": "媒体环节分布（原始记录）",
+      "final_title": "传播平台分布",
+      "family": "pie",
+      "style": "pie",
+      "binding": { "source": "metrics.platform" },
+      "unit": "条",
+      "scope": "all_records",
+      "axis_label": "传播平台"
+    },
+    {
+      "id": "theme",
+      "title": "事件分类",
+      "draft_title": "敏感及负面并集主题候选分布",
+      "final_title": "已确认事件分类",
+      "family": "bar",
+      "style": "bar",
+      "binding": { "source": "theme_clusters.groups" },
+      "unit": "件",
+      "scope": "confirmed_events",
+      "axis_label": "事件分类"
+    },
+    {
+      "id": "locality",
+      "title": "事件涉及属地",
+      "draft_title": "敏感及负面并集属地候选分布",
+      "final_title": "事件涉及属地（跨区及不明单列）",
+      "family": "barh",
+      "style": "barh",
+      "binding": { "source": "locality.items" },
+      "unit": "件",
+      "scope": "confirmed_events",
+      "axis_label": "属地",
+      "locality_basis": "冻结属地识别的唯一候选；跨区及不明单列"
+    }
+  ]
 }

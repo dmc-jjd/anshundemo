@@ -1,0 +1,45 @@
+{
+  "input": "安顺市委10月总数据.xlsx",
+  "sheet_index": 3,
+  "counts": [
+    28789,
+    3914
+  ],
+  "charts": {
+    "sentiment": {
+      "sha256": "f3ab2d02741e1effd4e95158fb15745d6c1060a532cdb8eb9c747dbe19137ba4",
+      "bytes": 23172,
+      "status": "ok",
+      "title": "舆情情绪分布（原始记录）"
+    },
+    "daily": {
+      "sha256": "d55f36b2fdf597526e3bb3a9068cb9f47c98aa5eb3d1a3dcc39c6b61e008133b",
+      "bytes": 30015,
+      "status": "ok",
+      "title": "每日信息量（原始记录）"
+    },
+    "platform": {
+      "sha256": "b5451560c5f4598b05c5f10c0a9cb989078e423f6d8e8d8514f777168525e165",
+      "bytes": 36752,
+      "status": "ok",
+      "title": "媒体环节分布（原始记录）"
+    },
+    "theme": {
+      "sha256": "2e0ea1cd75b688df2aae6cc8cf7cc1a8ebf9256a172716bab2990cb790dc999d",
+      "bytes": 57449,
+      "status": "needs_review",
+      "title": "敏感及负面并集主题候选分布"
+    },
+    "locality": {
+      "sha256": "ddf02d760be4e58b22970c880d454336a46eedb51fec890cc9f28cc28f505bdc",
+      "bytes": 46134,
+      "status": "needs_review",
+      "title": "敏感及负面并集属地候选分布"
+    }
+  },
+  "composite": "363dab5de7f826bd0d323113fd7d92b6b3656a632067b0901417ff3c69a2586d",
+  "pillow": "12.2.0",
+  "python": "3.13.18",
+  "font_sha256": "d79c55e68b1131eea0cc1c47be4f572d964f28c682e143db2ad09c1e4cb07a3f",
+  "recorded_at": "2026-11-11T18:29:41+08:00"
+}
