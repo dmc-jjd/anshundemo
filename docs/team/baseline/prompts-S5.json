@@ -1,0 +1,101 @@
+{
+  "canon": "sha256(json.dumps(obj,ensure_ascii=False,sort_keys=True,default=str).encode())",
+  "prompts_sha256": "e977175a5b00c500bc8e38a50f01615acf2ca5009dd7e69483461cb1c3883aa0",
+  "parts": {
+    "AGENT_PROMPTS": "0f2cc6efafce8cb95095a07ed8803a42f43a1469ecf4392e2818e37e13e74bdf",
+    "AGENT_DEFINITIONS": "38f73eab831d00386659fd4cc00bf3f7adf95963cc96e876accef675ccebad61",
+    "TEMPLATE_POLICY": "490a038d93987ad41c3a0f006b3a49d1d5c37c93a458420e9764e2e4d4902d18",
+    "REPORT_PROMPT_PROFILES": "b4df32af7e6c8600b2200ac9575e745a8d02b76f90271bba23b0414166e060a9"
+  },
+  "counts": {
+    "prompts": 32,
+    "roles": 10,
+    "policy_top": 6,
+    "profiles": 1,
+    "default": "anshun_monthly"
+  },
+  "order": {
+    "policy_sha256_unsorted": "9ddd5dc5fe2da8a634fe6167a7080c1e33107313345666870339fc137f316c65",
+    "all_sha256_unsorted": "ca97918a0ec08d9004cf8e4fbe46aff5bb6af93cac74739a1b1893014418323e",
+    "prompt_keys": [
+      "style.application",
+      "format_reviewer.review",
+      "content_reviewer.review",
+      "writer.revise",
+      "historical_researcher.plan",
+      "historical_researcher.research",
+      "historical_researcher.page_note",
+      "historical_researcher.current_note",
+      "writer.analysis",
+      "writer.outlook",
+      "template_analyst.template",
+      "writer.general",
+      "writer.source_binding",
+      "writer.reference_repair",
+      "writer.analysis_output",
+      "writer.outlook_field",
+      "writer.data_planner",
+      "writer.slot.base",
+      "writer.slot.themes",
+      "writer.slot.narrative",
+      "writer.slot.titles",
+      "event_judge.top10",
+      "event_classifier.classify",
+      "event_summarizer.summary",
+      "event_judge.pairs",
+      "event_judge.repair",
+      "template_analyst.batch",
+      "template_analyst.repair",
+      "data_processor.next_tool",
+      "template_analyst.charts",
+      "model.json_output",
+      "model.tool_budget_exhausted"
+    ],
+    "role_keys": [
+      "historical_researcher",
+      "writer_data_planner",
+      "event_judge",
+      "event_classifier",
+      "event_summarizer",
+      "template_analyst",
+      "data_processor",
+      "writer",
+      "format_reviewer",
+      "content_reviewer"
+    ],
+    "policy_keys": [
+      "fixed_text",
+      "semantic_units",
+      "recommendations",
+      "top10",
+      "review_controls",
+      "question_policy"
+    ],
+    "recommendations_keys": [
+      "min_items",
+      "max_items",
+      "structure"
+    ],
+    "top10_keys": [
+      "scope",
+      "unit",
+      "ranking",
+      "summary_min_chars",
+      "summary_max_chars"
+    ],
+    "review_controls_keys": [
+      "first_warning_scope"
+    ]
+  },
+  "fingerprints": {
+    "default": "fd0ad70a94db03c77e38345c8eeac6852cd8cccb55b3b729dfc0a18eb8eb886e",
+    "historical_researcher": "c291f21de4d17f58f5c397d30d19c300c1d3ea5d580d9b934b41b487326312b2",
+    "writer.analysis": "b20c64fcfa3d4058c14a16ec6612189cc9948d9c22d4354e65ac115801a7999f",
+    "writer.outlook": "717037b578e9eb0240d5e9773ef74639f36f0e0e955f534c8004902bab8d3196",
+    "writer.general": "bd2cd11b8d232e52c1e229077d2b407d3fe5b425f5a1a4e1093869671de5775e"
+  },
+  "review_policy": "7d8c8cb58258441760b687e7d835db450f384f063ff3f8b27beda4ca8d8a35b7",
+  "skill_sha256": "11fb295225e5a8df37d6109c0a7c19f37efe4cf694bcee7cd0da99b4ca3d468f",
+  "python": "3.13.18",
+  "recorded_at": "2026-11-11T23:38:06+08:00"
+}
