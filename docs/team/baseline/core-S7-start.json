@@ -1,0 +1,170 @@
+{
+  "core_files": 28,
+  "core_hash": "2146689d3785fd68184cc55efa0d2878275a10b2316ff74d174af87b818a3cbe",
+  "core_files_detail": {
+    "core/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "core/charts/__init__.py": "6c0ab59d7635c39906645dea2f672c6fe8918dc060ae3f89c2ae6cc07643df0a",
+    "core/charts/registry.py": "757cfd6bee80c10e914d41a0672de9d2ca8a2b34e6f845753da018408a059475",
+    "core/charts/renderers/__init__.py": "8a6fb9f477a561e403d99d3d39d1efb02e66467faa4d2b88d0180da13268c4ae",
+    "core/charts/renderers/matplotlib.py": "446b121e8b6c7fd130e824bf545d1d0ec5eaa4b5aa6c71a7a249371c5b238e14",
+    "core/charts/renderers/pillow.py": "51bcd54f8a82b8a2371c1ae52b42bff5b0b3605cd29fd1ecbf5bb481f99cda87",
+    "core/charts/spec.py": "2ccf8020007e093dbac386539a7ac6026c43a67bb2571c00378c9b647fcc0f29",
+    "core/graph/__init__.py": "63857c62129529addbdb0c937f30eb5e2470e6f8add2f02fc702df6619c4ca90",
+    "core/graph/compiler.py": "07b89e9fc7e45e99ac077dafa944574764d0bdd40124b820a5d3cad4072d34db",
+    "core/graph/review_loop.py": "0aed702e0b3687ced6e18b799e6c9bfa7c60f0bb70c048c4becc2ad91c8cb16d",
+    "core/manifest.py": "2cefccdac5a53057915b01250fc77913acaddeff39a7afec6786dd5d081f8bbb",
+    "core/ports.py": "070b2d5347a7069dd2f44b81cf8db02646aa880df4f95949378d04e4d9eaf641",
+    "core/prompts/__init__.py": "01dfb36fe34d5ade60323342511c1d73896733e11aac7e544aa3db613e5cf64a",
+    "core/prompts/registry.py": "dd698d43234919493b33a8e8f5b043a8e21125a803e593c75a92685cc8508885",
+    "core/skills/__init__.py": "8549df0ff524fd95f3d20d6480bc617e350dc369c3bcd7e8eea2b34c47045014",
+    "core/skills/registry.py": "a3c0658fa53866d9fd3449e7e72cf5f931975850277d7141f6cf6b9fb32bfe63",
+    "core/skills/skill-core/lieflat-less-ai-tone.json": "c9afdda5c9fa1ab3d2d10640068f0600a03eb67c12a6109282ec7da60b8a8055",
+    "core/tools/__init__.py": "8ac09f45d1d23fb696afa7414fe0882ec81bdd6a6b061b2f7fd17fbce9d850ff",
+    "core/tools/_shared.py": "9ff4d1abc635c3515d056c768c2784398cbbadbaf673e22301268e7a19b0ae12",
+    "core/tools/dedup.py": "d8480d0d4d8b098c06a9b8583f24587d10a714f089b0f352610f218e77155484",
+    "core/tools/documents.py": "cb488a6a2fa629324b38957be58a70124893891bec3b17fe346a1413ce62b8c0",
+    "core/tools/events.py": "a2a912c3f45ba62843c7861d19bb7922b45e0b857e397e62d35edef599e3da46",
+    "core/tools/hints.py": "1db98f1aafc78e4e396ad78d8242da400e8a3cb6142f39c14a39ba18823fe60d",
+    "core/tools/locality.py": "2587cc412e38caa92dcfc0382347f93bf9c31b2975cd6047d74623501f8a0393",
+    "core/tools/metrics.py": "93fdc63f66416cd98515a494c942b97a48174f95454d313b759b463377817dc7",
+    "core/tools/records.py": "ea22737c5d48c43e547abfd80032cf72dd0b07d132594d3cfca702767e05b55d",
+    "core/tools/registry.py": "d0f32a60f8614c73b991451fc2bfcc7b1a050c3b655aa6917b9b3b5425024c99",
+    "core/tools/vocabulary.py": "1610a117d86dc70157da2ddbf38b445e3a4bd99a3fdb0087de75b8de495265b6"
+  },
+  "core_dep": {
+    "sites": 15,
+    "files": 8,
+    "entries": [
+      {
+        "file": "core/charts/renderers/matplotlib.py",
+        "line": 6,
+        "module": "app.frozen_report"
+      },
+      {
+        "file": "core/charts/renderers/matplotlib.py",
+        "line": 7,
+        "module": "app.schemas"
+      },
+      {
+        "file": "core/charts/renderers/matplotlib.py",
+        "line": 24,
+        "module": "app.config"
+      },
+      {
+        "file": "core/charts/renderers/matplotlib.py",
+        "line": 74,
+        "module": "app.config"
+      },
+      {
+        "file": "core/charts/renderers/pillow.py",
+        "line": 5,
+        "module": "app.schemas"
+      },
+      {
+        "file": "core/tools/documents.py",
+        "line": 10,
+        "module": "app.schemas"
+      },
+      {
+        "file": "core/tools/documents.py",
+        "line": 11,
+        "module": "app.template_compare"
+      },
+      {
+        "file": "core/tools/events.py",
+        "line": 12,
+        "module": "app.schemas"
+      },
+      {
+        "file": "core/tools/locality.py",
+        "line": 8,
+        "module": "app.schemas"
+      },
+      {
+        "file": "core/tools/metrics.py",
+        "line": 12,
+        "module": "app.schemas"
+      },
+      {
+        "file": "core/tools/records.py",
+        "line": 13,
+        "module": "app.ooxml"
+      },
+      {
+        "file": "core/tools/records.py",
+        "line": 14,
+        "module": "app.schemas"
+      },
+      {
+        "file": "core/tools/registry.py",
+        "line": 11,
+        "module": "app.schemas"
+      },
+      {
+        "file": "core/tools/registry.py",
+        "line": 41,
+        "module": "app.writer_tools"
+      },
+      {
+        "file": "core/tools/registry.py",
+        "line": 43,
+        "module": "app.historical_web"
+      }
+    ]
+  },
+  "app_files": 49,
+  "app_hash": "fc8c9b759f3a3f27399bd2b72e4700c6e13aef34334fdee12730baad9723b53b",
+  "app_files_detail": {
+    "app/__init__.py": "52d725f3455951a886c2162ce05808574fdbfc59ac705ece865be61cee31b142",
+    "app/agent.py": "826b96b7ccfdfbf9231275be736002b47a240a38f56239028c1bcb030f31e043",
+    "app/api_views/__init__.py": "70be0386ed969702c591d0bae1b6d58dc608bfc8fa3c422dd2641e15b29cbaa4",
+    "app/api_views/approval.py": "511204b736c35cf14aeb96a2104c8ca325059fb5f7a753e27ba63b222216963d",
+    "app/api_views/data_review.py": "766689a259782d36e2c0dd269111d9fa74d67019ada7488f337b73e4f2dd32c7",
+    "app/api_views/task_resume.py": "d722cce746a60244ca5deb4cf14453472e5cdaf982fb4b0c1326d970fe4dfc0d",
+    "app/api_views/template.py": "0bebdff102b1ccba9dc48fbc964523244eb57f22ac006a454e52f54d45dd4f75",
+    "app/api_views/writing.py": "5a7ede04d87cf62b73904e1f215ba8d47fc54a7d858ed960497187cc4cb18e8c",
+    "app/chart_review.py": "b93577813a2ca8402b404c608ce58589660de25c2ab99c14025b91df1305df61",
+    "app/chart_spec.py": "dd0d386e9d62cb0894514728ff47abb8ddd009e790d60789e0b78e4f19031f38",
+    "app/config.py": "77eaccebf35025f61e3e99fd5b56098dc994cbcbac914f74562937ffe3225091",
+    "app/data_review.py": "d8d0b21c531a1acebab535695a67df0c2055737538c4f8527f4d0dbae1fb0e82",
+    "app/event_analysis.py": "4c634553fb988d12017548b7ad3a8799fd0b00f359aff12b939de8baac39d650",
+    "app/event_grouping.py": "d2932c5ed1f3ee44fea0cfdb2ebb8b6ea4a4430565a177d64458efb90315cb38",
+    "app/export.py": "d199c781980c50e580725dfada837680fd1d33ec92ca4c295e081b31f60ba4f2",
+    "app/fallback_policy.py": "de387b4167e67607b8a9f9cee58328ba4591f326479e723a7f56cd3d9b101b05",
+    "app/frozen_report.py": "75128d840b9715f26bb3c2208b59a1b88e3b596f0f0af57ec8257509fae61861",
+    "app/historical_reader.py": "441cd4cbf0de0ae636b98ee97b3c283bb90287a5b9ba945b9d3bb0ed54ce5020",
+    "app/historical_research.py": "17aa3a6a9304d6c77982d24970e7ea1d1a3d99ef05aa2d9efd17f6d2eaefe6ca",
+    "app/historical_web.py": "14644ee7cde30b089c27e15e2faaf03a28d0c602d2b3808ab6204abcf3c1f3f5",
+    "app/main.py": "3aac01d03d6534793cfc7cf53b4107fdf425892952a34b1411942236ee3c946a",
+    "app/model_client.py": "57d5c57628724fb642ed83b9bdc7c43ccbb6c74b0a0b2785148ce47808801a4c",
+    "app/ooxml.py": "0e5948fafce3e611f8b2e39967bea8958926e1de2f43867561ffe710ffa584cc",
+    "app/reference_comparison.py": "613caa8f593d967e74ad3a80b6d5b6b404e114031418ab7573cf0eeab5cec06d",
+    "app/report_parameters.py": "dbb239a23d0276d699f6c7ab003c4907d8116e69784dbc19f84410dc4716a544",
+    "app/report_validation.py": "22651965b1cdd06e41f3df2c6d424f878deb48af6349eef63be42daafc52800d",
+    "app/review_service.py": "f837cf21e01efc53b3c96a22ac4333fd8bcf660c8578162f83696ff36549b84b",
+    "app/reviewers.py": "374f0da3512024a4aace763092ce7c39b8806e5179fc866a231adede8c275cf9",
+    "app/schemas.py": "d29eeca1124e77499744101e582693873cfadfbad8975c6fe9f50483fe4598ee",
+    "app/section_two.py": "406f01be23c3399995fbb954f6e107eadf1e2b7e202ddb913232c76b11377420",
+    "app/slot_writer.py": "f62eff418ae6d9b1e925d64f6b19ee05decd2b516885226470626aea6345562a",
+    "app/source_binding.py": "5033b96015f6a2faebae4e7d88923d51352a12400bff4b4c2d71ae7ff09d2248",
+    "app/state.py": "bf9bc1507bc749bc01f24d60b7244a70c2a043d694b13c4c0cf37bcf9eac409d",
+    "app/storage.py": "c175adc423f560053aea7a92c4007a91579a73ff1af03a0f489f8e0b831a2a54",
+    "app/structured_template.py": "f79c973914d6df7716e0b1b0cea3ed7d8e306d4950ea3fd3b7a0a4881a87cd47",
+    "app/structured_writer.py": "7fc4d79edcb40e132ae36527d2efafa9b7962ca34ac945463eb74593c4940c9b",
+    "app/style_skill.py": "428e4a35c00d8f955d4367ab1595c51eaad6c2b58a037fe22ebd5e0daa42fb92",
+    "app/template_compare.py": "065134036dd87b214b8029e2665a792a0075bd2a6c8e282922e1c87ed764c87e",
+    "app/template_exceptions.py": "febc33e674bc933916114ed02bb71dbbecccbfe9eb41284985abe521a680df3f",
+    "app/template_execution.py": "dfcdba4f4b359e5e96c7d9a2e78cce446e865a644c4b2f2092ac65ed890bb53f",
+    "app/template_review.py": "e1bed7fbc11a67b3c4b94dcb8018ef9a1496f5453f5a93ce6d9193e06f8b8ace",
+    "app/template_validation.py": "4286bb81b0fc2abf3de6e5d75a779e7aff2fe6c2b4b829d4fba541823d66b66b",
+    "app/timing.py": "5b46d703f08ae779019d63c5c608b8d62ee10ce323b8dd682ee8059edeca6f14",
+    "app/tool.py": "06b0efd15157b821fa3fc5cf7fef30368b1b33cbc3f03334dd9a9c2b77728e2d",
+    "app/tool_executor.py": "902087c5b5f1a585ffa9c0a4ba89f094ae59bd9e3bdb4d0c83ae76bdc899d685",
+    "app/usage.py": "b5eaa88513a5d15009111f3fcd513395f4332d0a1d94b65805124f639c1ef41f",
+    "app/workflow.py": "856a84ed9fa0a42fa1689f8370bf91229670ed196f6f565f2c544fa0aa3a759b",
+    "app/writer_tools.py": "cc467d04525a79cdd1eeca96cc18b72ede260277df2ada4676229b76b8b3c129",
+    "app/writing_review.py": "c11a4cccaf78e032298f9e0b8d0ed9d47626020b78a49b87b87c1f62cf09f47d"
+  },
+  "python": "3.13.18",
+  "recorded_at": "2026-11-12T05:43:13+08:00"
+}
