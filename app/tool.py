@@ -10,6 +10,7 @@ from core.tools.metrics import calculate_metrics,build_table
 from core.tools.events import (propose_keyword_event_candidates,propose_vector_event_neighbors,
                                group_events,cluster_event_themes,discover_topics)
 from core.tools.documents import parse_report_document_tool,compare_report_structures
+from core.tools import records,locality,events,metrics,documents,registry
 REQUIRED_COLUMNS=vocabulary.required_columns()
 COLUMN_MAP=vocabulary.column_map()
 SUMMARY_COLUMNS=vocabulary.summary_columns()
@@ -60,31 +61,18 @@ def render_chart(args,ctx):
     ref=ctx.store.put_artifact(ctx.task_id,'chart',{'chart_type':chart_type,'title':title,'values':values,'candidate':candidate,'metrics_ref':args['metrics_ref'],'source_refs':[x for x in (args.get('cluster_ref'),args.get('locality_ref')) if x],'png_base64':base64.b64encode(buffer.getvalue()).decode(),'style_version':2,'method':'Pillow chart; candidate labels shown when unconfirmed'})
     return ToolResult(status='needs_review' if candidate else 'ok',data_ref=ref,method='Pillow chart from referenced metrics; candidate watermark where applicable',unresolved=[{'kind':'chart_confirmation','question':'候选主题或属地图不能作为正式图表'}] if candidate else [])
 
-HANDLERS={x.__name__:x for x in [import_records,filter_records,resolve_locality,group_events,propose_keyword_event_candidates,propose_vector_event_neighbors,calculate_metrics,classify_records,cluster_event_themes,discover_topics,select_materials,read_evidence,render_chart,build_table,parse_report_document_tool,compare_report_structures]}
-HANDLERS['parse_report_document']=HANDLERS.pop('parse_report_document_tool')
+_DOMAIN={**records.HANDLERS,**locality.HANDLERS,**events.HANDLERS,**metrics.HANDLERS,**documents.HANDLERS}
+_DOMAIN['parse_report_document']=documents.parse_report_document_tool  # 对外名 ≠ 域函数名
+_DOMAIN['render_chart']=render_chart
+HANDLERS={name:_DOMAIN[name] for name in registry.TOOL_ORDER if name in _DOMAIN}  # 前 16 个基座工具
+READ_ONLY=set(registry.BASE_READ_ONLY)
+ARGUMENTS=dict(registry.BASE_ARGUMENTS)
+DESCRIPTIONS=dict(registry.BASE_DESCRIPTIONS)
 
-DESCRIPTIONS={'propose_keyword_event_candidates':'第一轮关键词匹配形成同事件候选组','propose_vector_event_neighbors':'第二轮向量化近邻消费第一轮候选，补充跨组和隔天跟进候选'}
-READ_ONLY={'read_evidence','parse_report_document','compare_report_structures','render_chart','build_table'}
-ARGUMENTS={
-    'group_events':{'required':['records_ref'],'properties':{'records_ref':'artifact_ref','threshold':'number (0,1]'}},
-    'import_records':{'required':['path'],'properties':{'path':'string','sheet_index':'integer'}},
-    'filter_records':{'required':['records_ref','scope'],'properties':{'records_ref':'artifact_ref','scope':'all|positive|neutral|negative|warning|negative_warning|negative_or_warning|media','media_level':'string'}},
-    'propose_keyword_event_candidates':{'required':['records_ref'],'properties':{'records_ref':'artifact_ref','keyword_jaccard':'number'}},
-    'propose_vector_event_neighbors':{'required':['keyword_candidates_ref'],'properties':{'keyword_candidates_ref':'artifact_ref','min_score':'number','max_neighbors':'integer'}},
-    'cluster_event_themes':{'required':['records_ref'],'properties':{'records_ref':'artifact_ref'}},
-    'render_chart':{'required':['metrics_ref','chart_type'],'properties':{'metrics_ref':'artifact_ref','chart_type':'sentiment|daily|platform|theme|locality'}},
-}
-def get_tool_specs()->list[ToolSpec]:
-    from .writer_tools import HANDLERS as writers,SCHEMAS,DESCRIPTIONS as descriptions
-    HANDLERS.update(writers);READ_ONLY.update(writers);ARGUMENTS.update(SCHEMAS);DESCRIPTIONS.update(descriptions)
-    from .historical_web import HANDLERS as web,SCHEMAS as webschemas,DESCRIPTIONS as webdesc
-    HANDLERS.update(web);READ_ONLY.update(web);ARGUMENTS.update(webschemas);DESCRIPTIONS.update(webdesc)
-    requirements={'propose_vector_event_neighbors':['keyword_event_candidates'],'propose_keyword_event_candidates':['normalized_records'],'cluster_event_themes':['normalized_records']}
-    products={'import_records':['normalized_records'],'propose_keyword_event_candidates':['keyword_event_candidates'],'propose_vector_event_neighbors':['vector_event_neighbors'],'cluster_event_themes':['theme_cluster_candidates']}
-    return [ToolSpec(name=n,version='2' if n=='group_events' else '1',description=DESCRIPTIONS.get(n,n.replace('_',' ')),required_capabilities=requirements.get(n,[]),produced_capabilities=products.get(n,[]),mutates_facts=n not in READ_ONLY,arguments_schema=ARGUMENTS.get(n,{})) for n in HANDLERS]
+def get_tool_specs()->list[ToolSpec]: return registry.get_tool_specs(HANDLERS,READ_ONLY,ARGUMENTS,DESCRIPTIONS)
 def get_tool_handler(name:str):
     get_tool_specs()
-    return HANDLERS[name]
+    return registry.get_tool_handler(name,HANDLERS)
 
 __all__ = ['import_records','filter_records','resolve_locality','group_events',
            'propose_keyword_event_candidates','propose_vector_event_neighbors','calculate_metrics',
