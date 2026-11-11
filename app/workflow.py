@@ -3,7 +3,9 @@ from __future__ import annotations
 from .agent import get_prompt
 import asyncio,hashlib,json,uuid
 from dataclasses import dataclass
-from langgraph.graph import StateGraph,START,END
+from core.graph.compiler import END_TARGET,compile_graph
+from core.graph.review_loop import ReviewBudgets,build_review_loop
+from core.ports import GraphNode,GraphSpec,ReviewerSpec
 from typing_extensions import TypedDict
 from .schemas import TaskState,ToolCall,ToolDecision,DraftVersion,FactSnapshot
 from .tool_executor import RunContext,execute_tool
@@ -37,8 +39,13 @@ def _graph_node(deps,name,action,graph_name):
     return node
 
 
+def _report_spec():
+    return GraphSpec(id='report',entry='validate_input',nodes=(
+        GraphNode('validate_input','gate'),GraphNode('data_processing','tool'),
+        GraphNode('event_analysis','agent'),GraphNode('await_data_review','gate')))
+
+
 def build_report_graph(dependencies:Dependencies):
-    graph=StateGraph(GraphState)
     def validate(task_id):
         if dependencies.store.get_task(task_id).kind!='report':raise ValueError('not_report_task')
     def entry(value):
@@ -48,18 +55,33 @@ def build_report_graph(dependencies:Dependencies):
         task=dependencies.store.get_task(value['task_id'])
         return 'analyse' if {'calculate_metrics','group_events','cluster_event_themes'}<=task.result_refs.keys() and not task.cancel_requested else 'finish'
     def after_analysis(value):return 'stop' if dependencies.store.get_task(value['task_id']).phase=='analysis_pending' else 'finish'
-    for name,action in [('validate_input',validate),('data_processing',lambda tid:_process_records(dependencies,tid)),
-                        ('event_analysis',lambda tid:_analyse_report_events(dependencies,tid)),('await_data_review',lambda tid:_await_data_review(dependencies,tid))]:
-        graph.add_node(name,_graph_node(dependencies,name,action,'report'))
-    graph.add_edge(START,'validate_input');graph.add_conditional_edges('validate_input',entry,{'process':'data_processing','stop':END})
-    graph.add_conditional_edges('data_processing',after_processing,{'analyse':'event_analysis','finish':'await_data_review'})
-    graph.add_conditional_edges('event_analysis',after_analysis,{'stop':END,'finish':'await_data_review'});graph.add_edge('await_data_review',END)
-    return graph.compile()
+    actions={'validate_input':validate,'data_processing':lambda tid:_process_records(dependencies,tid),
+             'event_analysis':lambda tid:_analyse_report_events(dependencies,tid),'await_data_review':lambda tid:_await_data_review(dependencies,tid)}
+    # 出口即结束只能走 edges 注册表（GraphSpec.next 只认节点 id）；终审只有一个出口，故为常量路由。
+    edges={'validate_input':(entry,{'process':'data_processing','stop':END_TARGET}),
+           'data_processing':(after_processing,{'analyse':'event_analysis','finish':'await_data_review'}),
+           'event_analysis':(after_analysis,{'stop':END_TARGET,'finish':'await_data_review'}),
+           'await_data_review':(lambda value:'end',{'end':END_TARGET})}
+    return compile_graph(_report_spec(),actions=actions,edges=edges,state_schema=GraphState,
+                         node_wrapper=lambda name,action:_graph_node(dependencies,name,action,'report')).compile()
+
+
+def _writing_spec(review_only=False):
+    return GraphSpec(id='writing',entry='validate_input',nodes=(
+        GraphNode('validate_input','gate',next=('local_validation' if review_only else 'write_draft',)),
+        GraphNode('write_draft','agent',next=('local_validation',)),
+        GraphNode('local_validation','tool',next=('style_detection',)),
+        GraphNode('style_detection','tool',next=('format_review',)),
+        GraphNode('format_review','agent'),GraphNode('content_review','agent'),GraphNode('revise_draft','loop'),
+        GraphNode('content_local_validation','tool',next=('content_style_detection',)),
+        GraphNode('content_style_detection','tool',next=('content_review',)),
+        GraphNode('final_format_review','agent',next=('await_final_review',)),
+        GraphNode('await_final_review','gate')))
 
 
 def build_writing_graph(dependencies:Dependencies,review_only=False):
     from .reviewers import begin_run,local_review,style_review,run_reviewer,review_route,format_route,revise_draft,finish_review,repairable
-    store=dependencies.store;graph=StateGraph(GraphState)
+    store=dependencies.store
     def validate(task_id):
         task=store.get_task(task_id)
         if task.kind!='report' or not task.fact_ref:raise ValueError('data_review_required')
@@ -78,16 +100,17 @@ def build_writing_graph(dependencies:Dependencies,review_only=False):
         ('content_local_validation',lambda tid:local_review(store,tid)),('content_style_detection',phase_node('style_detection',lambda tid:style_review(store,tid))),
         ('final_format_review',lambda tid:run_reviewer(dependencies,tid,'format_reviewer',phase='final_format_review')),
         ('await_final_review',lambda tid:finish_review(store,tid))]
-    for name,action in nodes:graph.add_node(name,_graph_node(dependencies,name,action,'writing'))
-    graph.add_edge(START,'validate_input');graph.add_edge('validate_input','local_validation' if review_only else 'write_draft')
-    for a,b in [('write_draft','local_validation'),('local_validation','style_detection')]:graph.add_edge(a,b)
+    # 审校循环的 12 个出口名由 ReviewerSpec.kind 派生（出口名的唯一来源）；预算显式 5——
+    # ReviewerSpec.max_rounds 默认 2 且全仓零消费，接线即改行为。
+    plan=build_review_loop(reviewers=(ReviewerSpec('format','format_reviewer'),ReviewerSpec('content','content_reviewer')),
+        actions={'review:format_reviewer':'format_review','review:content_reviewer':'content_review',
+                 'revalidate:format_reviewer':'local_validation','revalidate:content_reviewer':'content_local_validation',
+                 'revision':'revise_draft','final_review':'final_format_review','await_final':'await_final_review'},
+        budgets=ReviewBudgets(max_rounds=5))
     # 线性流水线：writer成稿 → 格式审核(循环退修) → 内容审核(循环退修) → 最终格式审核 → 人工研判。
     # 初始成稿后一律先走格式审核；格式审核完毕后才会进入内容审核。
-    graph.add_edge('style_detection','format_review')
     # 格式审核：仍有可退修意见 → 退修改写；通过/达上限 → 内容审核；取消 → 终审。
-    graph.add_conditional_edges('format_review',lambda value:format_route(store,value['task_id']),{'content':'content_review','revise':'revise_draft','finish':'await_final_review'})
     # 内容审核：仍有可退修意见 → 退修改写；通过/达上限 → 最后一次格式审核；取消 → 终审。
-    graph.add_conditional_edges('content_review',lambda value:review_route(store,value['task_id']),{'revise':'revise_draft','final_format':'final_format_review','finish':'await_final_review'})
     def after_revision(value):
         # 退修成功：格式退修回到格式校验链路，内容退修回到内容校验链路（各自独立，不穿插）。
         if value.get('repair_succeeded'):
@@ -106,12 +129,13 @@ def build_writing_graph(dependencies:Dependencies,review_only=False):
             return 'content' if format_route(store,task.id)=='content' else 'finish'
         if run.get('stage_repair_attempts',{}).get(stage,0)<5:return 'retry'
         return 'content' if format_route(store,task.id)=='content' else 'finish'
-    graph.add_conditional_edges('revise_draft',after_revision,{'format_revalidate':'local_validation','content_revalidate':'content_local_validation','retry':'revise_draft','content':'content_review','final_format':'final_format_review','finish':'await_final_review'})
     # 内容退修后的独立重校验链路 → 回到内容审核；与格式审核的重校验链路完全分离。
-    graph.add_edge('content_local_validation','content_style_detection');graph.add_edge('content_style_detection','content_review')
-    graph.add_edge('final_format_review','await_final_review')
-    graph.add_edge('await_final_review',END)
-    return graph.compile()
+    routers={'format_review':lambda value:format_route(store,value['task_id']),
+             'content_review':lambda value:review_route(store,value['task_id']),'revise_draft':after_revision}
+    edges={origin:(routers[origin],dict(branches)) for origin,branches in plan.conditional_edges}
+    edges['await_final_review']=(lambda value:'end',{'end':END_TARGET})
+    return compile_graph(_writing_spec(review_only),actions=dict(nodes),edges=edges,state_schema=GraphState,
+                         node_wrapper=lambda name,action:_graph_node(dependencies,name,action,'writing')).compile()
 
 async def run_writing_graph(dependencies:Dependencies,task_id:str,review_only=False):
     try:await build_writing_graph(dependencies,review_only).ainvoke({'task_id':task_id},config={'recursion_limit':100})
@@ -122,8 +146,13 @@ async def make_preview_with_charts(deps:Dependencies,task_id:str):
     return await run_writing_graph(deps,task_id)
 
 
+def _template_spec():
+    return GraphSpec(id='template',entry='validate_input',nodes=(
+        GraphNode('validate_input','gate',next=('local_compare_and_analysis',)),
+        GraphNode('local_compare_and_analysis','tool')))
+
+
 def build_template_graph(dependencies:Dependencies):
-    graph=StateGraph(GraphState)
     def validate_input(state):
         task=dependencies.store.get_task(state['task_id'])
         if task.kind!='template': raise ValueError('not_template_task')
@@ -131,12 +160,9 @@ def build_template_graph(dependencies:Dependencies):
     async def compare(state):
         result=await run_template(dependencies,state['task_id'])
         return {'phase':result.phase}
-    graph.add_node('validate_input',validate_input)
-    graph.add_node('local_compare_and_analysis',compare)
-    graph.add_edge(START,'validate_input')
-    graph.add_edge('validate_input','local_compare_and_analysis')
-    graph.add_edge('local_compare_and_analysis',END)
-    return graph.compile()
+    return compile_graph(_template_spec(),actions={'validate_input':validate_input,'local_compare_and_analysis':compare},
+                         edges={'local_compare_and_analysis':(lambda state:'end',{'end':END_TARGET})},
+                         state_schema=GraphState).compile()
 
 async def run_report_graph(dependencies:Dependencies,task_id:str):
     try:return await build_report_graph(dependencies).ainvoke({'task_id':task_id})
