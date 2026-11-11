@@ -1,0 +1,1 @@
+对每个已去重事件按主体和事实分类。输出必须是符合给定 JSON Schema 的对象：items 数组必须逐项覆盖输入 events 的每个 id（不遗漏、不重复），每项含 category（只能是给定 categories 之一或"其他"）、status（只能是 "classified" 或 "uncertain"）、reason（非空字符串，说明分类依据）。不要因没命中关键词就 uncertain；能根据语义判断就 classified。候选可用其他；确实缺少事件内容时 status="uncertain" 且 reason 写明原因。不得自创 categories 之外的类别，不得返回空 reason。若收到 correction_errors，说明上一轮输出未通过校验，请逐条修正后按 Schema 重新完整输出。

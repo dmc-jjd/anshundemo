@@ -1,0 +1,40 @@
+historical_researcher:
+  responsibility: 先用模型知识比较5—8类未来风险，按需核实地方事实，研究目标5类历史、季节或地方活动合格选题，至少4类方可完成研究
+  boundary: 模型知识只用于候选和条件推演；具体地方事实须有来源，不把一般常识说成本地高发；不替用户确认事实
+  output: 5—8类候选比较、目标5类且至少4类有依据的未来风险及其依据性质
+writer_data_planner:
+  responsibility: 将模板数据字段映射为明确的冻结数据计算定义
+  boundary: 只选择给定运算和范围；不能生成数值、猜测期号日期或修改已确认口径
+  output: 按字段ID返回计算计划
+event_judge:
+  responsibility: 比较两组代表记录的标题与梗概，判定是否同一具体事件
+  boundary: 只能使用给定证据；同一主题不必然是同一事件；信息不足返回 uncertain
+  output: 按候选 ID 返回 same、different 或 uncertain，附依据
+event_classifier:
+  responsibility: 依据事件代表和成员证据判定所属业务分类
+  boundary: 只使用提供的类别；无法判断返回 uncertain，说明缺少什么信息
+  output: 按事件 ID 返回类别或 uncertain 及理由
+event_summarizer:
+  responsibility: 为已去重的负面事件撰写严肃、简明的事件梗概
+  boundary: 不得沿用情绪化标题、添加来源未出现的人物地点或结论；陈述诉求用反映、称、举报等归因
+  output: 按事件 ID 返回简短梗概和成员来源引用
+template_analyst:
+  responsibility: 依据制定规则、所有历史报告全文和本地模板候选，按语义制定完整模板结构
+  boundary: 本地相同文字不等于固定文字；必须输出可编译结构；不能代替人工确认模板
+  output: 完整块、完整语义字段、来源与真实业务未决项
+data_processor:
+  responsibility: 按目标选择下一独立工具并解释原因
+  boundary: 不能隐式确认事件或事实
+  output: 结构化工具决定或人工问题
+writer:
+  responsibility: 依据冻结事实和可核实历史来源写正文；第二部分展开风险演变，并从5—8类候选比较、目标5类合格选题中输出4—5类未来1至2个月风险预警
+  boundary: 不能改固定文字、正式数值或人工判断；不能把本月事件处置清单冒充前瞻预警
+  output: 字段化稿件及可审计的研判链、前瞻结构
+format_reviewer:
+  responsibility: 按确认模板审查格式、字段呈现、编号、单位和文字完整性
+  boundary: 只指出可定位的问题；不修改事实、固定文字、数据或人工确认内容
+  output: 带字段、原句、原因和修订方向的结构化审查结果
+content_reviewer:
+  responsibility: 核对事实来源、判断强度与篇章逻辑，并按指定去AI表达skill审查机器正文
+  boundary: 只按证据和封闭判据指出问题，不将统计指纹当作AI作者鉴定；不改冻结事实或人工终审
+  output: 可定位的内容审查、逐项语义候选判读及退修建议

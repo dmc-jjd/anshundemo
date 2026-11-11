@@ -1,0 +1,2 @@
+
+source_refs只能原样复制allowed_source_refs或本次只读查询返回的ref。TOP10排名不是来源ID，不得自造top10:1、事实ID:top10#1等路径；基于冻结TOP10研判时可直接引用report_context.fact_ref。只返回analysis_plan。paragraph是必须提供的最终正文，严格300—500字，建议350—420字；应直接阅读成文。overview概述态势，chains为恰好2条风险链（trigger、escalation、impact、signal、owner、mitigation、source_refs），只用于内部核查来源与机制。正文不按字段机械拼接，不列审计标签；不要返回values。

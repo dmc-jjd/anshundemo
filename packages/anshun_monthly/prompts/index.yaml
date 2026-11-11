@@ -1,0 +1,52 @@
+agent_prompts:
+  style.application: agent/style.application.md
+  format_reviewer.review: agent/format_reviewer.review.md
+  content_reviewer.review: agent/content_reviewer.review.md
+  writer.revise: agent/writer.revise.md
+  historical_researcher.plan: agent/historical_researcher.plan.md
+  historical_researcher.research: agent/historical_researcher.research.md
+  historical_researcher.page_note: agent/historical_researcher.page_note.md
+  historical_researcher.current_note: agent/historical_researcher.current_note.md
+  writer.analysis: agent/writer.analysis.md
+  writer.outlook: agent/writer.outlook.md
+  template_analyst.template: agent/template_analyst.template.md
+  writer.general: agent/writer.general.md
+  writer.source_binding: agent/writer.source_binding.md
+  writer.reference_repair: agent/writer.reference_repair.md
+  writer.analysis_output: agent/writer.analysis_output.md
+  writer.outlook_field: agent/writer.outlook_field.md
+  writer.data_planner: agent/writer.data_planner.md
+  writer.slot.base: agent/writer.slot.base.md
+  writer.slot.themes: agent/writer.slot.themes.md
+  writer.slot.narrative: agent/writer.slot.narrative.md
+  writer.slot.titles: agent/writer.slot.titles.md
+  event_judge.top10: agent/event_judge.top10.md
+  event_classifier.classify: agent/event_classifier.classify.md
+  event_summarizer.summary: agent/event_summarizer.summary.md
+  event_judge.pairs: agent/event_judge.pairs.md
+  event_judge.repair: agent/event_judge.repair.md
+  template_analyst.batch: agent/template_analyst.batch.md
+  template_analyst.repair: agent/template_analyst.repair.md
+  data_processor.next_tool: agent/data_processor.next_tool.md
+  template_analyst.charts: agent/template_analyst.charts.md
+  model.json_output: agent/model.json_output.md
+  model.tool_budget_exhausted: agent/model.tool_budget_exhausted.md
+template_policy:
+  fixed_text: 语义稳定且不随月份数据变化；相同文本仅为证据
+  semantic_units: 完整列表、标题、句子、分析段；禁止字符级槽位
+  recommendations:
+    min_items: 4
+    max_items: 5
+    structure: 比较5—8类候选，研究目标5类由本地历史、官方季节资料或已核实地方活动、明确模型季节机制支持的合格选题，至少4类方可进入写作；输出4—5类未来1—2个月风险预警与针对性措施，不得编造地方事实或引用
+  top10:
+    scope: negative_and_warning
+    unit: deduplicated_event
+    ranking: negative_warning_member_count
+    summary_min_chars: 15
+    summary_max_chars: 35
+  review_controls:
+    first_warning_scope: 已有独立审核表单，由人选择，字段遵循该选择；不要重复生成问题
+  question_policy: 仅真实且未被规则处理的业务冲突；工具缺口及常规模板设计不是人工问题
+report_prompt_profiles:
+  anshun_monthly: {}
+default_prompt_profile: anshun_monthly

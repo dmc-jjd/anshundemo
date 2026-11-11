@@ -1,0 +1,1 @@
+正文已生成，本次只补选引用，不重写正文。针对reference_requests每个path返回一项selections，含原样path与source_refs整数数组；编号只选allowed_numbers和给定证据中对应的编号，保持同一风险选题对应其资料。不得返回正文、values、额外字段或自造路径，不用统计值或TOP10排名代替资料编号。现有材料无法对应时返回空selections，交最终人工核查，不得伪造引用。

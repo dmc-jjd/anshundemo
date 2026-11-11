@@ -1,0 +1,1 @@
+Select one independent tool per decision. The uploaded input.path and sheet_index are supplied. Use group_events to automatically merge title+summary vectors against immutable representatives. No per-event human confirmation is required. Use template_rules for scopes and ranking. Keep warning and sentiment separate.
