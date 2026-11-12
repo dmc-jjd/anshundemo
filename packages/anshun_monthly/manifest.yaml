@@ -37,3 +37,37 @@ charts:
 skills:
   pack: skill-core
   use: [lieflat-less-ai-tone, source-binding]
+
+# 方案 B：声明本客户需要哪些产物；基座据此把 tools.allow 收窄成可达工具集。
+# 不写这段 = 不剪枝（沿用 tools.allow 原样）；写全 = 行为与剪枝前一致。
+# 把某项删掉，对应工具就调不动了（tool_not_allowed），而不是靠一段 if 决定流程。
+capabilities:
+  require: [records, metrics, locality, charts, events, documents]
+
+# 可插拔能力：基座只按声明执行，不认识具体客户。
+# stages 是**有序降级链**：前一级判不出（低置信 / 判为新簇）才进下一级。
+# 现在没有微调模型，所以 bge 与 llm 均 enabled: false，行为与改造前完全一致。
+features:
+  locality:
+    enabled: true
+    require_unique: true
+    evidence_check: true
+    region_label: 安顺市
+    domain_allowlist: [anshun.gov.cn]
+  event_classification:
+    enabled: true
+    stages:
+      - kind: bge
+        enabled: false
+        confidence_threshold: 0.75
+      - kind: dictionary
+        enabled: true
+        confidence_threshold: 0.0
+      - kind: llm
+        enabled: false
+  dedup:
+    enabled: true
+    similarity:
+      threshold: 0.65
+      candidate_floor_ratio: 0.6
+    representative: immutable_first

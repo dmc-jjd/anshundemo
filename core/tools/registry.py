@@ -49,3 +49,68 @@ def get_tool_specs(handlers, readonly, arguments, descriptions, *, extra_modules
 def get_tool_handler(name: str, catalog):
     """按名取 handler。调用方负责先 `get_tool_specs(...)`（现状语义：查到的一定是已扩表的表）。"""
     return catalog[name]
+
+
+# --------------------------------------------------------------------------- #
+# 能力依赖剪枝（方案 B）：按「客户需要哪些产物」反推可达工具集
+# --------------------------------------------------------------------------- #
+
+#: 工具 → 它需要的上游能力（缺了就跑不了）
+TOOL_REQUIRES: dict[str, tuple[str, ...]] = {
+    'propose_vector_event_neighbors': ('keyword_event_candidates',),
+    'propose_keyword_event_candidates': ('normalized_records',),
+    'cluster_event_themes': ('normalized_records',),
+}
+
+#: 工具 → 它产出的能力
+TOOL_PRODUCES: dict[str, tuple[str, ...]] = {
+    'import_records': ('normalized_records',),
+    'propose_keyword_event_candidates': ('keyword_event_candidates',),
+    'propose_vector_event_neighbors': ('vector_event_neighbors',),
+    'cluster_event_themes': ('theme_cluster_candidates',),
+}
+
+#: 需要被「人工研判」才成立的产物 → 引入哪些工具
+#: 这是「不是每份报告都要研判」的落点：不声明该产物时，相关工具不进白名单。
+#:
+#: 覆盖度硬约束：`CAPABILITY_TOOLS` 的并集必须**至少**等于任何一个客户包 `tools.allow`
+#: 的全集，否则剪枝会静默丢工具（`test_capability_tools_cover_default_allow` 守着这条）。
+CAPABILITY_TOOLS: dict[str, tuple[str, ...]] = {
+    'records': ('import_records', 'filter_records'),
+    'metrics': ('calculate_metrics', 'build_table'),
+    'locality': ('resolve_locality',),
+    'charts': ('render_chart',),
+    'events': ('propose_keyword_event_candidates', 'propose_vector_event_neighbors',
+               'group_events', 'cluster_event_themes', 'discover_topics',
+               'classify_records', 'select_materials', 'read_evidence'),
+    'documents': ('parse_report_document', 'compare_report_structures'),
+}
+
+
+def resolve_tools(required: list[str] | tuple[str, ...]) -> frozenset[str]:
+    """按客户声明的产物反推可达工具集（含传递依赖）。
+
+    语义：`required` 里每一项都会被展开成它对应的工具；若某个工具要求上游能力，
+    而该能力的生产者没被选中，就把生产者一并补齐。结果可直接喂给 `ToolPolicy.allow`。
+
+    为什么这样能「不写死流程」：白名单同时是**门禁**——没选中的工具模型根本调不动
+    （`tool_not_allowed`），于是「去重/分类/研判要不要跑」由客户包的声明决定，
+    而不是由一段 if 决定。
+
+    未声明的产物不会带出任何工具；`required` 为空时返回空集（不是全集）。
+    """
+    selected: set[str] = set()
+    for capability in required:
+        selected.update(CAPABILITY_TOOLS.get(capability, ()))
+
+    # 沿 requires → produces 反推，直到不动点（当前图很浅，循环也只是几轮）
+    changed = True
+    while changed:
+        changed = False
+        for tool in tuple(selected):
+            for need in TOOL_REQUIRES.get(tool, ()):
+                for producer, produced in TOOL_PRODUCES.items():
+                    if need in produced and producer not in selected:
+                        selected.add(producer)
+                        changed = True
+    return frozenset(selected)
