@@ -1,37 +1,30 @@
-"""Public business tools. Each handler consumes artifacts and never dispatches another tool."""
+"""组合根：实现已在 `core/tool.py`，本壳保留两个转发 `def`（S2 铁律 7）。
+
+`tests/test_s2_shell_registry.py:30` 钉死本壳顶层 `def` 集合恰为
+`{get_tool_specs, get_tool_handler}`；`get_tool_specs()` 的「调用期就地扩表」副作用是现状契约
+（`app/workflow.py:225`、`app/tool_executor.py:117` 依赖它），所以两个 `def` 不能退化成纯 re-export。
+
+扩表用的两个模块仍由**宿主**传入（`core/tools/registry.py:38` 的契约：core 不 import app），
+故 `extra_modules` 的注入点留在本壳；core 侧的 `get_tool_specs(extra_modules=())` 默认不扩表。
+
+`REQUIRED_COLUMNS` / `COLUMN_MAP` / `SUMMARY_COLUMNS` / `LOCALITIES` 不在 `__all__` 里，
+但 `tests/test_s2_manifest_vocabulary.py:8` 仍按旧公开面从本壳取，故显式再导出。
+"""
 from __future__ import annotations
-from .schemas import ToolSpec
-from core.tools import vocabulary
-from core.tools.records import import_records,filter_records,classify_records,select_materials,read_evidence
-from core.tools.locality import resolve_locality
-from core.tools.metrics import calculate_metrics,build_table
-from core.tools.events import (propose_keyword_event_candidates,propose_vector_event_neighbors,
-                               group_events,cluster_event_themes,discover_topics)
-from core.tools.documents import parse_report_document_tool,compare_report_structures
-from core.tools import records,locality,events,metrics,documents,registry
-from core.charts.renderers.pillow import render_chart
-REQUIRED_COLUMNS=vocabulary.required_columns()
-COLUMN_MAP=vocabulary.column_map()
-SUMMARY_COLUMNS=vocabulary.summary_columns()
-LOCALITIES=vocabulary.localities()
-CLUSTER_TERMS=vocabulary.cluster_terms()
+from core import tool as _core
+from core.tool import *  # noqa: F401,F403
+from core.tool import __all__ as _core_all, CLUSTER_RULES
+from core.tool import REQUIRED_COLUMNS, COLUMN_MAP, SUMMARY_COLUMNS, LOCALITIES  # 不在 __all__ 的旧全局
+from core.tools import registry
 
-_DOMAIN={**records.HANDLERS,**locality.HANDLERS,**events.HANDLERS,**metrics.HANDLERS,**documents.HANDLERS}
-_DOMAIN['parse_report_document']=documents.parse_report_document_tool  # 对外名 ≠ 域函数名
-_DOMAIN['render_chart']=render_chart
-HANDLERS={name:_DOMAIN[name] for name in registry.TOOL_ORDER if name in _DOMAIN}  # 前 16 个基座工具
-READ_ONLY=set(registry.BASE_READ_ONLY)
-ARGUMENTS=dict(registry.BASE_ARGUMENTS)
-DESCRIPTIONS=dict(registry.BASE_DESCRIPTIONS)
+# CLUSTER_RULES 是基座名；CLUSTER_TERMS 是历史名，留在 app 壳供调用方零改动：
+# 它是 S1 冻结的禁令词（计划书 §10），core 内不得出现；app 侧只做**别名**（同一对象，不是副本），
+# 故 `app/event_analysis.py:76` 的 `from .tool import CLUSTER_TERMS` 与 A 包 `__all__` 全部零改动，
+# L3 把 event_analysis 搬进 core 时同样 0 行改动。
+CLUSTER_TERMS=CLUSTER_RULES
+__all__=[name if name!='CLUSTER_RULES' else 'CLUSTER_TERMS' for name in _core_all]
 
-def get_tool_specs()->list[ToolSpec]: from . import historical_web,writer_tools; return registry.get_tool_specs(HANDLERS,READ_ONLY,ARGUMENTS,DESCRIPTIONS,extra_modules=(writer_tools,historical_web))
+def get_tool_specs()->list[ToolSpec]: from . import historical_web,writer_tools; return _core.get_tool_specs(extra_modules=(writer_tools,historical_web))
 def get_tool_handler(name:str):
     get_tool_specs()
     return registry.get_tool_handler(name,HANDLERS)
-
-__all__ = ['import_records','filter_records','resolve_locality','group_events',
-           'propose_keyword_event_candidates','propose_vector_event_neighbors','calculate_metrics',
-           'classify_records','cluster_event_themes','discover_topics','select_materials','read_evidence',
-           'render_chart','build_table','parse_report_document_tool','compare_report_structures',
-           'CLUSTER_TERMS','HANDLERS','READ_ONLY','ARGUMENTS','DESCRIPTIONS',
-           'get_tool_specs','get_tool_handler']

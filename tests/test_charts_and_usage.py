@@ -58,7 +58,9 @@ def test_report_chart_api_is_local_and_template_styles_are_versioned(tmp_path,mo
         assert store.get_task('r').template_ref==parent
 
 def test_each_http_tool_round_billed_once_including_bad_json(tmp_path,monkeypatch):
-    import app.model_client as m
+    # WP-S8-L2：实现在 core/model_client.py，patch 必须打在被读的模块上；
+    # 打 app.model_client（壳）只改壳的副本，core 侧仍读自己的 MODEL_*（静默失效）。
+    import core.model_client as m
     from app.writer_tools import native_tools
     store,_=fixture(tmp_path);requests=[]
     config=configuration(store);config['mode']='off_peak';save_configuration(store,config)

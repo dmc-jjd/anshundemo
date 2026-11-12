@@ -66,11 +66,17 @@ def test_styles_roundtrip_and_rejections(tmp_path):
         chart_spec.styles_for(template, {'made_up': 'pie'})
 
 
-def test_data_injection_still_follows_the_shell_module(tmp_path, monkeypatch):
-    """F2：`monkeypatch.setattr(chart_spec,'DATA')` 必须在调用期生效（core 不得模块级取 DATA）。"""
+def test_data_injection_is_still_read_at_call_time(tmp_path, monkeypatch):
+    """F2：`DATA` 必须在**调用期**生效（core 不得模块级取 DATA）。
+
+    WP-S8-L2：`chart_spec` 的实现已进 `core/chart_spec.py`，`DATA` 的家随之进 core——
+    patch 必须打在**被读的模块**上；打 `app.chart_spec`（壳）只改壳的副本，静默失效（S8 §4.3）。
+    判据不变：改 DATA 后 `definitions` 立刻跟着换根，说明它是调用期读而不是 import 期捕获。
+    """
+    import core.chart_spec as impl
     data_root = tmp_path / 'data'
     _one_drawing_layout(data_root / 'uploads' / 'layout.docx')
-    monkeypatch.setattr(chart_spec, 'DATA', data_root)
+    monkeypatch.setattr(impl, 'DATA', data_root)
     stale = tmp_path / 'old-project' / 'data' / 'uploads' / 'layout.docx'
     definitions = chart_spec.definitions({'layout_source': str(stale)})
     assert [item['id'] for item in definitions] == ['sentiment']

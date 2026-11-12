@@ -1,23 +1,9 @@
-"""图表呈现契约的薄壳：客户包注入点 + 既有公开名。实现全部在 core/charts/spec.py。"""
-from .config import DATA
-from core.charts import spec as _spec,registry
+"""薄壳：实现已在 `core/chart_spec.py`（WP-S8-L2 搬迁，字节逐字未改），此处只 re-export 全部旧名。
 
-KINDS=registry.ids()
-DEFAULTS={c['id']:c['style'] for c in registry.charts()}
-TITLES={c['id']:c['title'] for c in registry.charts()}
-STYLE_NAMES=_spec.STYLE_NAMES
-ChartStyles=_spec.ChartStyles
+为什么 `chart_spec` 随本层进 core：`structured_template:83` 的 `from .chart_spec import definitions`
+是**函数内惰性**导入，搬进 core 后逐字解析到 `core/chart_spec.py`——0 行改动的前提是它同在
+core（`docs/team/任务分解-S8.md` §0.3 把它排在 L1）。
 
-def definitions(template):
-    return _spec.definitions(template,DATA)
-
-def styles_for(template,overrides=None):
-    return _spec.styles_for(template,overrides,data_root=DATA)
-
-def with_styles(template,styles):
-    return _spec.with_styles(template,styles,data_root=DATA)
-
-def source_image(template,kind,source_index=0):
-    return _spec.source_image(template,kind,source_index,data_root=DATA)
-
-__all__=['KINDS','DEFAULTS','TITLES','STYLE_NAMES','ChartStyles','definitions','styles_for','with_styles','source_image']
+`DATA` 的注入点随 `config` 一并进 core（`core/config.py:DATA`），与本壳旧值同一对象来源。
+"""
+from core.chart_spec import *  # noqa: F401,F403

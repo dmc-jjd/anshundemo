@@ -158,7 +158,9 @@ def test_chart_definitions_use_current_upload_when_layout_path_is_stale(tmp_path
             '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
             '<w:body><w:drawing/></w:body></w:document>',
         )
-    monkeypatch.setattr(chart_spec, 'DATA', data, raising=False)
+    # WP-S8-L2：DATA 的家已随 chart_spec 进 core，patch 必须打在 core.chart_spec 上。
+    import core.chart_spec as chart_spec_impl
+    monkeypatch.setattr(chart_spec_impl, 'DATA', data, raising=False)
     stale = tmp_path / 'old-project' / 'data' / 'uploads' / current.name
 
     definitions = chart_spec.definitions({'layout_source': str(stale)})
@@ -185,7 +187,9 @@ def test_structured_writing_uses_current_upload_when_layout_path_is_stale(tmp_pa
     state.template_ref = store.put_artifact('r', 'template', template)
     store.put_task(state, state.revision)
     monkeypatch.setattr(writer, 'DATA', data, raising=False)
-    monkeypatch.setattr(chart_spec, 'DATA', data)
+    # WP-S8-L2：DATA 的家已随 chart_spec 进 core，patch 必须打在 core.chart_spec 上（打壳=改副本，静默失效）。
+    import core.chart_spec as chart_spec_impl
+    monkeypatch.setattr(chart_spec_impl, 'DATA', data)
 
     async def model(role, payload):
         assert role == 'writer'

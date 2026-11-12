@@ -88,7 +88,8 @@ def test_writer_tool_access_retry_continues_then_human_is_final(tmp_path):
     assert s.get_task('r').fact_ref==draft['fact_ref']
 
 def test_native_http_tools_roundtrip_and_audit(tmp_path,monkeypatch):
-    import app.model_client as m
+    # WP-S8-L2：实现在 core/model_client.py，patch 必须打在被读的模块上（打壳=改副本，静默失效）。
+    import core.model_client as m
     from app.tool_executor import RunContext
     from app.structured_writer import StructuredAnswers
     s,t=fixture(tmp_path);requests=[]

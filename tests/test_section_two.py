@@ -202,7 +202,8 @@ def test_cached_human_second_section_is_not_researched_again(tmp_path,monkeypatc
 
 def test_native_tool_budget_forces_final_json_instead_of_losing_evidence(tmp_path,monkeypatch):
     import io
-    import app.model_client as m
+    # WP-S8-L2：实现在 core/model_client.py，patch 必须打在被读的模块上（打壳=改副本，静默失效）。
+    import core.model_client as m
     from app.tool_executor import RunContext
     from app.structured_writer import StructuredAnswers
     from app.writer_tools import native_tools
