@@ -16,10 +16,14 @@ from .api_views.approval import approval_gate
 from .api_views.data_review import apply_event_settings
 from .api_views.task_resume import resume_plan
 from .api_views.template import apply_definition_patch,confirm_candidate
+from .template_draft_api import router as manual_definition_router
 from .api_views.writing import apply_slot_values,assemble_review_view
 
 store=Store(); deps=Dependencies(store)
 app=FastAPI(title='安顺月报工作台 Demo')
+# 手动定义草稿的三个接口（选区→选择题→占位符/字段 JSON），刻意不进 OpenAPI：
+# 见 app/template_draft_api.py 与 docs/模板字段手动定义设计.md。
+app.include_router(manual_definition_router)
 app.mount('/static',StaticFiles(directory=Path(__file__).parent/'static'),name='static')
 UPLOADS=DATA/'uploads'; UPLOADS.mkdir(exist_ok=True)
 

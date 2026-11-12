@@ -32,3 +32,6 @@ s4sim*/
 skillgate*/
 skillprobe*/
 s4*/
+
+# 手动定义字段的隔离演示数据与验收证据（不参与交付）
+.demo-data/
