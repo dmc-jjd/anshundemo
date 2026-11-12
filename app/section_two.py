@@ -1,16 +1,22 @@
-"""Second-section schemas and validation; all model instructions live in agent.py."""
+"""Second-section schemas and validation; all model instructions live in agent.py.
+
+WP-S8-L4 拆分：**零客户数据**的四个 pydantic 模型（`Contract`/`BasisType`/`OutlookItem`/
+`RiskChain`/`AnalysisPlan`）已上移 `core/section_schema.py`，供基座侧 `source_binding` 复用；
+本模块仍是第二段的**客户规则**之家——县级地名表、报告地域名、客户字段 id、
+`anshun-*` 政策版本，以及把地名/字段 id 写进正则与文案的 `validate_history`/
+`forecast_window`/`source_excerpts`/`seasonal_knowledge_usable`/`role`。
+上移的五个名字在这里原样 re-export，故 `from app.section_two import OutlookItem` 等公开面零变化。
+"""
 import calendar,re
 from datetime import date,datetime,timedelta,timezone
 from typing import Literal
 from pydantic import BaseModel,ConfigDict,Field
+from core.section_schema import Contract,BasisType,OutlookItem,RiskChain,AnalysisPlan
 
 POLICY_VERSION='anshun-mixed-risk-v3-seasonal-fallback'
 ANALYSIS_POLICY_VERSION='anshun-causal-analysis-style-v7'
 OUTLOOK_POLICY_VERSION='anshun-mixed-outlook-style-v8'
 LOCAL_NAMES=('安顺','西秀','平坝','普定','镇宁','关岭','紫云','黄果树')
-
-class Contract(BaseModel):model_config=ConfigDict(extra='forbid')
-BasisType=Literal['historical','seasonal','local_activity']
 
 class RiskCandidate(Contract):
     id:str=Field(pattern=r'^c[1-8]$')
@@ -45,34 +51,6 @@ class HistoryTopic(Contract):
 class HistoricalResearch(Contract):
     topics:list[HistoryTopic]=Field(default_factory=list,max_length=6)
     gaps:list[str]=Field(default_factory=list,max_length=10)
-
-class OutlookItem(Contract):
-    basis_type:BasisType='historical'
-    basis_label:str|None=Field(default=None,max_length=80)
-    paragraph:str|None=Field(default=None,min_length=180,max_length=600)
-    category:str=Field(min_length=2,max_length=30)
-    historical_basis:str=Field(min_length=20,max_length=200)
-    history_refs:list[str]=Field(min_length=1)
-    trigger:str=Field(min_length=12,max_length=120)
-    risk_path:str=Field(min_length=25,max_length=160)
-    early_signals:list[str]=Field(min_length=1,max_length=5)
-    owner:str=Field(min_length=2,max_length=100)
-    action:str=Field(min_length=30,max_length=180)
-    objective:str=Field(min_length=10,max_length=100)
-
-class RiskChain(Contract):
-    trigger:str=Field(min_length=15,max_length=120)
-    escalation:str=Field(min_length=20,max_length=160)
-    impact:str=Field(min_length=12,max_length=100)
-    signal:str=Field(min_length=8,max_length=80)
-    owner:str=Field(min_length=2,max_length=40)
-    mitigation:str=Field(min_length=25,max_length=160)
-    source_refs:list[str]=Field(min_length=1)
-
-class AnalysisPlan(Contract):
-    paragraph:str|None=Field(default=None,min_length=300,max_length=2000)
-    overview:str=Field(min_length=25,max_length=120)
-    chains:list[RiskChain]=Field(min_length=2,max_length=8)
 
 def render_analysis(plan,allowed):
     text=plan.overview.rstrip('。')+'。'
