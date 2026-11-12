@@ -73,7 +73,8 @@ def test_each_http_tool_round_billed_once_including_bad_json(tmp_path,monkeypatc
     monkeypatch.setattr(m,'MODEL_URL','https://api.deepseek.com');monkeypatch.setattr(m,'MODEL_NAME','deepseek-flash');monkeypatch.setattr(m,'MODEL_KEY','secret')
     monkeypatch.setattr(m.urllib.request,'urlopen',request)
     # Metering imports the configured provider separately from the request client.
-    import app.usage as u
+    # WP-S8-L1：实现在 core/usage.py，patch 必须打在被读的模块上；打 app.usage 只改壳的副本（静默失效）。
+    import core.usage as u
     monkeypatch.setattr(u,'MODEL_URL','https://api.deepseek.com');monkeypatch.setattr(u,'MODEL_NAME','deepseek-flash')
     async def tool(name,args):return {'value':'4'}
     asyncio.run(m.invoke_agent('writer',{},StructuredAnswers,RunContext(store,'r'),tools=native_tools(),tool_executor=tool))

@@ -91,7 +91,7 @@ def test_outlook_frequency_and_recurrence_require_the_items_own_citations(tmp_pa
 
 
 def test_fetch_verification_page_is_audited_but_never_successful_article(tmp_path,monkeypatch):
-    import app.historical_web as web
+    import core.historical_web as web  # WP-S8-L1：patch 点必须在实现所在模块，app 壳上的副本静默失效
     store,_=fixture(tmp_path);url='https://mp.weixin.qq.com/s?test=article'
     search=store.put_artifact('r','historical_search',{'results':[{'url':url,'title':'安顺冬季风险提示','date':'2025-11-15T08:00:00+00:00'}]})
     monkeypatch.setattr(web,'request',lambda *args:{'content':'环境异常 当前环境异常，完成验证后即可继续访问。 去验证 ： ， 。 视频 小程序 赞'})

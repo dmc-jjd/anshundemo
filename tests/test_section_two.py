@@ -153,7 +153,7 @@ def test_analysis_requires_causal_chains_and_targeted_interventions(tmp_path):
     with pytest.raises(ValueError):AnalysisPlan(overview=plan.overview,chains=plan.chains[:1])
 
 def test_web_tools_only_fetch_actual_search_results_and_meter_success(tmp_path,monkeypatch):
-    import app.historical_web as web
+    import core.historical_web as web  # WP-S8-L1：patch 点必须在实现所在模块，app 壳上的副本静默失效
     import io
     store,_=fixture(tmp_path)
     from app.tool_executor import RunContext
