@@ -16,7 +16,7 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts"))
 import gate_core_iso  # noqa: E402
 
-BASELINE = REPO / "docs" / "team" / "baseline" / "core-S7-preB.json"
+BASELINE = REPO / "docs" / "team" / "baseline" / "core-S8-L0.json"
 
 
 def _baseline() -> dict:

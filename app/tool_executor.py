@@ -1,6 +1,7 @@
 from __future__ import annotations
 import asyncio,time,uuid,multiprocessing
 from dataclasses import dataclass
+from pathlib import Path
 from .schemas import ToolCall,ToolResult
 from .tool import get_tool_handler,get_tool_specs
 from .config import PACKAGE_DIR
@@ -52,9 +53,22 @@ def _reject(context,call,reason):
     context.store.append_event(context.task_id,{'type':'tool_policy_rejected','tool':call.tool_name,'phase':context.phase,'reason':reason})
     return ToolResult(status='error',error_code=reason)
 
-def _run_in_process(name,arguments,root,task_id,conn):
+def _run_in_process(name,arguments,root,task_id,conn,package_dir=None):
+    """子进程入口：**显式配置客户包**，不依赖 import 副作用。
+
+    为什么必须显式（S8 迁移前置）：
+    现状能跑，是因为 `from .storage import Store` 会触发 `app/__init__.py` 里的四次
+    configure。一旦 tool_executor 搬进 core，子进程 import 的是 `core.*`，
+    `core/__init__.py` 是空文件 —— 工具模块级读的 `vocabulary.*` 会抛
+    `package_not_configured`，表现为**每次工具调用都超时、工件全空，而门禁哈希仍稳定**
+    （S6 F5 陷阱的镜像）。
+
+    所以这里显式传 `package_dir`，让子进程自己把四个注册表配好，不赌 import 顺序。
+    """
     from .storage import Store
     try:
+        if package_dir is not None:
+            _configure_package(Path(package_dir))
         ctx=RunContext(Store(root),task_id)
         result=get_tool_handler(name)(arguments,ctx)
         conn.send(('ok',result.model_dump()))
@@ -62,9 +76,29 @@ def _run_in_process(name,arguments,root,task_id,conn):
         conn.send(('error',{'error_code':type(e).__name__,'message':str(e)}))
     finally: conn.close()
 
-def _bounded_run(name,arguments,root,task_id,timeout):
+
+def _configure_package(package_dir):
+    """按客户包路径配置四个注册表（幂等）。子进程里调用，不依赖 app 的 import 副作用。"""
+    from core.manifest import load_manifest
+    from core.paths import configure_data_root
+    from core.tools import vocabulary
+    from core.charts import registry as chart_registry
+    from core.skills import registry as skill_registry
+    from core.prompts import registry as prompt_registry
+
+    manifest = load_manifest(package_dir)
+    root = Path(package_dir).resolve().parent.parent
+    vocabulary.configure(package_dir)
+    chart_registry.configure(package_dir)
+    skill_registry.configure(package_dir, root / "skills")
+    prompt_registry.configure(package_dir)
+    configure_data_root(root / manifest.data_root if hasattr(manifest, "data_root") else root / "data")
+    return manifest
+
+
+def _bounded_run(name,arguments,root,task_id,timeout,package_dir=None):
     parent,child=multiprocessing.Pipe(duplex=False)
-    proc=multiprocessing.get_context('spawn').Process(target=_run_in_process,args=(name,arguments,root,task_id,child))
+    proc=multiprocessing.get_context('spawn').Process(target=_run_in_process,args=(name,arguments,root,task_id,child,package_dir))
     proc.start(); child.close()
     ready=parent.poll(timeout)
     if not ready:
@@ -121,7 +155,7 @@ async def execute_tool(call:ToolCall,context:RunContext)->ToolResult:
     context.store.append_event(context.task_id,{'type':'tool_start','tool':call.tool_name,'reason':call.reason,'arguments':call.arguments,'call_id':call.call_id})
     try:
         timeout=hints.TIMEOUT_S.get(call.tool_name,context.timeout)
-        result=await asyncio.to_thread(_bounded_run,call.tool_name,call.arguments,context.store.root,context.task_id,timeout)
+        result=await asyncio.to_thread(_bounded_run,call.tool_name,call.arguments,context.store.root,context.task_id,timeout,str(PACKAGE_DIR))
     except Exception as e: result=ToolResult(status='error',error_code=type(e).__name__,warnings=[str(e)])
     result.elapsed_ms=int((time.monotonic()-start)*1000)
     state=context.store.get_task(context.task_id)

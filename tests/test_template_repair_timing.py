@@ -92,7 +92,7 @@ def test_transport_failure_does_not_become_human_review_or_use_semantic_round(tm
 
 
 def test_timing_survives_reload_does_not_reset_on_updates_and_separates_wait(tmp_path,monkeypatch):
-    import app.timing as timing
+    import core.timing as timing
     clock=['2026-11-07T00:00:00+00:00']
     monkeypatch.setattr(timing,'stamp',lambda:clock[0])
     store=Store(tmp_path/'store');state=TaskState(id='clock',kind='template',phase='queued');store.put_task(state)
@@ -107,7 +107,7 @@ def test_timing_survives_reload_does_not_reset_on_updates_and_separates_wait(tmp
 
 
 def test_parallel_round_durations_are_not_added_to_wall_time(tmp_path,monkeypatch):
-    import app.timing as timing
+    import core.timing as timing
     monkeypatch.setattr(timing,'stamp',lambda:'2026-11-07T00:00:00+00:00')
     store=Store(tmp_path/'store');state=TaskState(id='parallel',kind='template',phase='template_model_reviewing');store.put_task(state)
     state.metadata['template_batches']={str(i):{'targets':[i],'rounds':[{'number':1,'started_at':'2026-11-07T00:00:00+00:00','status':'running'}]} for i in range(2)}

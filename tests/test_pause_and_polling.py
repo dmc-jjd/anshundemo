@@ -58,7 +58,7 @@ def test_pause_is_idempotent_rejects_terminal_and_resumes_human_wait(tmp_path, m
 
 
 def test_background_write_cannot_clear_pause_and_timing_excludes_pause(tmp_path, monkeypatch):
-    import app.timing as timing
+    import core.timing as timing
 
     clock = ['2026-11-09T00:00:00+00:00']
     monkeypatch.setattr(timing, 'stamp', lambda: clock[0])

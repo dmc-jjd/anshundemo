@@ -33,7 +33,7 @@ from app.schemas import TaskState, ToolCall  # noqa: E402
 from app.storage import Store  # noqa: E402
 from app.tool_executor import RunContext, execute_tool  # noqa: E402
 
-BASELINE = REPO / "docs" / "team" / "baseline" / "core-S7-preB.json"
+BASELINE = REPO / "docs" / "team" / "baseline" / "core-S8-L0.json"
 SMOKE = REPO / "scripts" / "smoke_package_b.py"
 
 PROMPT_KEYS = {
