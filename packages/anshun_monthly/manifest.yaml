@@ -45,6 +45,10 @@ capabilities:
   require: [records, metrics, locality, charts, events, documents]
 
 # 可插拔能力：基座只按声明执行，不认识具体客户。
+# 三层语义分工（别混）：
+#   capabilities.require   → 这份报告「要哪些产物」（决定工具能不能进白名单）
+#   features.<能力>.enabled → 某个能力「开不开」（false 时整组工具退出白名单）
+#   参数（阈值/词典/区县表）→ 一律在 template.json，**不在本文件重复**
 # stages 是**有序降级链**：前一级判不出（低置信 / 判为新簇）才进下一级。
 # 现在没有微调模型，所以 bge 与 llm 均 enabled: false，行为与改造前完全一致。
 features:
@@ -67,7 +71,6 @@ features:
         enabled: false
   dedup:
     enabled: true
-    similarity:
-      threshold: 0.65
-      candidate_floor_ratio: 0.6
+    # 阈值不在这里写：唯一真相是 template.json 的 data_contract.dedup
+    # （早先两处都写 0.65，改一处不生效 —— verifier 抓出的双源）
     representative: immutable_first

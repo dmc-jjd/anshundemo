@@ -25,7 +25,9 @@ def test_manifest_declares_three_pluggable_features():
 
     assert set(features) >= {"locality", "event_classification", "dedup"}
     assert features["locality"]["enabled"] is True
-    assert features["dedup"]["similarity"]["threshold"] == 0.65
+    # 阈值不在 manifest：唯一真相是 template.json 的 data_contract.dedup
+    # （早先两处都写 0.65，改一处不生效；见 tests/test_s8_feature_switches.py）
+    assert "similarity" not in features["dedup"]
 
 
 def test_classification_stages_are_ordered_and_degradable():

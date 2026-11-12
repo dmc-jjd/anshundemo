@@ -20,21 +20,26 @@ class RunContext:
 
 _POLICY=None
 def _default_policy():
-    """客户包的策略；若 manifest 声明了 `capabilities.require`，就把 allow 收窄成可达工具集。
+    """客户包的策略：`capabilities.require` 剪枝 + `features.*` 能力开关。
 
-    这是「去重/分类/研判不必每份报告都跑」的落点：客户包不声明 `events` 产物，
-    那组工具就不进白名单，模型调它会被 `tool_not_allowed` 拒掉——流程由数据决定，
-    不由执行器里的 if 决定。未声明 require 时行为与剪枝前完全一致。
+    两层叠加：
+    - `capabilities.require` 回答「这份报告要哪些产物」→ 反推可达工具集
+    - `features.<能力>.enabled: false` 回答「某个能力开不开」→ 整组工具退出白名单
+
+    于是「去重/分类/研判不必每份报告都跑」由客户包数据决定，不由执行器里的 if 决定。
+    未声明 require / 未声明 features 时，行为与改造前完全一致。
     """
     global _POLICY
     if _POLICY is None:
         manifest=load_manifest(PACKAGE_DIR)
         policy=manifest.policy
         required=manifest.required_capabilities
-        if required:
+        features=manifest.features
+        if required or features:
             from core.tools.registry import resolve_tools
-            narrowed=resolve_tools(required)
-            policy=ToolPolicy(allow=frozenset(set(policy.allow)&narrowed) if policy.allow else narrowed,
+            narrowed=resolve_tools(required, features)
+            base=set(policy.allow) if policy.allow else narrowed
+            policy=ToolPolicy(allow=frozenset(base&narrowed),
                               phases=policy.phases,budgets=policy.budgets)
         _POLICY=policy
     return _POLICY

@@ -87,15 +87,33 @@ CAPABILITY_TOOLS: dict[str, tuple[str, ...]] = {
 }
 
 
-def resolve_tools(required: list[str] | tuple[str, ...]) -> frozenset[str]:
-    """按客户声明的产物反推可达工具集（含传递依赖）。
+#: 能力开关 → 它控制哪些工具。`features.<key>.enabled: false` 时整组退出白名单。
+#:
+#: 为什么需要这张表（verifier 抓出的假开关）：
+#: 早先 `manifest.features.locality/dedup` 只被解析、无任何消费者，等于谎称可关。
+#: `capabilities.require` 回答「要哪些产物」，这张表回答「某个能力开不开」——
+#: 前者管有无，后者管开关，两者缺一都会让客户以为改了配置就生效。
+FEATURE_TOOLS: dict[str, tuple[str, ...]] = {
+    'locality': ('resolve_locality',),
+    'dedup': ('group_events', 'propose_keyword_event_candidates', 'propose_vector_event_neighbors'),
+    'event_classification': ('classify_records', 'cluster_event_themes', 'discover_topics'),
+}
+
+
+def resolve_tools(
+    required: list[str] | tuple[str, ...],
+    features: Mapping[str, Mapping[str, Any]] | None = None,
+) -> frozenset[str]:
+    """按客户声明的产物反推可达工具集（含传递依赖），并扣除被 features 关掉的能力。
 
     语义：`required` 里每一项都会被展开成它对应的工具；若某个工具要求上游能力，
     而该能力的生产者没被选中，就把生产者一并补齐。结果可直接喂给 `ToolPolicy.allow`。
 
-    为什么这样能「不写死流程」：白名单同时是**门禁**——没选中的工具模型根本调不动
-    （`tool_not_allowed`），于是「去重/分类/研判要不要跑」由客户包的声明决定，
-    而不是由一段 if 决定。
+    白名单同时是**门禁**——没选中的工具模型根本调不动（`tool_not_allowed`），
+    于是「去重/分类/研判要不要跑」由客户包声明决定，而不是由一段 if 决定。
+
+    `features` 为 None 或未声明某项能力时**不干预**（保持向后兼容）；
+    显式 `enabled: false` 才扣工具。
 
     未声明的产物不会带出任何工具；`required` 为空时返回空集（不是全集）。
     """
@@ -113,4 +131,12 @@ def resolve_tools(required: list[str] | tuple[str, ...]) -> frozenset[str]:
                     if need in produced and producer not in selected:
                         selected.add(producer)
                         changed = True
+
+    for feature, tools in FEATURE_TOOLS.items():
+        config = (features or {}).get(feature)
+        if config is None:
+            continue                      # 未声明 = 不干预
+        if config.get("enabled") is False:
+            selected -= set(tools)
+
     return frozenset(selected)

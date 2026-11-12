@@ -1,6 +1,6 @@
 {
   "core_files": 36,
-  "core_hash": "d2880e98108e4e979e9a4f60229fc96e9338d620fb99b32347b01ef1b6d1a9ae",
+  "core_hash": "c310997fe31b59ebea54416fa86087e42e5608f53ba9632c9d97d9aa6f93cc34",
   "core_files_detail": {
     "core/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "core/charts/__init__.py": "6c0ab59d7635c39906645dea2f672c6fe8918dc060ae3f89c2ae6cc07643df0a",
@@ -35,7 +35,7 @@
     "core/tools/metrics.py": "2062a56e2d5466c75e8184b0b2e4c679fcf6fe5d4c116177994b3fc98c4c756a",
     "core/tools/ooxml.py": "7e9f5b5aa7105b12ca34c3d3ce3dd97e9c37be027ddfac681bbc2eea625604ff",
     "core/tools/records.py": "a51eb98494ad097363f3f7c3e71a40f81961a4a2be70a36141b9a0d64d8c5750",
-    "core/tools/registry.py": "02f3b3629cae52c0b4b9ad3e584b2ce284b2666ffc0b321511990348e4add3c9",
+    "core/tools/registry.py": "a49aad44746d2ef933254b95ab00853c4e37e7b0e744bdf1e840d0174a123fc5",
     "core/tools/template_compare.py": "c6ebaa6234c9b5bf5f96f9daaf5b3d3fa382bbca4ac52333c22c68aae0f1f4ac",
     "core/tools/vocabulary.py": "1610a117d86dc70157da2ddbf38b445e3a4bd99a3fdb0087de75b8de495265b6"
   },
@@ -45,7 +45,7 @@
     "entries": []
   },
   "app_files": 51,
-  "app_hash": "2b34f519af0cac6b5e9e19982b0e73eddfa9ad1e7d2ea1d0adadb32df7135487",
+  "app_hash": "bda39f328be6febbac5d9b47289ce50461440cf0ac3bee5e86e4c9a36c4ea211",
   "app_files_detail": {
     "app/__init__.py": "61f4f6eba6fcba3cd1094852334dfa98b80f29a344ee96327bd570109d21ebb1",
     "app/agent.py": "826b96b7ccfdfbf9231275be736002b47a240a38f56239028c1bcb030f31e043",
@@ -93,12 +93,12 @@
     "app/template_validation.py": "4286bb81b0fc2abf3de6e5d75a779e7aff2fe6c2b4b829d4fba541823d66b66b",
     "app/timing.py": "5b46d703f08ae779019d63c5c608b8d62ee10ce323b8dd682ee8059edeca6f14",
     "app/tool.py": "887f01b95b0acd7d02d1a480369abf8697d9130ea73e0ef67a6a7615f1941dc4",
-    "app/tool_executor.py": "7875e80cc0992850be9dd125b169d0d67ec71a1db85aa725e3edeaa0675d9ada",
+    "app/tool_executor.py": "61e40ae4140ef04d9d21057a463da82a656dc41232260c63fe2287359927330b",
     "app/usage.py": "b5eaa88513a5d15009111f3fcd513395f4332d0a1d94b65805124f639c1ef41f",
     "app/workflow.py": "856a84ed9fa0a42fa1689f8370bf91229670ed196f6f565f2c544fa0aa3a759b",
     "app/writer_tools.py": "4cbeab61ebf58c4a11f077ab7df83abdb3a1bcec12a44688826e2a77e6ba45e1",
     "app/writing_review.py": "c11a4cccaf78e032298f9e0b8d0ed9d47626020b78a49b87b87c1f62cf09f47d"
   },
   "python": "3.13.18",
-  "recorded_at": "2026-11-12T17:00:30+08:00"
+  "recorded_at": "2026-11-12T17:34:20+08:00"
 }
