@@ -268,6 +268,12 @@ class Manifest:
     skill_pack: str = ""
     skill_use: tuple[str, ...] = ()
     charts: tuple[ChartRef, ...] = ()
+    #: 客户需要哪些**产物**（records/metrics/locality/charts/events/materials/documents）。
+    #: 为空表示「不剪枝」，沿用 tools.allow 的原有语义。
+    required_capabilities: tuple[str, ...] = ()
+    #: 可插拔能力的配置：能力名 → 配置字典（如 locality / event_classification / dedup）。
+    #: 基座只按声明执行，不认识具体客户；未声明即视为未启用。
+    features: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> "Manifest":
@@ -283,6 +289,7 @@ class Manifest:
         )
         charts_cfg = data.get("charts") or {}
         skills_cfg = data.get("skills") or {}
+        caps_cfg = data.get("capabilities") or {}
         return cls(
             package=str(data["package"]),
             report_type=str(data["report_type"]),
@@ -294,6 +301,8 @@ class Manifest:
             chart_use=tuple(charts_cfg.get("use") or ()),
             skill_pack=str(skills_cfg.get("pack", "")),
             skill_use=tuple(skills_cfg.get("use") or ()),
+            required_capabilities=tuple(caps_cfg.get("require") or ()),
+            features={str(k): dict(v or {}) for k, v in (data.get("features") or {}).items()},
         )
 
 

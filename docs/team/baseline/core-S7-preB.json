@@ -1,6 +1,6 @@
 {
-  "core_files": 32,
-  "core_hash": "1a9ab70640f1a914d58ffb0180b3f980397350c4ba45ddfe6f677beab6bf0a20",
+  "core_files": 36,
+  "core_hash": "d2880e98108e4e979e9a4f60229fc96e9338d620fb99b32347b01ef1b6d1a9ae",
   "core_files_detail": {
     "core/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "core/charts/__init__.py": "6c0ab59d7635c39906645dea2f672c6fe8918dc060ae3f89c2ae6cc07643df0a",
@@ -9,12 +9,16 @@
     "core/charts/renderers/matplotlib.py": "f02130ceca2b58852165577d985750363e3b8ca739f03a6a76e3111910e7d4a0",
     "core/charts/renderers/pillow.py": "a00a1012aeb98584035f10aaad21b8b8412b4a94091a63c132b1a09f235a4fed",
     "core/charts/spec.py": "2ccf8020007e093dbac386539a7ac6026c43a67bb2571c00378c9b647fcc0f29",
+    "core/classify/__init__.py": "03b1e83ec5c92451ae104bbd81d36800689135e856c94ccd1eca427ea5f5e22e",
+    "core/classify/assemble.py": "33b0ed33362138d2d8928414504d8d61f402cef04717bd8852e1f763fbabdfcd",
+    "core/classify/bge.py": "58a4500dd9b73dd21d224cfa170d39951b4d1bd6bea11cbd831cde4b692e4e8d",
+    "core/classify/dictionary.py": "1343510ee0661ec02f3d486e8bf63ee220173f081d2421f946f2f3bbd3498ce1",
     "core/graph/__init__.py": "63857c62129529addbdb0c937f30eb5e2470e6f8add2f02fc702df6619c4ca90",
     "core/graph/compiler.py": "07b89e9fc7e45e99ac077dafa944574764d0bdd40124b820a5d3cad4072d34db",
     "core/graph/review_loop.py": "0aed702e0b3687ced6e18b799e6c9bfa7c60f0bb70c048c4becc2ad91c8cb16d",
     "core/manifest.py": "2cefccdac5a53057915b01250fc77913acaddeff39a7afec6786dd5d081f8bbb",
     "core/paths.py": "ebe466c2d11b52a1ecb9caf7adb23f4351ccf88ede9bd86ac1796f50f12b1a53",
-    "core/ports.py": "070b2d5347a7069dd2f44b81cf8db02646aa880df4f95949378d04e4d9eaf641",
+    "core/ports.py": "bc63f53877faab59d4ef5270eee792203b42e27080cdab129587696839ed56f1",
     "core/prompts/__init__.py": "01dfb36fe34d5ade60323342511c1d73896733e11aac7e544aa3db613e5cf64a",
     "core/prompts/registry.py": "dd698d43234919493b33a8e8f5b043a8e21125a803e593c75a92685cc8508885",
     "core/skills/__init__.py": "8549df0ff524fd95f3d20d6480bc617e350dc369c3bcd7e8eea2b34c47045014",
@@ -31,7 +35,7 @@
     "core/tools/metrics.py": "2062a56e2d5466c75e8184b0b2e4c679fcf6fe5d4c116177994b3fc98c4c756a",
     "core/tools/ooxml.py": "7e9f5b5aa7105b12ca34c3d3ce3dd97e9c37be027ddfac681bbc2eea625604ff",
     "core/tools/records.py": "a51eb98494ad097363f3f7c3e71a40f81961a4a2be70a36141b9a0d64d8c5750",
-    "core/tools/registry.py": "422d9aa47fa1df601712b211c6ec60aedbdcbe47c977d4ec5802ce301bf27bfe",
+    "core/tools/registry.py": "02f3b3629cae52c0b4b9ad3e584b2ce284b2666ffc0b321511990348e4add3c9",
     "core/tools/template_compare.py": "c6ebaa6234c9b5bf5f96f9daaf5b3d3fa382bbca4ac52333c22c68aae0f1f4ac",
     "core/tools/vocabulary.py": "1610a117d86dc70157da2ddbf38b445e3a4bd99a3fdb0087de75b8de495265b6"
   },
@@ -40,8 +44,8 @@
     "files": 0,
     "entries": []
   },
-  "app_files": 49,
-  "app_hash": "b88c95fdaf4f1bdf06239215d84757facebe18375d406b32b8e8735858f38225",
+  "app_files": 51,
+  "app_hash": "2b34f519af0cac6b5e9e19982b0e73eddfa9ad1e7d2ea1d0adadb32df7135487",
   "app_files_detail": {
     "app/__init__.py": "61f4f6eba6fcba3cd1094852334dfa98b80f29a344ee96327bd570109d21ebb1",
     "app/agent.py": "826b96b7ccfdfbf9231275be736002b47a240a38f56239028c1bcb030f31e043",
@@ -63,7 +67,7 @@
     "app/historical_reader.py": "441cd4cbf0de0ae636b98ee97b3c283bb90287a5b9ba945b9d3bb0ed54ce5020",
     "app/historical_research.py": "17aa3a6a9304d6c77982d24970e7ea1d1a3d99ef05aa2d9efd17f6d2eaefe6ca",
     "app/historical_web.py": "14644ee7cde30b089c27e15e2faaf03a28d0c602d2b3808ab6204abcf3c1f3f5",
-    "app/main.py": "3aac01d03d6534793cfc7cf53b4107fdf425892952a34b1411942236ee3c946a",
+    "app/main.py": "7766b9c930ce7369966d9e370b773232c0cb092e16a67cf62559041700d2018c",
     "app/model_client.py": "57d5c57628724fb642ed83b9bdc7c43ccbb6c74b0a0b2785148ce47808801a4c",
     "app/ooxml.py": "979021e699e8149e54e4a70e082567b9a555da9a541b8bd922b673301d4225d3",
     "app/reference_comparison.py": "613caa8f593d967e74ad3a80b6d5b6b404e114031418ab7573cf0eeab5cec06d",
@@ -81,18 +85,20 @@
     "app/structured_writer.py": "7fc4d79edcb40e132ae36527d2efafa9b7962ca34ac945463eb74593c4940c9b",
     "app/style_skill.py": "428e4a35c00d8f955d4367ab1595c51eaad6c2b58a037fe22ebd5e0daa42fb92",
     "app/template_compare.py": "b582acf83c53db35215092c1f86d18a3dd9b79ed4adb9e8579efceed25559d98",
+    "app/template_draft.py": "641111b33a543fe4f32dd43633df3bff274ca064e22deaa53913ea719d9b4d99",
+    "app/template_draft_api.py": "f7b6dbc6c1d63909cd911fbe0cf9158b3b3b828f2d466da1b592f32168926d02",
     "app/template_exceptions.py": "febc33e674bc933916114ed02bb71dbbecccbfe9eb41284985abe521a680df3f",
     "app/template_execution.py": "dfcdba4f4b359e5e96c7d9a2e78cce446e865a644c4b2f2092ac65ed890bb53f",
     "app/template_review.py": "e1bed7fbc11a67b3c4b94dcb8018ef9a1496f5453f5a93ce6d9193e06f8b8ace",
     "app/template_validation.py": "4286bb81b0fc2abf3de6e5d75a779e7aff2fe6c2b4b829d4fba541823d66b66b",
     "app/timing.py": "5b46d703f08ae779019d63c5c608b8d62ee10ce323b8dd682ee8059edeca6f14",
     "app/tool.py": "887f01b95b0acd7d02d1a480369abf8697d9130ea73e0ef67a6a7615f1941dc4",
-    "app/tool_executor.py": "902087c5b5f1a585ffa9c0a4ba89f094ae59bd9e3bdb4d0c83ae76bdc899d685",
+    "app/tool_executor.py": "7875e80cc0992850be9dd125b169d0d67ec71a1db85aa725e3edeaa0675d9ada",
     "app/usage.py": "b5eaa88513a5d15009111f3fcd513395f4332d0a1d94b65805124f639c1ef41f",
     "app/workflow.py": "856a84ed9fa0a42fa1689f8370bf91229670ed196f6f565f2c544fa0aa3a759b",
     "app/writer_tools.py": "4cbeab61ebf58c4a11f077ab7df83abdb3a1bcec12a44688826e2a77e6ba45e1",
     "app/writing_review.py": "c11a4cccaf78e032298f9e0b8d0ed9d47626020b78a49b87b87c1f62cf09f47d"
   },
   "python": "3.13.18",
-  "recorded_at": "2026-11-12T06:36:58+08:00"
+  "recorded_at": "2026-11-12T17:00:30+08:00"
 }
