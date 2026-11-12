@@ -2,7 +2,7 @@
 
 为什么存在：
     `section_two` 是第二段的**客户规则**之家——县级地名表、报告地域名、
-    客户字段 id、`anshun-*` 政策版本、以及 `validate_history` / `forecast_window` /
+    客户字段 id、客户政策版本串、以及 `validate_history` / `forecast_window` /
     `source_excerpts` / `seasonal_knowledge_usable` / `role` 这些把地名与字段 id
     写进正则与文案的校验函数。它们属于客户层，不进基座（`scripts/gate_core_clean.py`）。
 
