@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>01 工作台 · 康奈 洞研智台</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+  /* 仅本页布局差异 */
+  .focus-card{padding:20px 22px;flex:0 0 auto}
+  .focus-line{display:flex;align-items:center;gap:44px}
+  .focus-meter{flex:1;min-width:0}
+  .scope{padding:16px 20px 18px}
+  .scope .stats{padding-top:2px}
+  .tasks .tbl td{padding:9px 12px}
+  .stage-left .card-body{display:flex;flex-direction:column;justify-content:space-between}
+  .stage-left .row{padding:11px 0}
+  .stage-left .row .nm{width:96px;flex:0 0 96px}
+  .stage-left .row .qty{font-weight:600;color:var(--ink);letter-spacing:-.2px;width:38px;text-align:right}
+  /* 任务当前所处阶段：与 tab 的“当前查看页”分开表达 */
+  .stage-left .now{width:4px;height:4px;border-radius:50%;flex:0 0 4px;background:transparent}
+  .stage-left .row[data-current="true"]{
+    background:var(--grn-bg);box-shadow:inset 2px 0 0 var(--grn);border-radius:2px;
+    margin:0 -8px;padding-left:8px;padding-right:8px;
+  }
+  .stage-left .row[data-current="true"] .now{background:var(--grn)}
+</style>
+</head>
+<body>
+<div class="page" id="page-workbench">
+
+  <div class="topbar">
+    <div class="crumb"><b>康奈 · 洞研智台</b><span class="sep">/</span><span class="here">工作台</span></div>
+    <div class="topmeta">
+      <span>任务 AS-2610</span><span>2026 年 10 月 · 第 10 期</span>
+      <span class="saved"><i></i>自动保存</span>
+    </div>
+  </div>
+
+  <nav class="stage-progress" id="stage-progress">
+    <div class="stage" data-state="current"><span class="idx">01</span><span class="nm">工作台</span></div>
+    <div class="stage" data-state="todo"><span class="idx">02</span><span class="nm">模板确认</span></div>
+    <div class="stage" data-state="todo"><span class="idx">03</span><span class="nm">数据处理</span></div>
+    <div class="stage" data-state="todo" data-task="current"><span class="dot" aria-hidden="true"></span><span class="idx">04</span><span class="nm">事件组审核</span></div>
+    <div class="stage" data-state="todo"><span class="idx">05</span><span class="nm">报告撰写</span></div>
+  </nav>
+
+  <div class="main">
+    <div class="head">
+      <h1>工作台</h1>
+      <div class="head-actions">
+        <button class="btn-text quiet" id="act-all-tasks">全部任务</button>
+        <button class="btn btn-primary" id="act-continue-review">继续审核事件组</button>
+      </div>
+    </div>
+
+    <div class="body">
+
+      <div class="col grow">
+
+        <div class="card focus-card">
+          <div class="focus-line">
+            <div class="num-lg">114<span class="unit">组待审</span></div>
+            <div class="focus-meter">
+              <div class="meter"><i style="width:93.2%"></i></div>
+              <div class="aux" style="margin-top:9px;display:flex;justify-content:space-between">
+                <span>已审 1,561 / 1,675 组</span><span>93.2%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card scope">
+          <div class="card-head tight" style="padding:0 0 14px">
+            <h2>本期口径</h2>
+            <span class="meta">4 份来源</span>
+          </div>
+          <div class="stats">
+            <div><div class="v">28,789<small>条</small></div><div class="k">原始采集</div></div>
+            <div><div class="v">3,914<small>条</small></div><div class="k">负向预警</div></div>
+            <div><div class="v">1,675<small>组</small></div><div class="k">去重归组</div></div>
+            <div><div class="v">1,861<small>条</small></div><div class="k">已预警</div></div>
+          </div>
+        </div>
+
+        <div class="card flex1">
+          <div class="card-head">
+            <h2>任务</h2><span class="meta">按更新时间</span>
+          </div>
+          <div class="card-body tasks" style="padding-bottom:8px">
+            <table class="tbl" id="task-table">
+              <thead>
+                <tr><th style="width:104px">任务</th><th>月份</th><th style="width:104px">条数</th><th style="width:120px">阶段</th><th style="width:88px">状态</th></tr>
+              </thead>
+              <tbody>
+                <tr class="row-mark" style="--bar:var(--amb)">
+                  <td class="t-main">AS-2610</td>
+                  <td>2026 年 10 月</td>
+                  <td class="num">28,789</td>
+                  <td class="aux">事件组审核</td>
+                  <td><span class="pill" data-state="pending">待审</span></td>
+                </tr>
+                <tr class="row-mark" style="--bar:var(--grn)">
+                  <td class="t-main">AS-2598</td>
+                  <td>2026 年 09 月</td>
+                  <td class="num">26,410</td>
+                  <td class="aux">已导出</td>
+                  <td><span class="pill" data-state="done">已完成</span></td>
+                </tr>
+                <tr class="row-mark" style="--bar:var(--blue)">
+                  <td class="t-main">AS-2581</td>
+                  <td>2026 年 08 月</td>
+                  <td class="num">24,933</td>
+                  <td class="aux">已归档</td>
+                  <td><span class="pill" data-state="info">只读</span></td>
+                </tr>
+                <tr class="row-mark" style="--bar:var(--violet)">
+                  <td class="t-main">AS-2564</td>
+                  <td>2026 年 07 月</td>
+                  <td class="num">23,117</td>
+                  <td class="aux">已归档</td>
+                  <td><span class="pill" data-state="idle">只读</span></td>
+                </tr>
+                <tr class="row-mark" style="--bar:var(--grn)">
+                  <td class="t-main">AS-2551</td>
+                  <td>2026 年 06 月</td>
+                  <td class="num">21,884</td>
+                  <td class="aux">已导出</td>
+                  <td><span class="pill" data-state="done">已完成</span></td>
+                </tr>
+                <tr class="row-mark" style="--bar:var(--blue)">
+                  <td class="t-main">AS-2536</td>
+                  <td>2026 年 05 月</td>
+                  <td class="num">22,401</td>
+                  <td class="aux">已归档</td>
+                  <td><span class="pill" data-state="idle">只读</span></td>
+                </tr>
+                <tr class="row-mark" style="--bar:var(--amb)">
+                  <td class="t-main">AS-2519</td>
+                  <td>2026 年 04 月</td>
+                  <td class="num">20,776</td>
+                  <td class="aux">已归档</td>
+                  <td><span class="pill" data-state="idle">只读</span></td>
+                </tr>
+                <tr class="row-mark" style="--bar:var(--grn)">
+                  <td class="t-main">AS-2503</td>
+                  <td>2026 年 03 月</td>
+                  <td class="num">19,942</td>
+                  <td class="aux">已导出</td>
+                  <td><span class="pill" data-state="done">已完成</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card-foot"><span>8 / 8</span><span>按更新时间</span></div>
+        </div>
+
+      </div>
+
+      <div class="col" style="width:392px;flex:0 0 392px">
+
+        <div class="card flex1 stage-left">
+          <div class="card-head">
+            <h2>剩余</h2><span class="meta">5 阶段</span>
+          </div>
+          <div class="card-body" style="padding-bottom:14px">
+            <div class="row"><span class="now" aria-hidden="true"></span><span class="nm">工作台</span><span class="qty">0</span><span class="pill" data-state="done">已完成</span></div>
+            <div class="row"><span class="now" aria-hidden="true"></span><span class="nm">模板确认</span><span class="qty">0</span><span class="pill" data-state="done">已完成</span></div>
+            <div class="row"><span class="now" aria-hidden="true"></span><span class="nm">数据处理</span><span class="qty">0</span><span class="pill" data-state="done">已完成</span></div>
+            <div class="row" data-current="true"><span class="now" aria-hidden="true"></span><span class="nm">事件组审核</span><span class="qty">114</span><span class="pill" data-state="pending">进行中</span></div>
+            <div class="row"><span class="now" aria-hidden="true"></span><span class="nm">报告撰写</span><span class="qty">0</span><span class="pill" data-state="idle">未开始</span></div>
+          </div>
+          <div class="card-foot"><span>剩余 1 阶段</span><span>114 组 · 12 字段</span></div>
+        </div>
+
+        <div class="card" style="flex:0 0 auto">
+          <div class="card-head">
+            <h2>最近完成</h2><span class="meta">今日</span>
+          </div>
+          <div class="card-body" style="padding-bottom:14px">
+            <table class="tbl" id="recent-table">
+              <tbody>
+                <tr><td class="aux" style="width:64px">17:42</td><td class="t-main">事件组审核 1,561 组确认</td></tr>
+                <tr><td class="aux">16:58</td><td class="t-main">第 3 轮近邻补并</td></tr>
+                <tr><td class="aux">15:20</td><td class="t-main">去重归组 1,675 组</td></tr>
+                <tr><td class="aux">14:06</td><td class="t-main">负向预警 3,914 条</td></tr>
+                <tr><td class="aux">11:30</td><td class="t-main">原始采集 28,789 条</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

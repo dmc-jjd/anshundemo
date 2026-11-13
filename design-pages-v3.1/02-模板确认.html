@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>02 模板确认 · 康奈 洞研智台</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+  /* 仅本页布局差异 */
+  .sheet{width:786px;flex:0 0 786px;padding:18px 40px 8px}
+  .doc-title{font-size:17px;margin-top:0}
+  .doc-issue{margin-top:7px}
+  .doc-unit{margin-top:7px;letter-spacing:3px}
+  .doc-name{margin-top:9px;padding-top:8px}
+  .doc-sec{margin-top:5px;font-size:12.5px;line-height:1.5}
+  .doc-t{font-size:12px;line-height:1.64;margin-top:3px}
+  .doc-fig{height:50px;margin-top:6px}
+  .fig-cap{font-size:11px;color:var(--muted);letter-spacing:.4px;text-align:center;margin-top:4px}
+  .doc-tbl{margin-top:5px}
+  .doc-tbl th{padding:3px 8px}
+  .doc-tbl td{padding:2px 8px;font-size:12px}
+
+  .fields .tbl td{padding:0 12px;height:42px}
+  .fields .tbl thead th{padding:8px 12px}
+  .type{font-size:11px;color:var(--muted);letter-spacing:.3px}
+</style>
+</head>
+<body>
+<div class="page" id="page-template">
+
+  <div class="topbar">
+    <div class="crumb"><b>康奈 · 洞研智台</b><span class="sep">/</span><span class="here">模板确认</span></div>
+    <div class="topmeta">
+      <span>任务 AS-2610</span><span>2026 年 10 月 · 第 10 期</span>
+      <span class="saved"><i></i>自动保存</span>
+    </div>
+  </div>
+
+  <nav class="stage-progress" id="stage-progress">
+    <div class="stage" data-state="done"><span class="idx">01</span><span class="nm">工作台</span></div>
+    <div class="stage" data-state="current"><span class="idx">02</span><span class="nm">模板确认</span></div>
+    <div class="stage" data-state="todo"><span class="idx">03</span><span class="nm">数据处理</span></div>
+    <div class="stage" data-state="todo"><span class="idx">04</span><span class="nm">事件组审核</span></div>
+    <div class="stage" data-state="todo"><span class="idx">05</span><span class="nm">报告撰写</span></div>
+  </nav>
+
+  <div class="main">
+    <div class="head">
+      <h1>模板确认</h1>
+      <div class="head-actions">
+        <button class="btn-text quiet" id="act-compare">对比上版</button>
+        <button class="btn btn-primary" id="act-confirm-template">确认模板并进入数据处理</button>
+      </div>
+    </div>
+
+    <div class="body">
+
+      <div class="col grow">
+        <div class="card flex1">
+          <div class="card-head tight" style="padding:12px 20px 8px">
+            <h2>报告模板</h2><span class="meta">v3 · 38 字段 · 12 待审</span>
+          </div>
+
+          <div class="sheet-wrap">
+            <article class="sheet" id="template-sheet" aria-label="报告模板全文">
+
+              <h2 class="doc-title">网络舆情月度分析报告</h2>
+              <div class="doc-issue">2026 年 10 月 · 第 10 期</div>
+              <div class="doc-unit">安顺市网络舆情监测中心</div>
+              <div class="doc-name">关于 2026 年 10 月涉安顺网络舆情的分析报告</div>
+
+              <h3 class="doc-sec">一、总体情况</h3>
+              <p class="doc-t">本期共监测涉安顺相关舆情 <span class="fld" data-field="原始条数">28,789</span> 条，其中负向预警 <span class="fld" data-field="负向条数">3,914</span> 条，占 <span class="fld" data-field="负向占比">13.6%</span>；经去重归并为 <span class="fld" data-field="去重组数">1,675</span> 组，已预警 1,861 条。</p>
+              <p class="doc-t">其中最大事件组 <span class="fld" data-field="最大组条数">286</span> 条，由 <span class="fld" data-field="初始组合并数">8</span> 个初始组合并，平均每组 <span class="fld" data-field="组均条数">2.3</span> 条。</p>
+
+              <h3 class="doc-sec">二、情感与趋势</h3>
+              <p class="doc-t">负向情绪占 <span class="fld" data-field="负向情绪占比">30.3%</span>，中性占 44.9%，正向占 24.8%。日峰值出现在 <span class="fld" data-field="日峰值日期">10-14</span>，单日 <span class="fld" data-field="日峰值条数">412</span> 条，其后三日回落至 200 条以下。</p>
+              <div class="doc-fig" aria-hidden="true"></div>
+              <div class="fig-cap">图 1 舆情情绪分布图</div>
+
+              <h3 class="doc-sec">三、主题分布</h3>
+              <p class="doc-t">文化旅游居首，<span class="fld" data-field="首位主题条数">4,588</span> 条，占 <span class="fld" data-field="首位主题占比">35.5%</span>；教育管理、市场监管分别为 <span class="fld" data-field="次位主题条数">1,851</span> 条、<span class="fld" data-field="三位主题条数">1,800</span> 条；其余 9 类合计 <span class="fld" data-field="其余主题合计">4,671</span> 条，占 <span class="fld" data-field="其余主题占比">36.2%</span>。</p>
+              <table class="doc-tbl" id="theme-table">
+                <thead><tr><th>主题</th><th class="r" style="width:88px">条数</th><th class="r" style="width:80px">占比</th></tr></thead>
+                <tbody>
+                  <tr><td>文化旅游</td><td class="r"><span class="fld" data-field="文化旅游条数">4,588</span></td><td class="r"><span class="fld" data-field="文化旅游占比">35.5%</span></td></tr>
+                  <tr><td>教育管理</td><td class="r"><span class="fld" data-field="教育管理条数">1,851</span></td><td class="r"><span class="fld" data-field="教育管理占比">14.3%</span></td></tr>
+                  <tr><td>市场监管</td><td class="r"><span class="fld" data-field="市场监管条数">1,800</span></td><td class="r"><span class="fld" data-field="市场监管占比">13.9%</span></td></tr>
+                </tbody>
+              </table>
+
+              <h3 class="doc-sec">四、重点事件</h3>
+              <p class="doc-t">最大事件组 <span class="fld" data-field="最大事件组编号">G-0412</span> 累计 <span class="fld" data-field="最大事件组条数">286</span> 条，由 <span class="fld" data-field="合并初始组数">8</span> 个初始组合并，跨度 <span class="fld" data-field="事件跨度天数">25</span> 天，累计互动 <span class="fld" data-field="累计互动量">12.4 万</span>；该组负向情绪占比 <span class="fld" data-field="组内负向占比">78.4%</span>，10-14 单日新增 <span class="fld" data-field="组内单日峰值">187</span> 条。</p>
+
+              <h3 class="doc-sec">五、属地分布</h3>
+              <p class="doc-t">西秀区 <span class="fld" data-field="首位属地条数">4,286</span> 条居首，占 <span class="fld" data-field="首位属地占比">33.2%</span>；平坝区、普定县次之；其余区县合计 <span class="fld" data-field="其余属地合计">2,020</span> 条，占 <span class="fld" data-field="其余属地占比">15.5%</span>。</p>
+
+              <h3 class="doc-sec">六、结论与建议</h3>
+              <p class="doc-t">建议持续关注文化旅游与教育管理两类主题的负向舆情变化，完善属地联动处置口径，加强重点事件组的跟踪复核与结果回访。</p>
+
+            </article>
+          </div>
+        </div>
+      </div>
+
+      <div class="col" style="width:352px;flex:0 0 352px">
+        <div class="card flex1">
+          <div class="card-head tight" style="padding:12px 18px 8px">
+            <h2>字段</h2><span class="meta">26 项动态 · 12 项固定</span>
+          </div>
+          <div class="card-body fields" style="padding:0 18px">
+            <table class="tbl" id="field-table">
+              <thead>
+                <tr><th>字段</th><th style="width:64px">类型</th><th style="width:70px" class="r">状态</th></tr>
+              </thead>
+              <tbody>
+                <tr><td class="t-main">原始条数</td><td class="type">数值</td><td class="r"><span class="pill" data-state="done">已确认</span></td></tr>
+                <tr><td class="t-main">负向条数</td><td class="type">数值</td><td class="r"><span class="pill" data-state="done">已确认</span></td></tr>
+                <tr><td class="t-main">负向占比</td><td class="type">百分比</td><td class="r"><span class="pill" data-state="pending">待审</span></td></tr>
+                <tr><td class="t-main">去重组数</td><td class="type">数值</td><td class="r"><span class="pill" data-state="done">已确认</span></td></tr>
+                <tr><td class="t-main">组均条数</td><td class="type">数值</td><td class="r"><span class="pill" data-state="pending">待审</span></td></tr>
+                <tr><td class="t-main">负向情绪占比</td><td class="type">百分比</td><td class="r"><span class="pill" data-state="pending">待审</span></td></tr>
+                <tr><td class="t-main">日峰值日期</td><td class="type">日期</td><td class="r"><span class="pill" data-state="pending">待审</span></td></tr>
+                <tr><td class="t-main">日峰值条数</td><td class="type">数值</td><td class="r"><span class="pill" data-state="done">已确认</span></td></tr>
+                <tr><td class="t-main">首位主题</td><td class="type">文本</td><td class="r"><span class="pill" data-state="done">已确认</span></td></tr>
+                <tr><td class="t-main">主题条数</td><td class="type">数值</td><td class="r"><span class="pill" data-state="pending">待审</span></td></tr>
+                <tr><td class="t-main">最大事件组</td><td class="type">文本</td><td class="r"><span class="pill" data-state="done">已确认</span></td></tr>
+                <tr><td class="t-main">属地首位</td><td class="type">文本</td><td class="r"><span class="pill" data-state="pending">待审</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card-foot"><span>38 字段</span><span>12 待审</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

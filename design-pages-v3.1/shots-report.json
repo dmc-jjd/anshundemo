@@ -1,0 +1,81 @@
+[
+  {
+    "file": "01-工作台.png",
+    "viewport": "1440x900",
+    "bytes": 120767,
+    "kb": 117.9,
+    "currentTab": "01 工作台",
+    "clipped": []
+  },
+  {
+    "file": "02-模板确认.png",
+    "viewport": "1440x900",
+    "bytes": 183718,
+    "kb": 179.4,
+    "currentTab": "02 模板确认",
+    "clipped": []
+  },
+  {
+    "file": "03-数据处理.png",
+    "viewport": "1440x900",
+    "bytes": 101903,
+    "kb": 99.5,
+    "currentTab": "03 数据处理",
+    "clipped": []
+  },
+  {
+    "file": "04-事件组审核.png",
+    "viewport": "1440x900",
+    "bytes": 155613,
+    "kb": 152,
+    "currentTab": "04 事件组审核",
+    "clipped": [
+      {
+        "sel": "card-body",
+        "sh": 659,
+        "ch": 611,
+        "over": 48
+      }
+    ]
+  },
+  {
+    "file": "05-报告撰写.png",
+    "viewport": "1440x900",
+    "bytes": 204332,
+    "kb": 199.5,
+    "currentTab": "05 报告撰写",
+    "clipped": []
+  },
+  {
+    "file": "06-数据总览.png",
+    "viewport": "1440x900",
+    "bytes": 103077,
+    "kb": 100.7,
+    "currentTab": "05 报告撰写",
+    "clipped": []
+  },
+  {
+    "file": "07-终稿审核.png",
+    "viewport": "1440x900",
+    "bytes": 131281,
+    "kb": 128.2,
+    "currentTab": "05 报告撰写",
+    "clipped": []
+  },
+  {
+    "file": "01-工作台-1024.png",
+    "viewport": "1024x768",
+    "bytes": 81412,
+    "kb": 79.5,
+    "currentTab": "01 工作台",
+    "clipped": []
+  },
+  {
+    "file": "02-模板确认-1024.png",
+    "viewport": "1024x768",
+    "bytes": 127424,
+    "kb": 124.4,
+    "currentTab": "02 模板确认",
+    "clipped": []
+  }
+]

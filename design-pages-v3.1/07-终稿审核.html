@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>07 终稿人工审核 · 康奈 洞研智台</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+  /* 仅本页布局差异 */
+  .canvas{padding:8px 0;align-items:center}
+  .leaf{width:478px;height:676px;flex:0 0 auto;padding:36px 34px 0}
+  .leaf-title{font-size:15px;line-height:1.6;margin:0 0 4px}
+  .doc-h{margin:14px 0 4px;font-size:13px}
+  .doc-para{line-height:1.85;margin-bottom:2px;font-size:13px}
+  .doc-para:hover .handle{opacity:1}
+  .doc-fig{
+    border:1px dashed #DCD8CE;border-radius:5px;background:#FCFBF8;height:64px;
+    display:flex;align-items:center;justify-content:center;
+    font-size:11px;color:var(--faint);letter-spacing:.4px;margin:8px 0 2px;
+  }
+  .doc-table{width:100%;border-collapse:collapse;margin-top:2px}
+  .doc-table th{font-size:11px;font-weight:500;color:var(--muted);text-align:left;
+    padding:4px 0;border-bottom:1px solid var(--line)}
+  .doc-table td{font-size:13px;color:var(--ink-2);padding:5px 0;border-bottom:1px solid var(--line-soft)}
+  .doc-table .r{text-align:right}
+  .leaf-foot{padding:9px 0 10px;font-size:11px}
+
+  .doc-tools{position:absolute;right:14px;top:12px;display:flex;align-items:center;gap:8px}
+  .wordmark{font-size:11px;color:var(--muted);letter-spacing:.4px;margin-right:4px}
+
+  .rail{width:344px;flex:0 0 344px}
+  .rail .card{align-self:flex-start;width:100%}
+  .rail .stats{padding:2px 0 4px}
+  .rail .stats > div{padding:0 18px}
+  .rail .note-t{font-size:13px;line-height:1.65}
+  .rail .note{padding:12px 0}
+</style>
+</head>
+<body>
+<div class="page" id="page-final-review">
+
+  <div class="topbar">
+    <div class="crumb"><b>康奈 · 洞研智台</b><span class="sep">/</span><span class="here">报告撰写</span><span class="sep">/</span><span class="here">终稿审核</span></div>
+    <div class="topmeta">
+      <span>任务 AS-2610</span><span>2026 年 10 月 · 第 10 期</span>
+      <span class="saved"><i></i>自动保存</span>
+    </div>
+  </div>
+
+  <nav class="stage-progress" id="stage-progress">
+    <div class="stage" data-state="done"><span class="idx">01</span><span class="nm">工作台</span></div>
+    <div class="stage" data-state="done"><span class="idx">02</span><span class="nm">模板确认</span></div>
+    <div class="stage" data-state="done"><span class="idx">03</span><span class="nm">数据处理</span></div>
+    <div class="stage" data-state="done"><span class="idx">04</span><span class="nm">事件组审核</span></div>
+    <div class="stage" data-state="current"><span class="idx">05</span><span class="nm">报告撰写</span></div>
+  </nav>
+
+  <div class="main">
+    <div class="head">
+      <h1>终稿人工审核</h1>
+      <div class="head-actions">
+        <button class="btn-text quiet" id="act-export-docx">导出 .docx</button>
+        <button class="menu-btn" id="doc-tools-menu" aria-label="格式" aria-expanded="false">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
+            <circle cx="3" cy="7" r="1.2"/><circle cx="7" cy="7" r="1.2"/><circle cx="11" cy="7" r="1.2"/>
+          </svg>
+        </button>
+        <button class="btn btn-primary" id="act-approve">通过终稿</button>
+      </div>
+    </div>
+
+    <div class="body">
+
+      <div class="card canvas">
+
+        <article class="leaf" id="doc-leaf" contenteditable="false" aria-label="终稿正文">
+
+          <h2 class="leaf-title">安顺市网络舆情月度分析报告（2026 年 10 月）</h2>
+
+          <h3 class="doc-h">一、总体情况</h3>
+          <p class="doc-para">本期共监测涉安顺相关舆情 28,789 条，其中负向预警 3,914 条，占 13.6%；经去重归并为 1,675 组，已预警 1,861 条。</p>
+
+          <h3 class="doc-h">二、情感与趋势</h3>
+          <p class="doc-para" data-active="true">
+            <span class="handle" aria-hidden="true">
+              <svg width="9" height="13" viewBox="0 0 9 13" fill="currentColor">
+                <circle cx="2" cy="2" r="1.1"/><circle cx="7" cy="2" r="1.1"/>
+                <circle cx="2" cy="6.5" r="1.1"/><circle cx="7" cy="6.5" r="1.1"/>
+                <circle cx="2" cy="11" r="1.1"/><circle cx="7" cy="11" r="1.1"/>
+              </svg>
+            </span>负向情绪占 30.3%，中性占 44.9%，正向占 24.8%。日峰值出现在 10-14，单日 412 条，主要由某地法院裁判文书造假质疑事件组推动，其后三日回落至 200 条以下。<span class="caret"></span>
+          </p>
+
+          <div class="doc-fig">图 2 · 日趋势</div>
+
+          <h3 class="doc-h">三、主题分布</h3>
+          <table class="doc-table" id="doc-theme-table">
+            <thead><tr><th>主题</th><th class="r">条数</th><th class="r">占比</th></tr></thead>
+            <tbody>
+              <tr><td>文化旅游</td><td class="r">4,588</td><td class="r">35.5%</td></tr>
+              <tr><td>教育管理</td><td class="r">1,851</td><td class="r">14.3%</td></tr>
+              <tr><td>市场监管</td><td class="r">1,800</td><td class="r">13.9%</td></tr>
+              <tr><td>交通管理</td><td class="r">1,670</td><td class="r">12.9%</td></tr>
+            </tbody>
+          </table>
+
+          <h3 class="doc-h">四、重点事件</h3>
+          <p class="doc-para">本期最大事件组为某地法院裁判文书造假质疑，由 8 个初始组合并，累计 286 条，跨度 25 天，累计互动 12.4 万。事件自 10-02 起量，10-14 达到传播峰值。</p>
+
+          <div class="leaf-foot"><span>第 1 页 / 共 12 页</span><span>8,642 字</span></div>
+
+        </article>
+
+      </div>
+
+      <div class="rail">
+        <div class="card">
+          <div class="card-head" style="padding:16px 18px 12px">
+            <h2>审核</h2><span class="meta">12 页</span>
+          </div>
+          <div class="stats" style="padding:0 18px 16px">
+            <div><div class="v">12<small>页</small></div><div class="k">页数</div></div>
+            <div><div class="v">8,642<small>字</small></div><div class="k">字数</div></div>
+            <div><div class="v">3<small>处</small></div><div class="k">已改</div></div>
+          </div>
+          <div style="padding:0 18px 6px;border-top:1px solid var(--line-soft)">
+            <div class="note-group" style="padding:12px 0 2px"><span>重要 2 条</span><span class="ln" style="flex:1;height:1px;background:var(--line-soft)"></span></div>
+            <div class="note">
+              <div class="note-head"><span class="pill" data-state="risk">重要</span><span class="aux">四、重点事件</span></div>
+              <div class="note-t" style="margin-top:6px">286 条中 3 条来源无法核实，终稿仍按原口径表述。</div>
+            </div>
+            <div class="note">
+              <div class="note-head"><span class="pill" data-state="risk">重要</span><span class="aux">二、情感与趋势</span></div>
+              <div class="note-t" style="margin-top:6px">峰值日期 10-14 与图表标注 10-13 不一致，已改。</div>
+            </div>
+          </div>
+          <div class="card-foot"><span>共 12 页</span><span>已改 3 处</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

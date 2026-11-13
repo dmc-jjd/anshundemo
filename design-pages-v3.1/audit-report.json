@@ -1,0 +1,607 @@
+[
+  {
+    "file": "01-工作台.html",
+    "title": "01 工作台 · 康奈 洞研智台",
+    "scrollH": 900,
+    "scrollW": 1440,
+    "tabs": [
+      {
+        "text": "01 工作台",
+        "state": "current",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(255, 255, 255)",
+        "radius": "8px",
+        "shadow": "rgba(0, 0, 0, 0.04) 0px 1px 2px 0px",
+        "topLine": "rgb(57, 108, 90)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      },
+      {
+        "text": "02 模板确认",
+        "state": "todo",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(253, 252, 250)",
+        "radius": "8px",
+        "shadow": "none",
+        "topLine": "rgba(0, 0, 0, 0)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      },
+      {
+        "text": "03 数据处理",
+        "state": "todo",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(253, 252, 250)",
+        "radius": "8px",
+        "shadow": "none",
+        "topLine": "rgba(0, 0, 0, 0)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      },
+      {
+        "text": "04 事件组审核",
+        "state": "todo",
+        "task": "current",
+        "hasDot": true,
+        "bg": "rgb(253, 252, 250)",
+        "radius": "8px",
+        "shadow": "none",
+        "topLine": "rgba(0, 0, 0, 0)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      },
+      {
+        "text": "05 报告撰写",
+        "state": "todo",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(253, 252, 250)",
+        "radius": "8px",
+        "shadow": "none",
+        "topLine": "rgba(0, 0, 0, 0)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      }
+    ],
+    "currentTab": "01 工作台",
+    "clipped": [],
+    "docSections": [],
+    "fields": 0,
+    "fieldSample": [],
+    "fontFamilies": [
+      "\"Noto Sans SC\", \"Microsoft YaHei\", sans-serif",
+      "Arial"
+    ],
+    "bannedHits": [],
+    "hasSkeleton": false,
+    "hasStatBadge": false,
+    "h1": 1,
+    "primary": 1,
+    "tables": 2
+  },
+  {
+    "file": "02-模板确认.html",
+    "title": "02 模板确认 · 康奈 洞研智台",
+    "scrollH": 900,
+    "scrollW": 1440,
+    "tabs": [
+      {
+        "text": "01 工作台",
+        "state": "done",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(253, 252, 250)",
+        "radius": "8px",
+        "shadow": "none",
+        "topLine": "rgba(0, 0, 0, 0)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      },
+      {
+        "text": "02 模板确认",
+        "state": "current",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(255, 255, 255)",
+        "radius": "8px",
+        "shadow": "rgba(0, 0, 0, 0.04) 0px 1px 2px 0px",
+        "topLine": "rgb(57, 108, 90)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      },
+      {
+        "text": "03 数据处理",
+        "state": "todo",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(253, 252, 250)",
+        "radius": "8px",
+        "shadow": "none",
+        "topLine": "rgba(0, 0, 0, 0)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      },
+      {
+        "text": "04 事件组审核",
+        "state": "todo",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(253, 252, 250)",
+        "radius": "8px",
+        "shadow": "none",
+        "topLine": "rgba(0, 0, 0, 0)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      },
+      {
+        "text": "05 报告撰写",
+        "state": "todo",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(253, 252, 250)",
+        "radius": "8px",
+        "shadow": "none",
+        "topLine": "rgba(0, 0, 0, 0)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      }
+    ],
+    "currentTab": "02 模板确认",
+    "clipped": [],
+    "docSections": [
+      "一、总体情况",
+      "二、情感与趋势",
+      "三、主题分布",
+      "四、重点事件",
+      "五、属地分布",
+      "六、结论与建议"
+    ],
+    "fields": 33,
+    "fieldSample": [
+      "28,789",
+      "3,914",
+      "13.6%"
+    ],
+    "sheet": {
+      "w": 786,
+      "h": 640,
+      "sh": 638,
+      "ch": 638
+    },
+    "fontFamilies": [
+      "\"Noto Sans SC\", \"Microsoft YaHei\", sans-serif",
+      "Arial"
+    ],
+    "bannedHits": [],
+    "hasSkeleton": false,
+    "hasStatBadge": false,
+    "h1": 1,
+    "primary": 1,
+    "tables": 2
+  },
+  {
+    "file": "03-数据处理.html",
+    "title": "03 数据处理 · 康奈 洞研智台",
+    "scrollH": 900,
+    "scrollW": 1440,
+    "tabs": [
+      {
+        "text": "01 工作台",
+        "state": "done",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(253, 252, 250)",
+        "radius": "8px",
+        "shadow": "none",
+        "topLine": "rgba(0, 0, 0, 0)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      },
+      {
+        "text": "02 模板确认",
+        "state": "done",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(253, 252, 250)",
+        "radius": "8px",
+        "shadow": "none",
+        "topLine": "rgba(0, 0, 0, 0)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      },
+      {
+        "text": "03 数据处理",
+        "state": "current",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(255, 255, 255)",
+        "radius": "8px",
+        "shadow": "rgba(0, 0, 0, 0.04) 0px 1px 2px 0px",
+        "topLine": "rgb(57, 108, 90)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      },
+      {
+        "text": "04 事件组审核",
+        "state": "todo",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(253, 252, 250)",
+        "radius": "8px",
+        "shadow": "none",
+        "topLine": "rgba(0, 0, 0, 0)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      },
+      {
+        "text": "05 报告撰写",
+        "state": "todo",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(253, 252, 250)",
+        "radius": "8px",
+        "shadow": "none",
+        "topLine": "rgba(0, 0, 0, 0)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      }
+    ],
+    "currentTab": "03 数据处理",
+    "clipped": [],
+    "docSections": [],
+    "fields": 0,
+    "fieldSample": [],
+    "fontFamilies": [
+      "\"Noto Sans SC\", \"Microsoft YaHei\", sans-serif",
+      "Arial"
+    ],
+    "bannedHits": [],
+    "hasSkeleton": false,
+    "hasStatBadge": false,
+    "h1": 1,
+    "primary": 1,
+    "tables": 0
+  },
+  {
+    "file": "04-事件组审核.html",
+    "title": "04 事件组审核 · 康奈 洞研智台",
+    "scrollH": 900,
+    "scrollW": 1440,
+    "tabs": [
+      {
+        "text": "01 工作台",
+        "state": "done",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(253, 252, 250)",
+        "radius": "8px",
+        "shadow": "none",
+        "topLine": "rgba(0, 0, 0, 0)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      },
+      {
+        "text": "02 模板确认",
+        "state": "done",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(253, 252, 250)",
+        "radius": "8px",
+        "shadow": "none",
+        "topLine": "rgba(0, 0, 0, 0)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      },
+      {
+        "text": "03 数据处理",
+        "state": "done",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(253, 252, 250)",
+        "radius": "8px",
+        "shadow": "none",
+        "topLine": "rgba(0, 0, 0, 0)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      },
+      {
+        "text": "04 事件组审核",
+        "state": "current",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(255, 255, 255)",
+        "radius": "8px",
+        "shadow": "rgba(0, 0, 0, 0.04) 0px 1px 2px 0px",
+        "topLine": "rgb(57, 108, 90)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      },
+      {
+        "text": "05 报告撰写",
+        "state": "todo",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(253, 252, 250)",
+        "radius": "8px",
+        "shadow": "none",
+        "topLine": "rgba(0, 0, 0, 0)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      }
+    ],
+    "currentTab": "04 事件组审核",
+    "clipped": [
+      {
+        "sel": "card-body",
+        "sh": 659,
+        "ch": 611,
+        "over": 48
+      }
+    ],
+    "docSections": [],
+    "fields": 0,
+    "fieldSample": [],
+    "fontFamilies": [
+      "\"Noto Sans SC\", \"Microsoft YaHei\", sans-serif",
+      "Arial"
+    ],
+    "bannedHits": [],
+    "hasSkeleton": false,
+    "hasStatBadge": false,
+    "h1": 1,
+    "primary": 1,
+    "tables": 1
+  },
+  {
+    "file": "05-报告撰写.html",
+    "title": "05 报告撰写 · 康奈 洞研智台",
+    "scrollH": 900,
+    "scrollW": 1440,
+    "tabs": [
+      {
+        "text": "01 工作台",
+        "state": "done",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(253, 252, 250)",
+        "radius": "8px",
+        "shadow": "none",
+        "topLine": "rgba(0, 0, 0, 0)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      },
+      {
+        "text": "02 模板确认",
+        "state": "done",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(253, 252, 250)",
+        "radius": "8px",
+        "shadow": "none",
+        "topLine": "rgba(0, 0, 0, 0)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      },
+      {
+        "text": "03 数据处理",
+        "state": "done",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(253, 252, 250)",
+        "radius": "8px",
+        "shadow": "none",
+        "topLine": "rgba(0, 0, 0, 0)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      },
+      {
+        "text": "04 事件组审核",
+        "state": "done",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(253, 252, 250)",
+        "radius": "8px",
+        "shadow": "none",
+        "topLine": "rgba(0, 0, 0, 0)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      },
+      {
+        "text": "05 报告撰写",
+        "state": "current",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(255, 255, 255)",
+        "radius": "8px",
+        "shadow": "rgba(0, 0, 0, 0.04) 0px 1px 2px 0px",
+        "topLine": "rgb(57, 108, 90)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      }
+    ],
+    "currentTab": "05 报告撰写",
+    "clipped": [],
+    "docSections": [],
+    "fields": 0,
+    "fieldSample": [],
+    "fontFamilies": [
+      "\"Noto Sans SC\", \"Microsoft YaHei\", sans-serif",
+      "Arial"
+    ],
+    "bannedHits": [],
+    "hasSkeleton": false,
+    "hasStatBadge": false,
+    "h1": 1,
+    "primary": 1,
+    "tables": 0
+  },
+  {
+    "file": "06-数据总览.html",
+    "title": "06 数据总览 · 康奈 洞研智台",
+    "scrollH": 900,
+    "scrollW": 1440,
+    "tabs": [
+      {
+        "text": "01 工作台",
+        "state": "done",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(253, 252, 250)",
+        "radius": "8px",
+        "shadow": "none",
+        "topLine": "rgba(0, 0, 0, 0)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      },
+      {
+        "text": "02 模板确认",
+        "state": "done",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(253, 252, 250)",
+        "radius": "8px",
+        "shadow": "none",
+        "topLine": "rgba(0, 0, 0, 0)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      },
+      {
+        "text": "03 数据处理",
+        "state": "done",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(253, 252, 250)",
+        "radius": "8px",
+        "shadow": "none",
+        "topLine": "rgba(0, 0, 0, 0)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      },
+      {
+        "text": "04 事件组审核",
+        "state": "done",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(253, 252, 250)",
+        "radius": "8px",
+        "shadow": "none",
+        "topLine": "rgba(0, 0, 0, 0)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      },
+      {
+        "text": "05 报告撰写",
+        "state": "current",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(255, 255, 255)",
+        "radius": "8px",
+        "shadow": "rgba(0, 0, 0, 0.04) 0px 1px 2px 0px",
+        "topLine": "rgb(57, 108, 90)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      }
+    ],
+    "currentTab": "05 报告撰写",
+    "clipped": [],
+    "docSections": [],
+    "fields": 0,
+    "fieldSample": [],
+    "fontFamilies": [
+      "\"Noto Sans SC\", \"Microsoft YaHei\", sans-serif",
+      "Arial"
+    ],
+    "bannedHits": [],
+    "hasSkeleton": false,
+    "hasStatBadge": false,
+    "h1": 1,
+    "primary": 1,
+    "tables": 0
+  },
+  {
+    "file": "07-终稿审核.html",
+    "title": "07 终稿人工审核 · 康奈 洞研智台",
+    "scrollH": 900,
+    "scrollW": 1440,
+    "tabs": [
+      {
+        "text": "01 工作台",
+        "state": "done",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(253, 252, 250)",
+        "radius": "8px",
+        "shadow": "none",
+        "topLine": "rgba(0, 0, 0, 0)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      },
+      {
+        "text": "02 模板确认",
+        "state": "done",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(253, 252, 250)",
+        "radius": "8px",
+        "shadow": "none",
+        "topLine": "rgba(0, 0, 0, 0)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      },
+      {
+        "text": "03 数据处理",
+        "state": "done",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(253, 252, 250)",
+        "radius": "8px",
+        "shadow": "none",
+        "topLine": "rgba(0, 0, 0, 0)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      },
+      {
+        "text": "04 事件组审核",
+        "state": "done",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(253, 252, 250)",
+        "radius": "8px",
+        "shadow": "none",
+        "topLine": "rgba(0, 0, 0, 0)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      },
+      {
+        "text": "05 报告撰写",
+        "state": "current",
+        "task": null,
+        "hasDot": false,
+        "bg": "rgb(255, 255, 255)",
+        "radius": "8px",
+        "shadow": "rgba(0, 0, 0, 0.04) 0px 1px 2px 0px",
+        "topLine": "rgb(57, 108, 90)",
+        "topLineH": "2px",
+        "edge": "1px rgb(236, 233, 226)"
+      }
+    ],
+    "currentTab": "05 报告撰写",
+    "clipped": [],
+    "docSections": [],
+    "fields": 0,
+    "fieldSample": [],
+    "fontFamilies": [
+      "\"Noto Sans SC\", \"Microsoft YaHei\", sans-serif",
+      "Arial"
+    ],
+    "bannedHits": [],
+    "hasSkeleton": false,
+    "hasStatBadge": false,
+    "h1": 1,
+    "primary": 1,
+    "tables": 1
+  }
+]

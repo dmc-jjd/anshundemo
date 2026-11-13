@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>04 事件组审核 · 康奈 洞研智台</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+  /* 仅本页布局差异 */
+  .queue{width:300px;flex:0 0 300px}
+  .q-row{padding:13px 0;border-bottom:1px solid var(--line-soft);position:relative}
+  .q-row:last-child{border-bottom:none}
+  .q-row[data-state="current"]{background:var(--grn-bg);margin:0 -20px;padding:13px 20px;border-bottom-color:transparent}
+  .q-row[data-state="current"]::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:2px;background:var(--grn)}
+  .q-l1{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .q-id{font-size:11px;letter-spacing:.4px;color:var(--muted)}
+  .q-num{font-size:13px;font-weight:600;color:var(--ink);letter-spacing:-.2px}
+  .q-title{font-size:13px;color:var(--ink-2);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .q-row[data-state="current"] .q-title{color:var(--ink);font-weight:600}
+  .q-row[data-state="current"] .q-id{color:var(--grn-tx)}
+
+  .group-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:18px 20px 12px}
+  .gh-title{font-size:13px;font-weight:700;color:var(--ink);letter-spacing:.3px}
+  .gh-meta{font-size:11px;color:var(--muted);letter-spacing:.3px;margin-top:7px}
+  .gh-meta b{font-weight:600;color:var(--ink-2)}
+  .gh-actions{display:flex;align-items:center;gap:16px;flex:0 0 auto;padding-top:2px}
+
+  .chips{display:flex;flex-wrap:wrap;gap:8px;padding:0 20px 18px}
+  .chip{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:4px;
+    font-size:11px;letter-spacing:.3px;background:var(--card);border:1px solid var(--line);color:var(--ink-2)}
+  .chip b{font-weight:600;color:var(--ink)}
+  .chip[data-state="pending"]{background:var(--amb-bg);border-color:#F0E1C6;color:var(--amb)}
+  .chip[data-state="pending"] b{color:var(--amb)}
+
+  .members .tbl td{padding:0 12px;height:46px}
+  .members .tbl thead th{padding:9px 12px}
+  .m-title{font-size:13px;color:var(--ink);line-height:1.45}
+  .src{display:inline-flex;align-items:center;height:19px;padding:0 6px;border-radius:3px;
+    font-size:11px;background:var(--field);color:var(--muted);border:1px solid var(--line)}
+  .src[data-state="pending"]{background:var(--amb-bg);border-color:#F0E1C6;color:var(--amb)}
+  .c-chk{width:34px}
+</style>
+</head>
+<body>
+<div class="page" id="page-group-review">
+
+  <div class="topbar">
+    <div class="crumb"><b>康奈 · 洞研智台</b><span class="sep">/</span><span class="here">事件组审核</span></div>
+    <div class="topmeta">
+      <span>任务 AS-2610</span><span>2026 年 10 月 · 第 10 期</span>
+      <span class="saved"><i></i>自动保存</span>
+    </div>
+  </div>
+
+  <nav class="stage-progress" id="stage-progress">
+    <div class="stage" data-state="done"><span class="idx">01</span><span class="nm">工作台</span></div>
+    <div class="stage" data-state="done"><span class="idx">02</span><span class="nm">模板确认</span></div>
+    <div class="stage" data-state="done"><span class="idx">03</span><span class="nm">数据处理</span></div>
+    <div class="stage" data-state="current"><span class="idx">04</span><span class="nm">事件组审核</span></div>
+    <div class="stage" data-state="todo"><span class="idx">05</span><span class="nm">报告撰写</span></div>
+  </nav>
+
+  <div class="main">
+    <div class="head">
+      <h1>事件组审核</h1>
+      <div class="head-actions">
+        <button class="btn-text quiet" id="act-split">拆分</button>
+        <button class="btn-text quiet" id="act-standalone">标记独立</button>
+        <button class="btn btn-primary" id="act-merge">合并入本组</button>
+      </div>
+    </div>
+
+    <div class="body">
+
+      <div class="card queue">
+        <div class="card-head">
+          <h2>待审</h2><span class="meta">114 组</span>
+        </div>
+        <div class="card-body" style="overflow:hidden">
+          <div class="q-row" data-state="current">
+            <div class="q-l1"><span class="q-id">G-0412</span><span class="q-num">286</span></div>
+            <div class="q-title">某地法院裁判文书造假质疑</div>
+          </div>
+          <div class="q-row">
+            <div class="q-l1"><span class="q-id">G-0388</span><span class="q-num">34</span></div>
+            <div class="q-title">平坝区农村饮水管网改造</div>
+          </div>
+          <div class="q-row">
+            <div class="q-l1"><span class="q-id">G-0219</span><span class="q-num">21</span></div>
+            <div class="q-title">开发区安置房交付延期</div>
+          </div>
+          <div class="q-row">
+            <div class="q-l1"><span class="q-id">G-0351</span><span class="q-num">17</span></div>
+            <div class="q-title">黄果树景区餐饮价格投诉</div>
+          </div>
+          <div class="q-row">
+            <div class="q-l1"><span class="q-id">G-0322</span><span class="q-num">12</span></div>
+            <div class="q-title">普定县中学周边交通拥堵</div>
+          </div>
+          <div class="q-row">
+            <div class="q-l1"><span class="q-id">G-0298</span><span class="q-num">9</span></div>
+            <div class="q-title">镇宁县工地夜间施工噪声</div>
+          </div>
+          <div class="q-row">
+            <div class="q-l1"><span class="q-id">G-0233</span><span class="q-num">6</span></div>
+            <div class="q-title">西秀区夜市占道经营</div>
+          </div>
+          <div class="q-row">
+            <div class="q-l1"><span class="q-id">G-0274</span><span class="q-num">4</span></div>
+            <div class="q-title">关岭县农产品滞销求助</div>
+          </div>
+          <div class="q-row">
+            <div class="q-l1"><span class="q-id">G-0251</span><span class="q-num">3</span></div>
+            <div class="q-title">紫云县农村客运班次减少</div>
+          </div>
+        </div>
+        <div class="card-foot"><span>1 / 114</span><span>已审 1,561 组</span></div>
+      </div>
+
+      <div class="col grow">
+
+        <div class="card" style="flex:0 0 auto">
+          <div class="group-head">
+            <div>
+              <div class="gh-title">某地法院裁判文书造假质疑</div>
+              <div class="gh-meta"><b>286 条</b> · 由 <b>8</b> 个初始组合并 · 5 个平台 · 10-02 22:41 → 10-27 09:18</div>
+            </div>
+            <div class="gh-actions">
+              <button class="btn-text quiet" id="act-open-source">来源行</button>
+              <button class="menu-btn" id="act-more" aria-label="更多动作" aria-expanded="false">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
+                  <circle cx="3" cy="7" r="1.2"/><circle cx="7" cy="7" r="1.2"/><circle cx="11" cy="7" r="1.2"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="chips">
+            <span class="chip" data-state="done">G1 <b>62</b></span>
+            <span class="chip" data-state="done">G2 <b>48</b></span>
+            <span class="chip" data-state="done">G3 <b>41</b></span>
+            <span class="chip" data-state="done">G4 <b>37</b></span>
+            <span class="chip" data-state="pending">G5 <b>29</b></span>
+            <span class="chip" data-state="pending">G6 <b>26</b></span>
+            <span class="chip" data-state="pending">G7 <b>23</b></span>
+            <span class="chip" data-state="done">G8 <b>20</b></span>
+          </div>
+        </div>
+
+        <div class="card flex1 members">
+          <div class="card-head">
+            <h2>成员</h2><span class="meta">已选 3 条 · 78 条待确认</span>
+          </div>
+          <div class="card-body" style="padding-bottom:0">
+            <table class="tbl" id="member-table">
+              <thead>
+                <tr>
+                  <th class="c-chk"></th><th>成员</th><th style="width:78px">初始组</th>
+                  <th style="width:72px">平台</th><th style="width:110px">时间</th><th style="width:84px" class="r">互动</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="c-chk"><span class="chk" data-state="pending" role="checkbox" aria-checked="false" aria-label="选择第 1 条"></span></td>
+                  <td><div class="m-title">网传某县法院裁判文书多处事实认定前后矛盾</div></td>
+                  <td><span class="src" data-state="done">G1</span></td>
+                  <td class="aux">微博</td><td class="aux">10-02 22:41</td><td class="num r">4.2 万</td>
+                </tr>
+                <tr>
+                  <td class="c-chk"><span class="chk" data-state="pending" role="checkbox" aria-checked="false" aria-label="选择第 2 条"></span></td>
+                  <td><div class="m-title">当事人发文：同一案号两份判决书内容不一致</div></td>
+                  <td><span class="src" data-state="done">G1</span></td>
+                  <td class="aux">微信</td><td class="aux">10-03 09:15</td><td class="num r">3.8 万</td>
+                </tr>
+                <tr>
+                  <td class="c-chk"><span class="chk" data-state="pending" role="checkbox" aria-checked="false" aria-label="选择第 3 条"></span></td>
+                  <td><div class="m-title">短视频：律师就裁判文书问题逐条回应</div></td>
+                  <td><span class="src" data-state="done">G2</span></td>
+                  <td class="aux">抖音</td><td class="aux">10-04 20:06</td><td class="num r">1.9 万</td>
+                </tr>
+                <tr>
+                  <td class="c-chk"><span class="chk" data-state="done" role="checkbox" aria-checked="true" aria-label="选择第 4 条"></span></td>
+                  <td><div class="m-title">媒体跟进：当地已启动核查程序</div></td>
+                  <td><span class="src" data-state="pending">G5</span></td>
+                  <td class="aux">新闻</td><td class="aux">10-06 11:30</td><td class="num r">42</td>
+                </tr>
+                <tr>
+                  <td class="c-chk"><span class="chk" data-state="done" role="checkbox" aria-checked="true" aria-label="选择第 5 条"></span></td>
+                  <td><div class="m-title">论坛帖：裁判文书公开渠道检索不到</div></td>
+                  <td><span class="src" data-state="pending">G5</span></td>
+                  <td class="aux">论坛</td><td class="aux">10-09 16:22</td><td class="num r">318</td>
+                </tr>
+                <tr>
+                  <td class="c-chk"><span class="chk" data-state="done" role="checkbox" aria-checked="true" aria-label="选择第 6 条"></span></td>
+                  <td><div class="m-title">话题：裁判文书造假 阅读量破亿</div></td>
+                  <td><span class="src" data-state="pending">G7</span></td>
+                  <td class="aux">微博</td><td class="aux">10-14 08:40</td><td class="num r">1.2 亿</td>
+                </tr>
+                <tr>
+                  <td class="c-chk"><span class="chk" data-state="pending" role="checkbox" aria-checked="false" aria-label="选择第 7 条"></span></td>
+                  <td><div class="m-title">转载：外省媒体引用同一判决书截图</div></td>
+                  <td><span class="src" data-state="done">G3</span></td>
+                  <td class="aux">新闻</td><td class="aux">10-18 10:05</td><td class="num r">27</td>
+                </tr>
+                <tr>
+                  <td class="c-chk"><span class="chk" data-state="pending" role="checkbox" aria-checked="false" aria-label="选择第 8 条"></span></td>
+                  <td><div class="m-title">短视频：法院工作人员回应拍摄者</div></td>
+                  <td><span class="src" data-state="done">G4</span></td>
+                  <td class="aux">抖音</td><td class="aux">10-21 19:32</td><td class="num r">8,614</td>
+                </tr>
+                <tr>
+                  <td class="c-chk"><span class="chk" data-state="pending" role="checkbox" aria-checked="false" aria-label="选择第 9 条"></span></td>
+                  <td><div class="m-title">论坛帖：同类案件当事人列举 3 例</div></td>
+                  <td><span class="src" data-state="done">G8</span></td>
+                  <td class="aux">论坛</td><td class="aux">10-27 09:18</td><td class="num r">205</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card-foot"><span>9 / 286 条</span><span>已确认 5 组 208 条 · 待确认 3 组 78 条</span></div>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

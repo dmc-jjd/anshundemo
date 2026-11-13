@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>03 数据处理 · 康奈 洞研智台</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+  /* 仅本页布局差异 */
+  .funnel-card{padding:22px 24px;flex:0 0 auto}
+  .funnel{display:flex;align-items:center;gap:26px}
+  .funnel .step{flex:0 0 auto}
+  .funnel .cap{font-size:11px;color:var(--muted);letter-spacing:.4px;margin-top:9px}
+  .funnel .arrow{flex:0 0 auto;margin-top:-14px}
+  .funnel-right{margin-left:auto;display:flex;align-items:flex-start;gap:34px;padding-left:28px;
+    border-left:1px solid var(--line-soft)}
+  .themes .bar-row{height:36px;grid-template-columns:100px 1fr 62px}
+  .themes .bar-row .tk{height:5px}
+  .size-list .row{padding:13px 0}
+  .size-list .nm{width:96px;flex:0 0 96px;font-size:13px;color:var(--ink-2)}
+  .size-list .qty{font-size:13px;font-weight:600;color:var(--ink)}
+  .size-list .aux{margin-left:0}
+  .biggroup{padding:20px 22px}
+  .biggroup .t-main{font-size:13px;font-weight:600;color:var(--ink);margin-top:12px;line-height:1.6}
+  .biggroup .kv{display:flex;flex-direction:column;margin-top:6px}
+  .biggroup .kv .row{padding:9px 0}
+  .biggroup .kv .row span:first-child{color:var(--muted);font-size:11px;letter-spacing:.3px;width:88px;flex:0 0 88px}
+  .biggroup .kv .row span:last-child{font-size:13px;color:var(--ink-2)}
+</style>
+</head>
+<body>
+<div class="page" id="page-pipeline">
+
+  <div class="topbar">
+    <div class="crumb"><b>康奈 · 洞研智台</b><span class="sep">/</span><span class="here">数据处理</span></div>
+    <div class="topmeta">
+      <span>任务 AS-2610</span><span>2026 年 10 月 · 第 10 期</span>
+      <span class="saved"><i></i>自动保存</span>
+    </div>
+  </div>
+
+  <nav class="stage-progress" id="stage-progress">
+    <div class="stage" data-state="done"><span class="idx">01</span><span class="nm">工作台</span></div>
+    <div class="stage" data-state="done"><span class="idx">02</span><span class="nm">模板确认</span></div>
+    <div class="stage" data-state="current"><span class="idx">03</span><span class="nm">数据处理</span></div>
+    <div class="stage" data-state="todo"><span class="idx">04</span><span class="nm">事件组审核</span></div>
+    <div class="stage" data-state="todo"><span class="idx">05</span><span class="nm">报告撰写</span></div>
+  </nav>
+
+  <div class="main">
+    <div class="head">
+      <h1>数据处理</h1>
+      <div class="head-actions">
+        <button class="btn-text quiet" id="act-export-rows">导出明细</button>
+        <button class="btn btn-primary" id="act-enter-review">进入事件组审核</button>
+      </div>
+    </div>
+
+    <div class="body">
+
+      <div class="col grow">
+
+        <div class="card funnel-card">
+          <div class="funnel">
+            <div class="step">
+              <div class="num-lg">28,789<span class="unit">条</span></div>
+              <div class="cap">原始采集</div>
+            </div>
+            <svg class="arrow" width="26" height="8" viewBox="0 0 26 8" fill="none" aria-hidden="true">
+              <path d="M0 4h23M19.5 1l3.5 3-3.5 3" stroke="#C6C3BA" stroke-width="1"/>
+            </svg>
+            <div class="step">
+              <div class="num-lg">3,914<span class="unit">条</span></div>
+              <div class="cap">负向预警 · 13.6%</div>
+            </div>
+            <svg class="arrow" width="26" height="8" viewBox="0 0 26 8" fill="none" aria-hidden="true">
+              <path d="M0 4h23M19.5 1l3.5 3-3.5 3" stroke="#C6C3BA" stroke-width="1"/>
+            </svg>
+            <div class="step">
+              <div class="num-lg">1,675<span class="unit">组</span></div>
+              <div class="cap">去重归组 · 压缩 42.8%</div>
+            </div>
+            <div class="funnel-right">
+              <div>
+                <div class="v" style="font-size:13px;font-weight:600;color:#22282A">1,861<small style="font-size:11px;font-weight:400;color:#6D7172;margin-left:4px">条</small></div>
+                <div class="cap" style="margin-top:6px">已预警 · 47.5%</div>
+              </div>
+              <div>
+                <div class="v" style="font-size:13px;font-weight:600;color:#22282A">286<small style="font-size:11px;font-weight:400;color:#6D7172;margin-left:4px">条</small></div>
+                <div class="cap" style="margin-top:6px">最大组</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card flex1">
+          <div class="card-head">
+            <h2>主题</h2><span class="meta">12 类 · 前 3 占 63.8%</span>
+          </div>
+          <div class="card-body themes" style="display:flex;flex-direction:column">
+            <div class="bars" style="flex:1;justify-content:space-between">
+              <div class="bar-row"><span class="lb">文化旅游</span><span class="tk"><i style="width:100%"></i></span><span class="vl">4,588</span></div>
+              <div class="bar-row"><span class="lb">教育管理</span><span class="tk"><i style="width:40.3%"></i></span><span class="vl">1,851</span></div>
+              <div class="bar-row"><span class="lb">市场监管</span><span class="tk"><i style="width:39.2%"></i></span><span class="vl">1,800</span></div>
+              <div class="bar-row"><span class="lb">交通管理</span><span class="tk"><i style="width:36.4%"></i></span><span class="vl">1,670</span></div>
+              <div class="bar-row"><span class="lb">医疗卫生</span><span class="tk"><i style="width:13%"></i></span><span class="vl">596</span></div>
+              <div class="bar-row"><span class="lb">社会治安</span><span class="tk"><i style="width:12.3%"></i></span><span class="vl">566</span></div>
+              <div class="bar-row"><span class="lb">执政形象</span><span class="tk"><i style="width:11.8%"></i></span><span class="vl">543</span></div>
+              <div class="bar-row"><span class="lb">社会民生</span><span class="tk"><i style="width:8.7%"></i></span><span class="vl">400</span></div>
+              <div class="bar-row"><span class="lb">安全生产</span><span class="tk"><i style="width:7.3%"></i></span><span class="vl">337</span></div>
+              <div class="bar-row"><span class="lb">环境保护</span><span class="tk"><i style="width:7.3%"></i></span><span class="vl">333</span></div>
+              <div class="bar-row"><span class="lb">自然灾害</span><span class="tk"><i style="width:4.1%"></i></span><span class="vl">190</span></div>
+              <div class="bar-row"><span class="lb">城市管理</span><span class="tk"><i style="width:0.8%"></i></span><span class="vl">36</span></div>
+            </div>
+          </div>
+          <div class="card-foot"><span>12 类 · 合计 12,910 条</span><span>文化旅游 35.5%</span></div>
+        </div>
+
+      </div>
+
+      <div class="col" style="width:400px;flex:0 0 400px">
+
+        <div class="card biggroup" style="flex:0 0 auto">
+          <div class="card-head tight" style="padding:0 0 0">
+            <h2>最大事件组</h2><span class="meta">G-0412</span>
+          </div>
+          <div class="num-lg" style="margin-top:16px">286<span class="unit">条</span></div>
+          <div class="t-main">某地法院裁判文书造假质疑</div>
+          <div class="kv">
+            <div class="row"><span>初始组</span><span>8 组 · 合并 7 次</span></div>
+            <div class="row"><span>平台</span><span>5 个</span></div>
+            <div class="row"><span>跨度</span><span>10-02 → 10-27</span></div>
+            <div class="row"><span>互动</span><span>12.4 万</span></div>
+          </div>
+        </div>
+
+        <div class="card flex1">
+          <div class="card-head">
+            <h2>组规模</h2><span class="meta">1,675 组</span>
+          </div>
+          <div class="card-body size-list" style="display:flex;flex-direction:column;justify-content:space-between;padding-bottom:18px">
+            <div class="row"><span class="nm">286 条</span><span class="qty">1</span><span class="aux">组</span></div>
+            <div class="row"><span class="nm">100–285</span><span class="qty">22</span><span class="aux">组</span></div>
+            <div class="row"><span class="nm">50–99</span><span class="qty">68</span><span class="aux">组</span></div>
+            <div class="row"><span class="nm">10–49</span><span class="qty">214</span><span class="aux">组</span></div>
+            <div class="row"><span class="nm">1–9</span><span class="qty">1,370</span><span class="aux">组</span></div>
+          </div>
+          <div class="card-foot"><span>单条成组 604 组</span><span>81.8% ≤ 9 条</span></div>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

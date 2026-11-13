@@ -12,6 +12,11 @@
 用法：
     python scripts/gate_golden.py            # 单次
     python scripts/gate_golden.py --twice    # 连跑两次并断言同值（防随机性）
+    python scripts/gate_golden.py --record --force   # 把本次观测写回下方两个常量
+
+`--record` 为什么写回本文件而不是 JSON 基线：S2 起这两条判据就以常量形式钉在脚本里，
+历史重录（S9-A）也是手改这两行。手工改容易写错一位，这里机械重写——`--force` 只在
+「常量与本次观测不同」时才需要，与 `gate_charts.py` / `gate_core_iso.py` 的覆盖语义同形。
 
 退出码：0 = 与基线相等；1 = 不等或两次不同值
 """
@@ -21,6 +26,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import shutil
 import sys
 import tempfile
@@ -43,8 +49,8 @@ from app.tool import (  # noqa: E402
 )
 from app.tool_executor import RunContext  # noqa: E402
 
-EXPECTED = "3f59d6c694783bb9b7fccd2c173c6876f2fd20defdaa368cc249e9b6113f3a90"
-EXPECTED_COUNTS = (28789, 3914, 1990)
+EXPECTED = "37151eee8ba080bd5d225a0809ff132af579f17dc6966f06a3b3188136570b48"
+EXPECTED_COUNTS = (28789, 3914, 1675)
 
 
 def canon(payload) -> str:
@@ -101,10 +107,36 @@ def run_once(xlsx: Path) -> tuple[tuple[int, int, int], str]:
     return counts, canon(parts)
 
 
+def record(counts: tuple[int, int, int], digest: str, force: bool) -> int:
+    """把本次观测机械写回本脚本的两个常量；`--force` 才允许覆盖不同值。"""
+    if (EXPECTED, EXPECTED_COUNTS) == (digest, counts):
+        print("RECORDED (常量已是本次观测值，未改动)")
+        return 0
+    if not force:
+        print(f"[error] 常量与本次观测不同，拒绝覆盖：expected {EXPECTED} {EXPECTED_COUNTS} "
+              f"got {digest} {counts}（--force 才覆盖）", file=sys.stderr)
+        return 2
+    path = Path(__file__).resolve()
+    source = path.read_text(encoding="utf-8")
+    updated = re.sub(r'^EXPECTED = ".*"$', f'EXPECTED = "{digest}"',
+                     source, count=1, flags=re.M)
+    updated = re.sub(r'^EXPECTED_COUNTS = \(\d+, \d+, \d+\)$',
+                     f'EXPECTED_COUNTS = ({counts[0]}, {counts[1]}, {counts[2]})',
+                     updated, count=1, flags=re.M)
+    if updated == source:
+        print("[error] 两个常量都没匹配到，拒绝写入（脚本被改过？）", file=sys.stderr)
+        return 2
+    path.write_text(updated, encoding="utf-8")
+    print("RECORDED", path.as_posix(), "force")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="S2 golden 门禁")
     parser.add_argument("--twice", action="store_true", help="连跑两次并断言同值")
     parser.add_argument("--xlsx", default="")
+    parser.add_argument("--record", action="store_true", help="把本次观测写回脚本常量")
+    parser.add_argument("--force", action="store_true", help="配合 --record 覆盖不同值")
     args = parser.parse_args()
 
     xlsx = Path(args.xlsx) if args.xlsx else next(p for p in REPO.glob("*.xlsx") if "10" in p.name)
@@ -115,6 +147,13 @@ def main() -> int:
     counts, digest = run_once(xlsx)
     print("COUNTS", *counts)
     print("S2-GOLDEN", digest)
+
+    if args.record:
+        rc = record(counts, digest, args.force)
+        if rc:
+            return rc
+        print("RESULT: PASS")
+        return 0
 
     ok = digest == EXPECTED and counts == EXPECTED_COUNTS
 

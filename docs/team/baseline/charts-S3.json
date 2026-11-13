@@ -25,8 +25,8 @@
       "title": "媒体环节分布（原始记录）"
     },
     "theme": {
-      "sha256": "2e0ea1cd75b688df2aae6cc8cf7cc1a8ebf9256a172716bab2990cb790dc999d",
-      "bytes": 57449,
+      "sha256": "477f57879142804e600d7cbf791db58bdf4ba08e061377a0f7df84ea52cc9b37",
+      "bytes": 57493,
       "status": "needs_review",
       "title": "敏感及负面并集主题候选分布"
     },
@@ -37,9 +37,9 @@
       "title": "敏感及负面并集属地候选分布"
     }
   },
-  "composite": "363dab5de7f826bd0d323113fd7d92b6b3656a632067b0901417ff3c69a2586d",
+  "composite": "10b18c654129db592b7c7cef73860b6d43a8aef5a47550b347390f112cc11ab9",
   "pillow": "12.2.0",
   "python": "3.13.18",
   "font_sha256": "d79c55e68b1131eea0cc1c47be4f572d964f28c682e143db2ad09c1e4cb07a3f",
-  "recorded_at": "2026-11-11T18:29:41+08:00"
+  "recorded_at": "2026-11-13T11:18:02+08:00"
 }

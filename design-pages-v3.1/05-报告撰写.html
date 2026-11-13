@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>05 报告撰写 · 康奈 洞研智台</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+  /* 仅本页布局差异 */
+  .outline{width:212px;flex:0 0 212px}
+  .outline .card-body{flex:1;display:flex;flex-direction:column;padding-bottom:2px}
+  .out-row{flex:1;display:flex;flex-direction:column;justify-content:center;padding:7px 0;position:relative;
+    border-bottom:1px solid var(--line-soft)}
+  .out-row:last-child{border-bottom:none}
+  .out-row[data-state="current"]{background:var(--grn-bg);margin:0 -20px;padding:7px 20px;border-bottom-color:transparent}
+  .out-row[data-state="current"]::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:2px;background:var(--grn)}
+  .out-l1{display:flex;align-items:baseline;justify-content:space-between;gap:6px}
+  .out-name{font-size:13px;color:var(--ink-2);letter-spacing:.2px}
+  .out-row[data-state="current"] .out-name{color:var(--ink);font-weight:600}
+  .out-num{font-size:11px;color:var(--muted);letter-spacing:.2px}
+  .out-sub{font-size:11px;color:var(--muted);letter-spacing:.2px;padding:3px 0 3px 16px}
+
+  .draft{padding:2px 26px 20px;overflow:hidden}
+  .d-h{font-size:13px;font-weight:700;color:var(--ink);letter-spacing:.6px;margin:12px 0 2px}
+  .d-h2{font-size:13px;font-weight:600;color:var(--ink-2);letter-spacing:.3px;margin:12px 0 2px}
+  .d-p{font-size:13px;line-height:1.95;color:var(--ink-2);letter-spacing:.1px;margin:0;padding:2px 8px 2px 10px;
+    margin-left:-10px;border-radius:3px;position:relative}
+  .d-p[data-active="true"]{background:var(--grn-bg)}
+  .d-p[data-active="true"]::before{content:"";position:absolute;left:0;top:3px;bottom:3px;width:2px;border-radius:2px;background:var(--grn)}
+  .ph{color:var(--grn-tx);font-weight:500;border-bottom:1px dotted var(--grn);padding-bottom:1px}
+  .fig{border:1px dashed #DCD8CE;border-radius:6px;background:#FCFBF8;height:72px;
+    display:flex;align-items:center;justify-content:center;margin:9px 0 3px;font-size:11px;color:var(--faint);letter-spacing:.4px}
+
+  .review{width:380px;flex:0 0 380px}
+  .note-group{display:flex;align-items:center;gap:8px;padding:13px 0 5px;font-size:11px;color:var(--muted);letter-spacing:.4px}
+  .note-group .ln{flex:1;height:1px;background:var(--line-soft)}
+  .note-head{display:flex;align-items:center;gap:9px}
+  .note-t{margin-top:5px}
+  .note-q{margin-top:4px}
+</style>
+</head>
+<body>
+<div class="page" id="page-writing">
+
+  <div class="topbar">
+    <div class="crumb"><b>康奈 · 洞研智台</b><span class="sep">/</span><span class="here">报告撰写</span></div>
+    <div class="topmeta">
+      <span>任务 AS-2610</span><span>2026 年 10 月 · 第 10 期</span>
+      <span class="saved"><i></i>自动保存</span>
+    </div>
+  </div>
+
+  <nav class="stage-progress" id="stage-progress">
+    <div class="stage" data-state="done"><span class="idx">01</span><span class="nm">工作台</span></div>
+    <div class="stage" data-state="done"><span class="idx">02</span><span class="nm">模板确认</span></div>
+    <div class="stage" data-state="done"><span class="idx">03</span><span class="nm">数据处理</span></div>
+    <div class="stage" data-state="done"><span class="idx">04</span><span class="nm">事件组审核</span></div>
+    <div class="stage" data-state="current"><span class="idx">05</span><span class="nm">报告撰写</span></div>
+  </nav>
+
+  <div class="main">
+    <div class="head">
+      <h1>报告撰写</h1>
+      <div class="head-actions">
+        <button class="btn-text quiet" id="act-export-draft">导出草稿</button>
+        <button class="btn btn-primary" id="act-send-review">发起终稿审核</button>
+      </div>
+    </div>
+
+    <div class="body">
+
+      <div class="card outline">
+        <div class="card-head">
+          <h2>大纲</h2><span class="meta">8,642 字</span>
+        </div>
+        <div class="card-body">
+          <div class="out-row">
+            <div class="out-l1"><span class="out-name">一、总体情况</span><span class="out-num">842</span></div>
+          </div>
+          <div class="out-row">
+            <div class="out-l1"><span class="out-name">二、情感与趋势</span><span class="out-num">1,406</span></div>
+            <div class="out-sub">图 1 · 情感</div>
+            <div class="out-sub">图 2 · 日趋势</div>
+          </div>
+          <div class="out-row">
+            <div class="out-l1"><span class="out-name">三、主题分布</span><span class="out-num">1,186</span></div>
+            <div class="out-sub">图 3 · 主题</div>
+          </div>
+          <div class="out-row" data-state="current">
+            <div class="out-l1"><span class="out-name">四、重点事件</span><span class="out-num">3,118</span></div>
+            <div class="out-sub">表 1 · 事件组</div>
+            <div class="out-sub">图 4 · 平台</div>
+          </div>
+          <div class="out-row">
+            <div class="out-l1"><span class="out-name">五、属地分布</span><span class="out-num">968</span></div>
+            <div class="out-sub">图 5 · 属地</div>
+          </div>
+          <div class="out-row">
+            <div class="out-l1"><span class="out-name">六、结论与建议</span><span class="out-num">1,122</span></div>
+          </div>
+        </div>
+        <div class="card-foot"><span>6 段落 · 5 图</span><span>4 / 6</span></div>
+      </div>
+
+      <div class="col grow">
+        <div class="card flex1">
+          <div class="card-head">
+            <h2>正文</h2><span class="meta">四、重点事件 · 3,118 字</span>
+          </div>
+          <div class="draft">
+            <div class="d-h">四、重点事件</div>
+            <p class="d-p">本期经去重归并后共 <span class="ph">1,675</span> 组，其中成员数 100 条以上 <span class="ph">23</span> 组，占事件组总量 <span class="ph">1.4%</span>，承载 <span class="ph">62.8%</span> 的负向预警条数。</p>
+
+            <div class="d-h2">（一）某地法院裁判文书造假质疑</div>
+            <p class="d-p" data-active="true">该事件组由 <span class="ph">8</span> 个初始组合并，累计 <span class="ph">286</span> 条，为本期最大事件组，时间跨度 <span class="ph">25</span> 天，覆盖微博、微信、抖音、新闻网站、论坛 5 类平台，累计互动 12.4 万。事件自 10-02 晚间由当事人发文起量，10-14 达到传播峰值，单日新增 <span class="ph">187</span> 条。<span class="caret"></span></p>
+            <p class="d-p">传播路径呈现「当事人发文 → 律师解读 → 媒体跟进 → 话题聚合」四段式推进。10-06 当地回应启动核查后，负向情绪占比由 <span class="ph">78.4%</span> 回落至 <span class="ph">64.1%</span>，但 10-14 话题聚合后再度抬升。</p>
+
+            <div class="fig">图 3 · 日趋势</div>
+
+            <div class="d-h2">（二）平坝区农村饮水管网改造施工缓慢</div>
+            <p class="d-p">该事件组累计 <span class="ph">34</span> 条，集中在 10-06 至 10-19，以村民留言与镇级答复口径不一的讨论为主，负向情绪占比 <span class="ph">91.2%</span>，无外地媒体转载。</p>
+
+            <div class="d-h2">（三）西秀区夜市占道经营与噪音投诉</div>
+            <p class="d-p">该事件组累计 <span class="ph">6</span> 条，10-20 起量后随城管整治通告发布回落，末条为 10-26 的重复转载，负向情绪占比 <span class="ph">58.3%</span>。</p>
+
+            <div class="fig">表 1 · 事件组</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card review">
+        <div class="card-head">
+          <h2>审校</h2><span class="meta">6 条</span>
+        </div>
+        <div class="card-body" style="padding-bottom:8px">
+
+          <div class="note-group"><span>重要 2 条</span><span class="ln"></span></div>
+          <div class="note">
+            <div class="note-head"><span class="pill" data-state="risk">重要</span><span class="aux">四、重点事件</span></div>
+            <div class="note-t">286 条含 3 条来源不可核实。</div>
+            <div class="note-q">原文：累计互动 12.4 万</div>
+          </div>
+          <div class="note">
+            <div class="note-head"><span class="pill" data-state="risk">重要</span><span class="aux">二、情感与趋势</span></div>
+            <div class="note-t">峰值 10-14 与图表 10-13 不一致。</div>
+            <div class="note-q">原文：日峰值单日 412 条</div>
+          </div>
+
+          <div class="note-group"><span>建议 4 条</span><span class="ln"></span></div>
+          <div class="note">
+            <div class="note-head"><span class="pill" data-state="info">建议</span><span class="aux">三、主题分布</span></div>
+            <div class="note-t">35.5% 保留一位小数即可。</div>
+            <div class="note-q">原文：文化旅游 4,588 条</div>
+          </div>
+          <div class="note">
+            <div class="note-head"><span class="pill" data-state="info">建议</span><span class="aux">一、总体情况</span></div>
+            <div class="note-t">首段可补同比，与上月对齐。</div>
+            <div class="note-q">原文：共监测 28,789 条</div>
+          </div>
+          <div class="note">
+            <div class="note-head"><span class="pill" data-state="info">建议</span><span class="aux">六、结论与建议</span></div>
+            <div class="note-t">三条建议与四个高发问题未对应。</div>
+            <div class="note-q">原文：建议持续关注文化旅游</div>
+          </div>
+          <div class="note">
+            <div class="note-head"><span class="pill" data-state="info">建议</span><span class="aux">五、属地分布</span></div>
+            <div class="note-t">其他 2,020 条需拆出区县明细。</div>
+            <div class="note-q">原文：其余区县合计 2,020 条</div>
+          </div>
+
+        </div>
+        <div class="card-foot"><span>2 重要</span><span>4 建议</span></div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
