@@ -7,7 +7,7 @@
     4 白名单：**同一份样本、同一个 build_table 调用**，A 包下放行、B 包下 `tool_not_allowed`
       （负向对照；一个"永远拒绝"的门禁和一个"正确拒绝"的门禁是两件事）；
     5 基座：`CORE-HASH` 与 `APP-HASH` 与当前层基线逐字符相等（P7 最硬的一条；S8 起每层一档，
-       S10-H 起现指 `core-S10-H.json`——该档三项收尾：`core/slot_writer.py` 删掉写死的 9 个客户
+       S10-H 起现指 `core-S10-I.json`——该档三项收尾：`core/slot_writer.py` 删掉写死的 9 个客户
        槽位 id（改由客户包 `template.json` 的 `writer_slots` 声明），hotspot 提示词删掉两处硬编码
        类别清单（`core_files` 仍 92、`core_hash` 前进），`app/reviewers.py` 与
        `app/api_views/{approval,writing}.py` 改调 `writer_slot_ids()`（`app_hash` 前进），
@@ -38,7 +38,7 @@ from app.schemas import TaskState, ToolCall  # noqa: E402
 from app.storage import Store  # noqa: E402
 from app.tool_executor import RunContext, execute_tool  # noqa: E402
 
-BASELINE = REPO / "docs" / "team" / "baseline" / "core-S10-H.json"
+BASELINE = REPO / "docs" / "team" / "baseline" / "core-S10-I.json"
 SMOKE = REPO / "scripts" / "smoke_package_b.py"
 
 PROMPT_KEYS = {
