@@ -99,9 +99,9 @@ def test_event_group_decision_requires_complete_nonoverlapping_members(tmp_path)
 def test_template_has_definitions_before_source_body():
     import json
     root=Path(__file__).resolve().parents[1]
-    manifest=json.loads((root/'templates/anshun-colored/report.template.json').read_text(encoding='utf-8'))
+    manifest=json.loads((root/'templates/anshun_monthly/report.template.json').read_text(encoding='utf-8'))
     from app.ooxml import read_docx
-    doc=read_docx(root/'templates/anshun-colored/template-with-placeholders.docx')
+    doc=read_docx(root/'templates/anshun_monthly/template-with-placeholders.docx')
     assert len(manifest['placeholders'])==99
     assert doc['blocks'][0]['text'].startswith('占位符定义')
     assert any('一、涉安信息传播态势' in b['text'] for b in doc['blocks'][100:])

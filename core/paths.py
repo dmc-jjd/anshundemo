@@ -10,6 +10,10 @@
 `template_dir` 是 S8-L4 新增的第三个注入点：`slot_writer` 读客户模板目录（占位符清单 +
 带占位符的 docx）需要它。模板目录名是宿主绑定（换包即换模板），留在基座就是客户数据
 进基座；注入面与 `package_dir` 完全同构（§6 D7 选 (a) `paths.template_dir()`）。
+
+`configure_template_dir` 只记路径、不碰盘；`template_dir()` 在**取用时**校验目录是否存在
+（未配置与目录缺失是两种错误），import 期不访问模板目录——有些包不做 docx 相关工作，
+仍要能启动、能跑数据处理。
 """
 
 from __future__ import annotations
@@ -49,6 +53,15 @@ def configure_template_dir(path) -> None:
 
 
 def template_dir() -> Path:
+    """客户模板目录；**取用时**才校验存在性，import 期不碰盘。
+
+    两种错误必须区分：
+    - 未配置 → `template_dir_not_configured`
+    - 已配置但目录不存在（该包没有自己的模板）→ `template_dir_missing:<包名>`
+    """
     if _template_dir is None:
         raise RuntimeError('template_dir_not_configured')
+    if not _template_dir.is_dir():
+        raise RuntimeError(f'template_dir_missing:{_template_dir.name}'
+                           f'（期望 templates/{_template_dir.name}/，该目录不存在）')
     return _template_dir

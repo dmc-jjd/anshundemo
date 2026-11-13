@@ -1,7 +1,7 @@
 """终稿人工审核：A4 渲染模型 + 人工覆盖 + 修改日志。
 
 用户选定的方案 3（自研 A4 页 + contenteditable）的领域层：
-- **全部占位符可编辑**：99 个占位符（`templates/anshun-colored/report.template.json`）默认值来自
+- **全部占位符可编辑**：99 个占位符（`templates/<包>/report.template.json`）默认值来自
   `app.export.template_values()`（与导出 Word 同一批计算值，不许有第二套算法）；
 - **以提交的终稿为准**：人工覆盖存在 `TaskState.metadata['final_overrides']`，导出时经
   `export_docx(..., overrides=...)` 优先于计算结果；

@@ -57,6 +57,7 @@ import yaml
 
 REPO = Path(__file__).resolve().parents[1]
 PACKAGES = REPO / 'packages'
+TEMPLATES = REPO / 'templates'
 BASE_PROMPTS = REPO / 'core' / 'prompts' / 'base'
 
 #: features 键的读取点（见 docstring「常量从源码读」）。新增消费者时在此追加。
@@ -625,28 +626,30 @@ def check_template(c: PackageCheck) -> Section:
                 isinstance(slot, str) and slot.strip() for slot in slots):
             errs.append('writer_slots 必须是非空字符串数组')
         else:
-            templates_dir = c.dir / 'templates'
-            files = sorted(templates_dir.glob('*/report.template.json')) if templates_dir.is_dir() else []
-            if not files:
-                notes.append(f'writer_slots: 包内无 templates/*/report.template.json，'
-                             f'{len(slots)} 个槽位未机械核对（跳过）；'
-                             '根因：宿主把模板目录写死为 templates/anshun-colored'
-                             '（app/__init__.py:12），换包也不变')
+            # 模板目录按客户包隔离（宿主 `app/__init__.py` 用 `templates/<PACKAGE>/` 配置
+            # `core.paths.template_dir()`），所以只认本包自己的那份占位符清单。
+            template_manifest = TEMPLATES / c.name / 'report.template.json'
+            if not template_manifest.is_file():
+                notes.append(f'writer_slots: 该包没有 templates/{c.name}/ 目录'
+                             f'（{template_manifest.relative_to(REPO).as_posix()} 不存在），'
+                             f'{len(slots)} 个槽位未机械核对（跳过）')
             else:
-                available: set[str] = set()
-                for path in files:
-                    try:
-                        manifest, _ = load_json_strict(path)
-                    except JsonError as exc:
-                        errs.append(str(exc))
-                        continue
+                try:
+                    manifest, _ = load_json_strict(template_manifest)
+                except JsonError as exc:
+                    errs.append(str(exc))
+                else:
                     placeholders = manifest.get('placeholders') if isinstance(manifest, dict) else None
-                    for placeholder in placeholders or []:
-                        if isinstance(placeholder, dict) and isinstance(placeholder.get('id'), str):
-                            available.add(placeholder['id'])
-                unknown = [slot for slot in slots if slot not in available]
-                if unknown:
-                    errs.append('writer_slots 未在模板 placeholders 中: ' + ','.join(unknown))
+                    available = {
+                        placeholder['id'] for placeholder in placeholders or []
+                        if isinstance(placeholder, dict) and isinstance(placeholder.get('id'), str)
+                    }
+                    unknown = [slot for slot in slots if slot not in available]
+                    if unknown:
+                        errs.append('writer_slots 未在模板占位符中: ' + ','.join(unknown))
+                    else:
+                        notes.append(f'writer_slots: {len(slots)} 个槽位均在 '
+                                     f'templates/{c.name}/report.template.json 的 placeholders 中')
 
     if errs:
         return _fail('TEMPLATE', errs, notes)

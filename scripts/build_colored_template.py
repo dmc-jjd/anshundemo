@@ -1,13 +1,21 @@
-"""Preserve the supplied Word package while replacing variable runs with named slots."""
+"""Preserve the supplied Word package while replacing variable runs with named slots.
+
+模板目录按客户包隔离：`templates/<package>/`（`--package`，默认 `anshun_monthly`）。
+"""
 from __future__ import annotations
-import hashlib,json,re,zipfile
+import argparse,hashlib,json,re,zipfile
 from pathlib import Path
 from lxml import etree as ET
 
+_parser=argparse.ArgumentParser(description='从源 Word 生成带占位符的客户模板（按包写 templates/<package>/）')
+_parser.add_argument('--package',default='anshun_monthly',help='客户包名（模板目录 templates/<package>/）')
+PACKAGE=_parser.parse_args().package
+
 ROOT=Path(__file__).resolve().parents[1]
-SOURCE=ROOT/'templates/anshun-colored/source-2026-08.docx'
-TARGET=ROOT/'templates/anshun-colored/template-with-placeholders.docx'
-MANIFEST=ROOT/'templates/anshun-colored/report.template.json'
+TEMPLATE_DIR=ROOT/'templates'/PACKAGE
+SOURCE=TEMPLATE_DIR/'source-2026-08.docx'
+TARGET=TEMPLATE_DIR/'template-with-placeholders.docx'
+MANIFEST=TEMPLATE_DIR/'report.template.json'
 NS='http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 W=lambda x:f'{{{NS}}}{x}'
 COLORS={'red':'计算数据','green':'表格内原文内容概要','yellow':'所有事件聚类','magenta':'数据现有字段下内容','lightGray':'事件原文概述','unmarked':'未着色表格动态项'}
@@ -166,8 +174,8 @@ with zipfile.ZipFile(SOURCE) as zin:
         for item in zin.infolist(): zout.writestr(item,xml if item.filename=='word/document.xml' else zin.read(item.filename))
 manifest={'template_id':'anshun-monthly-colored','name':'安顺月报 · 五色逐项占位模板','status':'candidate_requires_review','source_file':SOURCE.name,'source_sha256':hashlib.sha256(SOURCE.read_bytes()).hexdigest(),'template_file':TARGET.name,'template_sha256':hashlib.sha256(TARGET.read_bytes()).hexdigest(),'color_mapping':COLORS,'placeholders':slots,'recommendations_max':5,'scope_requirements':{'B17_sentiment_peak':'全量原始记录','B17_negative_warning':'重点预警去重事件，负面与预警交集定义待业务确认','B26_platform':'全量原始记录','B29_media':'按媒体级别与来源筛选的原始记录','B30_categories_districts_top10':'用户确认：舆情调性=负面 OR 已预警的原始行并集，同一行只计一次；其上人工确认事件组','risk_and_recommendations':'已确认事实与单独核验的未来窗口证据'},'review_items':['正文绿色峰值事件示例的标色已由用户确认；TOP10 表格原本未标绿，现按未着色动态表格项处理','红色的同比判断与景区管理、游客体验等文字为源文误标，已改为文字槽位','8 月源报告数字无法用 10 月工作簿直接核验','10 月全量表事件分类整列为空；独立聚类工具产候选，817 行测试表仅供对照','第一部分（四）并集范围已确认；第一部分（一）重点预警槽位仍需单独规则，两个历史 272 数字不得强行等同','旧图表已替换为图表占位符，正式图表需同一事实版本重绘']}
 MANIFEST.write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
-(ROOT/'templates/anshun-colored/migration-manifest.json').write_text(json.dumps({'source_file':SOURCE.name,'source_sha256':manifest['source_sha256'],'output_file':TARGET.name,'output_sha256':manifest['template_sha256'],'transformations':['逐项占位符定义前置','动态高亮内容改为具名占位符','误标红色文字改为文字槽位','五张历史图像改为图表槽位','TOP10 保留原表格结构并替换事件/热度单元格'],'review_items':manifest['review_items']},ensure_ascii=False,indent=2),encoding='utf-8')
+(TEMPLATE_DIR/'migration-manifest.json').write_text(json.dumps({'source_file':SOURCE.name,'source_sha256':manifest['source_sha256'],'output_file':TARGET.name,'output_sha256':manifest['template_sha256'],'transformations':['逐项占位符定义前置','动态高亮内容改为具名占位符','误标红色文字改为文字槽位','五张历史图像改为图表槽位','TOP10 保留原表格结构并替换事件/热度单元格'],'review_items':manifest['review_items']},ensure_ascii=False,indent=2),encoding='utf-8')
 properties={s['id']:{'type':'number' if s['slot_type']=='number' and s['original_text'].replace('.','',1).isdigit() else 'string','description':s['semantic']} for s in slots}
-(ROOT/'templates/anshun-colored/report-values.schema.json').write_text(json.dumps({'$schema':'https://json-schema.org/draft/2020-12/schema','title':'安顺月报五色模板逐项值','type':'object','properties':properties,'required':list(properties),'additionalProperties':False},ensure_ascii=False,indent=2),encoding='utf-8')
-(ROOT/'templates/anshun-colored/layout.json').write_text(json.dumps({'source_docx':SOURCE.name,'template_docx':TARGET.name,'preserve_original_styles':True,'editable_top10_table':True,'chart_slots':['CHART_1','CHART_2','CHART_3','CHART_4','CHART_5'],'visual_qa':'pending_renderer'},ensure_ascii=False,indent=2),encoding='utf-8')
+(TEMPLATE_DIR/'report-values.schema.json').write_text(json.dumps({'$schema':'https://json-schema.org/draft/2020-12/schema','title':'安顺月报五色模板逐项值','type':'object','properties':properties,'required':list(properties),'additionalProperties':False},ensure_ascii=False,indent=2),encoding='utf-8')
+(TEMPLATE_DIR/'layout.json').write_text(json.dumps({'source_docx':SOURCE.name,'template_docx':TARGET.name,'preserve_original_styles':True,'editable_top10_table':True,'chart_slots':['CHART_1','CHART_2','CHART_3','CHART_4','CHART_5'],'visual_qa':'pending_renderer'},ensure_ascii=False,indent=2),encoding='utf-8')
 print('slots',len(slots),'review',sum(s['review_required'] for s in slots),'source',manifest['source_sha256'])

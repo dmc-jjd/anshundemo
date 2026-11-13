@@ -8,11 +8,12 @@ from app.agent import AGENT_DEFINITIONS
 from app.slot_writer import SlotAnswer
 from app.storage import Store
 from app.ooxml import read_docx
+from core import paths
 
 slot_id='B29_LIGHTGRAY_04'
-manifest=json.loads((ROOT/'templates/anshun-colored/report.template.json').read_text(encoding='utf-8'))
+manifest=json.loads((paths.template_dir()/'report.template.json').read_text(encoding='utf-8'))
 slot=next(x for x in manifest['placeholders'] if x['id']==slot_id)
-paragraph=next(b['text'] for b in read_docx(ROOT/'templates/anshun-colored/template-with-placeholders.docx')['blocks'] if b['text'].startswith('（三）') and '{{'+slot_id+'}}' in b['text'])
+paragraph=next(b['text'] for b in read_docx(paths.template_dir()/'template-with-placeholders.docx')['blocks'] if b['text'].startswith('（三）') and '{{'+slot_id+'}}' in b['text'])
 before,_,after=paragraph.partition('{{'+slot_id+'}}')
 store=Store(DATA);task=store.get_task('9720f37ef9d646c8b81655c2d0a73afb')
 records=store.get_artifact(task.result_refs['import_records'])['records']

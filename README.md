@@ -17,8 +17,8 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8765
 
 ## 已接入的真实材料
 
-- 用户提供的 8 月标色 Word 已复制为 [source-2026-08.docx](templates/anshun-colored/source-2026-08.docx)，哈希与差异见 [模板清单](templates/anshun-colored/report.template.json)。
-- [template-with-placeholders.docx](templates/anshun-colored/template-with-placeholders.docx) 将 99 个占位符的逐项定义放在原模板正文之前，固定正文、可编辑 TOP10 表格和原 Word 样式保留。历史图像已替换成 5 个图表占位符。源 Word 的绿色峰值事件示例是正确的；红色同比判断和问题概述已改为文字型槽位。
+- 用户提供的 8 月标色 Word 已复制为 [source-2026-08.docx](templates/anshun_monthly/source-2026-08.docx)，哈希与差异见 [模板清单](templates/anshun_monthly/report.template.json)。
+- [template-with-placeholders.docx](templates/anshun_monthly/template-with-placeholders.docx) 将 99 个占位符的逐项定义放在原模板正文之前，固定正文、可编辑 TOP10 表格和原 Word 样式保留。历史图像已替换成 5 个图表占位符。源 Word 的绿色峰值事件示例是正确的；红色同比判断和问题概述已改为文字型槽位。
 - 目录中的 6、7、8、10 月 DOCX 现均可读，10 月文件已被用户替换为标准 DOCX。10 月全量 XLSX 的明细在第 3 工作表，共 28,789 条；另一负面预警 XLSX 第 3 工作表共 817 条，仅用于对照聚类候选。
 
 ## 演示顺序
