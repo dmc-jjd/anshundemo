@@ -18,6 +18,8 @@ from .api_views.data_review import apply_event_settings
 from .api_views.task_resume import resume_plan
 from .api_views.template import apply_definition_patch,confirm_candidate
 from .template_draft_api import router as manual_definition_router
+from .template_advice_api import router as template_advice_router
+from .final_document_api import router as final_document_router
 from .api_views.writing import apply_slot_values,assemble_review_view
 
 store=Store(); deps=Dependencies(store)
@@ -25,6 +27,12 @@ app=FastAPI(title='安顺月报工作台 Demo')
 # 手动定义草稿的三个接口（选区→选择题→占位符/字段 JSON），刻意不进 OpenAPI：
 # 见 app/template_draft_api.py 与 docs/模板字段手动定义设计.md。
 app.include_router(manual_definition_router)
+# 确认后的只读 LLM 审核（只提修改意见、不改模板），同样刻意不进 OpenAPI：
+# 见 app/template_advice.py 与 app/template_advice_api.py。
+app.include_router(template_advice_router)
+# 终稿人工审核页（A4 渲染模型 / 保存人工覆盖 / 修改日志 / 还原），同样刻意不进 OpenAPI：
+# 见 app/final_document.py 与 app/final_document_api.py。
+app.include_router(final_document_router)
 app.mount('/static',StaticFiles(directory=Path(__file__).parent/'static'),name='static')
 UPLOADS=DATA/'uploads'; UPLOADS.mkdir(exist_ok=True)
 
@@ -571,7 +579,8 @@ def export(task_id:str,req:ExportRequest):
     draft=store.get_artifact(state.draft_ref)
     if req.mode=='final' and state.metadata.get('approval_hash')!=draft['content_hash']: raise HTTPException(409,'current_approval_required')
     issues=[x for x in state.review_items if x['status']!='resolved']
-    data=export_docx(draft,store.get_artifact(draft['fact_ref']),None,req.mode,issues,local_store=store)
+    data=export_docx(draft,store.get_artifact(draft['fact_ref']),None,req.mode,issues,local_store=store,
+                     overrides=state.metadata.get('final_overrides') or None)
     ref=store.put_artifact(task_id,'export_meta',{'mode':req.mode,'fact_ref':draft['fact_ref'],'draft_hash':draft['content_hash'],'sha256':hashlib.sha256(data).hexdigest()})
     path=DATA/'artifacts'/f'{ref}.docx'; path.write_bytes(data)
     return {'artifact_id':ref,'download_url':f'/api/artifacts/{ref}/download','sha256':hashlib.sha256(data).hexdigest()}

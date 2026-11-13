@@ -4,15 +4,19 @@ import html,io,zipfile,re,base64,copy
 from pathlib import Path
 from core import paths
 
-def _source_template_draft(draft,facts,issues):
-    from lxml import etree as ET
+def template_values(draft,facts,issues=None,store=None):
+    """模板 99 个占位符的「计算结果」字典——从 `_source_template_draft` 原样抽出。
+
+    抽出只为复用（终稿 A4 页要显示同一批值），算法一行未改：
+    - `store=None` 时仍用 `Store(DATA)`（`DATA` 在调用期取自 `app.config`，测试可注入数据根）；
+    - 没有 `calculate_metrics` 工件时返回 `{}`，调用方据此走原来的「无模板」分支。
+    """
     from .config import DATA
-    path=paths.template_dir()/'template-with-placeholders.docx'
-    if not path.exists(): return None
-    ref=facts.get('result_refs',{}).get('calculate_metrics')
-    if not ref: return None
     from .storage import Store
-    metrics=Store(DATA).get_artifact(ref)
+    ref=facts.get('result_refs',{}).get('calculate_metrics')
+    if not ref: return {}
+    store=store or Store(DATA)
+    metrics=store.get_artifact(ref)
     total=metrics['record_count']; sentiment=metrics['sentiment']
     def pct(x): return f'{x/total*100:.2f}' if total else '缺失'
     month=facts.get('report_month') or '2026-10'
@@ -64,6 +68,20 @@ def _source_template_draft(draft,facts,issues):
     for row in facts.get('top10',[]):
         values[f'TOP10_{row["rank"]:02}_EVENT']=row['summary']
         values[f'TOP10_{row["rank"]:02}_HEAT']=str(row['negative_warning_count'])
+    return values
+
+def _source_template_draft(draft,facts,issues,overrides=None):
+    from lxml import etree as ET
+    from .config import DATA
+    from .storage import Store
+    path=paths.template_dir()/'template-with-placeholders.docx'
+    if not path.exists(): return None
+    values=template_values(draft,facts,issues)
+    if not values: return None
+    if overrides:
+        # 人工覆盖优先于计算结果：终稿以人工研判提交值为准（见 app/final_document.py）。
+        # 只替换模板里真实出现的 {{key}}，未知 key 是空操作，不改变任何既有输出。
+        values.update({str(key):str(value) for key,value in overrides.items()})
     with zipfile.ZipFile(path) as zin:
         root=ET.fromstring(zin.read('word/document.xml'))
         ns={'w':'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
@@ -130,7 +148,14 @@ def _table(rows):
         body.append('<w:tr>'+''.join('<w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/></w:tcPr>'+_p(v)+'</w:tc>' for v in row)+'</w:tr>')
     return '<w:tbl><w:tblPr><w:tblBorders><w:bottom w:val="single" w:sz="4"/></w:tblBorders></w:tblPr>'+''.join(body)+'</w:tbl>'
 
-def export_docx(draft:dict,facts:dict,template:dict|None,mode:str,issues:list[dict],local_store=None)->bytes:
+def export_docx(draft:dict,facts:dict,template:dict|None,mode:str,issues:list[dict],local_store=None,overrides:dict|None=None)->bytes:
+    """导出 Word。
+
+    `overrides` 是终稿人工审核页保存的槽位覆盖：键为占位符 id（如 `B17_RED_01`），
+    优先级**高于**计算结果。`overrides=None`（默认）时输出与引入该参数前逐字节相同。
+    说明：结构化模板分支（`draft['structured_template_ref']`）不消费该参数——它的槽位
+    来源是 `draft['slot_values']`，覆盖语义由终稿页自身承担。
+    """
     if mode=='final' and issues: raise ValueError('unresolved_blockers')
     if draft.get('structured_template_ref'):
         from .structured_template import load_confirmed_template,render_structured_docx
@@ -146,7 +171,7 @@ def export_docx(draft:dict,facts:dict,template:dict|None,mode:str,issues:list[di
             charts[name]=chart
         return render_structured_docx(version,draft.get('slot_values',{}),set(draft.get('evidence_refs',[])),require_complete=mode=='final',charts=charts)
     if mode=='draft':
-        source=_source_template_draft(draft,facts,issues)
+        source=_source_template_draft(draft,facts,issues,overrides)
         if source is not None: return source
     parts=[_p('安顺月报工作台结构演示稿','Title'),_p('报告状态：'+('终稿' if mode=='final' else '草稿')),_p('正式事实引用：'+draft['fact_ref'])]
     for section in draft['sections']:

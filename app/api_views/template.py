@@ -29,6 +29,50 @@ def apply_definition_patch(store, state, req):
     return None,None
 
 
+MANUAL_POLICY_VERSION = 'MANUAL-1'
+MANUAL_SOURCE = 'manual_definition'
+
+
+def manual_validation(store, state, candidate_ref, candidate):
+    """手工定义草稿 → (合成 validation, 生效候选)；不满足条件返回 (None, None)。
+
+    这是**并列入口**，不是放宽模型研判：只有「草稿确实是这份候选的完整重放」时才合成一条
+    `source=manual_definition` / `policy_version=MANUAL-1` 的 validation，之后 confirm 的全部
+    校验（candidate_hash / candidate_ref / input_ref / input_hash / review_refs、来源报告、
+    业务问题、规则）照旧逐条执行。草稿不完整或不是基于这份候选时不合成，原逻辑原样生效。
+    """
+    from ..template_draft import current_draft
+    from ..template_review import digest
+    draft = current_draft(store, state)
+    if not draft or draft.get('base_ref') != candidate_ref:
+        return None, None
+    if [b['index'] for b in draft.get('blocks') or []] != [b['index'] for b in candidate.get('blocks') or []]:
+        return None, None
+    draft_fields = {field['id'] for field in draft.get('fields') or []}
+    removed = {fid for entry in draft.get('selection_log') or []
+               for fid in entry.get('removed_fields') or []}
+    # 候选的每个字段都必须有着落：仍在草稿里，或被这条手动定义显式改回固定文字。
+    if any(field['id'] not in draft_fields and field['id'] not in removed
+           for field in candidate.get('fields') or []):
+        return None, None
+    input_ref = state.metadata.get('template_input_ref')
+    if not input_ref:
+        return None, None
+    from ..structured_template import _schema
+    effective = {**candidate, 'blocks': draft['blocks'], 'fields': draft['fields']}
+    effective['output_schema'] = _schema(effective['fields'])
+    effective['writer_schema'] = _schema(effective['fields'], True)
+    validation = {
+        'validation': 'passed', 'source': MANUAL_SOURCE,
+        'candidate_hash': digest(effective), 'candidate_ref': candidate_ref,
+        'policy_version': MANUAL_POLICY_VERSION, 'input_ref': input_ref,
+        'input_hash': digest(store.get_artifact(input_ref)),
+        'review_refs': [state.metadata.get('manual_template_draft_ref')],
+        'manual_log': draft.get('selection_log') or [],
+    }
+    return validation, effective
+
+
 def confirm_candidate(store, state, req):
     """人工确认模板候选。返回 (error, state)：已确认过则原样返回 state。"""
     if state.kind!='template': return (422,'not_template_task'),None
@@ -40,11 +84,21 @@ def confirm_candidate(store, state, req):
     if req.candidate_ref!=state.metadata['structured_template_ref']:return (409,'stale_template_candidate'),None
     candidate=store.get_artifact(state.metadata['structured_template_ref'])
     from ..template_review import digest,POLICY_VERSION
+    manual,effective=manual_validation(store,state,state.metadata['structured_template_ref'],candidate)
+    if manual is not None:
+        # 生效候选 = 草稿的 blocks/fields（用户看到的就是它）；validation 随之重算。
+        candidate=effective
+        state.metadata['template_validation_ref']=store.put_artifact(state.id,'template_validation',manual)
     validation_ref=state.metadata.get('template_validation_ref')
     if not validation_ref:return (409,'template_semantic_review_required'),None
     validation=store.get_artifact(validation_ref)
+    # 入口来源只决定 policy_version 的取值：手工入口只认本次刚合成的 MANUAL-1，
+    # 模型研判入口仍然只认 POLICY_VERSION。
+    manual_source=validation.get('source')==MANUAL_SOURCE
+    if manual_source and manual is None:return (409,'template_semantic_review_required'),None
+    policy=MANUAL_POLICY_VERSION if manual_source else POLICY_VERSION
     if (validation.get('validation')!='passed' or validation.get('candidate_hash')!=digest(candidate)
-        or validation.get('candidate_ref')!=req.candidate_ref or validation.get('policy_version')!=POLICY_VERSION
+        or validation.get('candidate_ref')!=req.candidate_ref or validation.get('policy_version')!=policy
         or validation.get('input_ref')!=state.metadata.get('template_input_ref')
         or validation.get('input_hash')!=digest(store.get_artifact(validation['input_ref']))
         or not validation.get('review_refs')):return (409,'template_semantic_review_required'),None

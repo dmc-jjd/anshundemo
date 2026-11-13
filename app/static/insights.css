@@ -1,1 +1,29 @@
-.chart-settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:18px 0}.chart-setting-card{border:1px solid #d8e3e8;padding:14px;background:#f8fbfc;border-radius:6px}.chart-style-icon{width:110px;height:90px;display:block}.chart-setting-card select{width:100%;padding:8px;font:inherit}.usage-panel{border-top:1px solid #d8e3e8;margin:25px 0;padding-top:10px}.usage-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.usage-stats small,.usage-stats strong{display:block}.usage-stats small{color:#617183}.usage-stats strong{font-size:21px;color:#136789;overflow-wrap:anywhere}.usage-panel table{font-size:12px;width:100%;border-collapse:collapse}.usage-panel td,.usage-panel th{border-bottom:1px solid #d8e3e8;padding:8px;text-align:left;overflow-wrap:anywhere}.usage-panel details{overflow-x:auto}
+/* 图表样式与 Token 用量面板 · 与 style.css 同源令牌（重构：2026-11）
+   类契约不变：chart-settings-grid / chart-setting-card / chart-style-icon /
+   usage-panel / usage-stats。 */
+
+.chart-settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:14px 0}
+.chart-setting-card{border:1px solid #ECE9E2;border-radius:11px;padding:12px 13px;background:#fff;min-width:0}
+.chart-setting-card strong{display:block;font-size:12.3px;color:#242A2C}
+.chart-setting-card select{width:100%;margin-top:9px}
+.chart-setting-card .help{margin:7px 0 0;font-size:11.3px;line-height:1.55;color:#6D7172}
+.chart-style-icon{width:100%;max-width:110px;height:auto;display:block;margin:9px 0 4px;
+  border-radius:6px;background:#FBFAF5;border:1px solid #F3F1EB;padding:4px}
+
+.usage-panel{border-top:1px solid #F3F1EB;margin:18px 0 0;padding-top:14px}
+.usage-panel h3{margin:0 0 4px;font-size:13.5px;font-weight:700;color:#242A2C}
+.usage-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:10px 0}
+.usage-stats small{display:block;font-size:10.8px;color:#9EA29F;letter-spacing:.3px}
+.usage-stats strong{display:block;font-size:18px;font-weight:600;letter-spacing:-.3px;color:#1F2527;
+  margin-top:3px;overflow-wrap:anywhere}
+.usage-panel table{font-size:11.6px;width:100%;border-collapse:separate;border-spacing:0;margin-top:8px}
+.usage-panel td,.usage-panel th{border-bottom:1px solid #F3F1EB;padding:7px 9px;text-align:left;
+  overflow-wrap:anywhere;vertical-align:top;color:#2E3436}
+.usage-panel th{background:#F6F5F0;color:#858985;font-weight:500;white-space:nowrap}
+.usage-panel details{overflow-x:auto}
+.usage-panel > .help{font-size:11.6px;line-height:1.6;color:#6D7172}
+
+@media (max-width:719px){
+  .chart-settings-grid{grid-template-columns:1fr}
+  .usage-stats{grid-template-columns:1fr 1fr}
+}

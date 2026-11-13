@@ -29,6 +29,7 @@ agent_prompts:
   template_analyst.repair: agent/template_analyst.repair.md
   data_processor.next_tool: agent/data_processor.next_tool.md
   template_analyst.charts: agent/template_analyst.charts.md
+  template_analyst.advice: agent/template_analyst.advice.md
   model.json_output: agent/model.json_output.md
   model.tool_budget_exhausted: agent/model.tool_budget_exhausted.md
 template_policy:

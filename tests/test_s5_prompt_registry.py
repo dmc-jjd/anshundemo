@@ -22,8 +22,8 @@ PROMPT_KEYS = (
     'writer.slot.narrative', 'writer.slot.titles', 'event_judge.top10',
     'event_classifier.classify', 'event_summarizer.summary', 'event_judge.pairs',
     'event_judge.repair', 'template_analyst.batch', 'template_analyst.repair',
-    'data_processor.next_tool', 'template_analyst.charts', 'model.json_output',
-    'model.tool_budget_exhausted',
+    'data_processor.next_tool', 'template_analyst.charts', 'template_analyst.advice',
+    'model.json_output', 'model.tool_budget_exhausted',
 )
 
 # 角色序即 roles.yaml 声明序（§0.3.3）
@@ -46,7 +46,7 @@ def test_prompt_keys_and_order():
 
 def test_prompt_values_are_str_and_nonempty():
     prompts = registry.prompts()
-    assert len(prompts) == 32
+    assert len(prompts) == 33
     assert all(isinstance(value, str) and value for value in prompts.values())
 
 

@@ -11,7 +11,7 @@
       "网址": "url", "媒体环节": "platform", "媒体属性": "media_attribute",
       "媒体级别": "media_level", "舆情调性": "sentiment", "是否预警": "warning"
     },
-    "dedup": { "threshold": 0.65, "candidate_floor_ratio": 0.6 }
+    "dedup": { "threshold": 0.65, "candidate_floor_ratio": 0.6, "merge_rounds": 2, "merge_threshold": 0.50 }
   },
   "vocabulary": {
     "localities": {

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>终稿人工审核 · 安顺月报工作台</title>
+<!-- 方案 3：自研 A4 页 + contenteditable。
+     只有一种操作——编辑占位符内容；图表不可编辑。
+     本页只读 app/static/style.css 的现有令牌，终稿页样式见文件末尾「终稿人工审核」段。 -->
+<link rel="stylesheet" href="/static/style.css?v=20261113-final-document">
+</head>
+<body class="fd-body">
+<header class="topbar fd-topbar">
+  <div class="brand">
+    <span class="seal" aria-hidden="true">终</span>
+    <div class="brand-text">
+      <strong>终稿人工审核</strong>
+      <small>人工研判后提交的终稿为最终稿 · 每处修改留痕</small>
+    </div>
+  </div>
+  <nav aria-label="终稿页信息">
+    <span class="fd-task">任务 <span id="fdTaskId" class="mono">—</span></span>
+    <span class="fd-task">阶段 <span id="fdPhase">—</span></span>
+  </nav>
+  <div class="topmeta"><span id="fdStatus" class="fd-status">正在载入终稿…</span></div>
+</header>
+
+<main class="fd-main" id="fdMain">
+  <div class="fd-stage">
+    <details class="fd-defs" id="fdDefinitions">
+      <summary>核验口径 <b id="fdDefCount">99</b> 项<span class="fd-defs-hint">占位符定义与核验口径（默认收起；展开同样可直接编辑槽位内容）</span></summary>
+      <div class="fd-defs-body" id="fdDefBody"></div>
+    </details>
+
+    <article class="fd-sheet" id="fdSheet" aria-label="A4 终稿纸面">
+      <p class="fd-loading">正在渲染终稿…</p>
+    </article>
+  </div>
+</main>
+
+<footer class="fd-bottom" id="fdBar">
+  <div class="fd-bottom-meta">
+    <span class="fd-edited" id="fdEdited">已改 0 处</span>
+    <span class="fd-version" id="fdVersion">v0</span>
+  </div>
+  <div class="fd-bottom-actions">
+    <button class="btn ghost" id="fdLog" type="button">查看修改日志</button>
+    <button class="primary" id="fdSave" type="button">保存</button>
+  </div>
+</footer>
+
+<aside class="fd-drawer" id="fdDrawer" hidden aria-label="修改日志">
+  <div class="fd-drawer-head">
+    <h2>修改日志</h2>
+    <button class="btn sm" id="fdDrawerClose" type="button">关闭</button>
+  </div>
+  <div class="fd-drawer-body" id="fdDrawerBody"></div>
+</aside>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script src="/static/final-document.js?v=20261113-final-document"></script>
+</body>
+</html>

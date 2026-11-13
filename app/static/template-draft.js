@@ -22,7 +22,11 @@
     immutable_confirmed_template: '该模板已确认，不能再改。',
     structured_template_missing: '模板候选尚未生成，先完成模型语义研判。',
     draft_empty: '还没有可撤销的定义。',
-    not_template_task: '这不是模板任务。'
+    not_template_task: '这不是模板任务。',
+    confirmed_template_required: '模板还没有确认，先确认模板再来审核。',
+    advice_not_structured: '模型返回的意见不是约定的 JSON，请重试。',
+    model_not_configured: '尚未配置模型接口，暂时不能审核。',
+    task_paused: '任务已暂停，模型调用已停止。'
   };
 
   const S = {
@@ -32,43 +36,8 @@
   };
 
   /* ---------------------------------------------------------------- 样式 */
-  const CSS = `
-.td-bar{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;padding:.55rem .75rem;margin:0 0 .75rem;
-  border:1px solid #d8dee9;border-radius:.5rem;background:#f7f9fc;font-size:.86rem;position:sticky;top:0;z-index:5}
-.td-bar b{font-weight:600}
-.td-bar .td-count{color:#1f2937}
-.td-bar .td-warn{color:#b45309}
-.td-bar button{font-size:.82rem;padding:.2rem .55rem}
-.td-bar .td-spacer{flex:1}
-.td-card{position:fixed;z-index:9999;width:22rem;max-width:calc(100vw - 2rem);background:#fff;
-  border:1px solid #c7d2e0;border-radius:.6rem;box-shadow:0 12px 32px rgba(15,23,42,.18);font-size:.86rem}
-.td-card header{display:flex;align-items:center;justify-content:space-between;gap:.5rem;
-  padding:.5rem .7rem;border-bottom:1px solid #e6ebf3;font-weight:600}
-.td-card header button{border:0;background:transparent;font-size:1rem;line-height:1;cursor:pointer;color:#64748b}
-.td-quote{margin:.5rem .7rem 0;padding:.35rem .5rem;border-left:3px solid #2563eb;background:#f5f8ff;
-  color:#1e3a8a;font-family:inherit;white-space:pre-wrap;max-height:4.5rem;overflow:auto}
-.td-groups{padding:.4rem .7rem .2rem;max-height:17rem;overflow:auto}
-.td-group{margin:.35rem 0 .55rem}
-.td-group h4{margin:0 0 .3rem;font-size:.76rem;font-weight:600;color:#64748b;letter-spacing:.03em}
-.td-opt{display:block;width:100%;text-align:left;margin:.18rem 0;padding:.35rem .5rem;border:1px solid #dbe3ef;
-  border-radius:.4rem;background:#fff;cursor:pointer}
-.td-opt:hover:not(:disabled){border-color:#2563eb;background:#f5f8ff}
-.td-opt:disabled{opacity:.45;cursor:not-allowed}
-.td-opt b{display:block;font-weight:600}
-.td-opt small{display:block;color:#64748b;margin-top:.1rem;line-height:1.35}
-.td-foot{padding:.35rem .7rem .6rem;color:#64748b;border-top:1px solid #eef2f7}
-.td-json{margin:.6rem 0 0;padding:.6rem .75rem;max-height:22rem;overflow:auto;background:#0f172a;color:#e2e8f0;
-  border-radius:.5rem;font-size:.76rem;line-height:1.45;white-space:pre}
-.td-chip-new{outline:2px solid #2563eb;outline-offset:1px;border-radius:.25rem}
-`;
-
-  function ensureStyle() {
-    if (document.getElementById('td-style')) return;
-    const style = document.createElement('style');
-    style.id = 'td-style';
-    style.textContent = CSS;
-    document.head.append(style);
-  }
+  // .td-* 样式已迁到 app/static/style.css：与全站设计令牌同源、随断点响应式生效。
+  // 本文件不再向 <head> 注入私有样式（旧注入会以更后顺序覆盖全局主题）。
 
   /* ---------------------------------------------------------------- 文本口径 */
   function canonText(block) {
@@ -206,7 +175,10 @@
     else rect = blockEl.getBoundingClientRect();
 
     S.card = buildCard({ block, selected, payloadText, start });
-    document.body.append(S.card);
+    // 卡片挂在顶层 <dialog> 内：dialog.showModal() 进入 top layer，body 上的 fixed 元素会被盖住。
+    // 无 dialog 时退回 body（旧行为不变）。
+    const host = document.getElementById('reviewDialog');
+    (host && host.open ? host : document.body).append(S.card);
     const width = S.card.offsetWidth || 352;
     const height = S.card.offsetHeight || 320;
     const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - width - 12));
@@ -309,15 +281,123 @@
     }
   }
 
+  /* ---------------------------------------------------------------- 只读审核 */
+  // 确认后的第二次模型研判：只返回修改意见。页面没有「应用」「接受」按钮——
+  // 意见不写回模板，要改仍走「手动定义 → 重新确认」这条人工路径。
+  const A = { taskId: null, panel: null, definition: null, running: false };
+
+  function adviceFieldLabel(fieldId) {
+    const field = (A.definition?.fields || []).find(item => item.id === fieldId);
+    return field ? (field.display_name || field.id) : (fieldId || '整份模板');
+  }
+
+  function renderAdvice(result) {
+    if (!A.panel) return;
+    A.panel.replaceChildren();
+    if (!result) {
+      A.panel.append(node('p', '还没有审核意见。点击上方「LLM审核」让模型再审一遍：只返回修改意见，不改模板。',
+        { class: 'td-advice-empty' }));
+      return;
+    }
+    const items = Array.isArray(result.items) ? result.items : [];
+    const head = node('div', null, { class: 'td-advice-head' });
+    head.append(node('strong', `模型修改意见 ${items.length} 条`));
+    if (result.created_at) {
+      const at = new Date(result.created_at);
+      if (!Number.isNaN(at.getTime())) head.append(node('span', at.toLocaleString('zh-CN'), { class: 'td-advice-time' }));
+    }
+    head.append(node('span', '只读展示：不接受、不应用。', { class: 'td-advice-readonly' }));
+    A.panel.append(head);
+    if (!items.length) {
+      A.panel.append(node('p', '模型这次没有提出修改意见。', { class: 'td-advice-empty' }));
+      return;
+    }
+    // 只分两级：重要（红）/ 建议（灰）。模型自创的级别一律并入「建议」，不新增颜色。
+    const groups = [
+      { severity: '重要', cls: 'td-important', items: items.filter(item => item.severity === '重要') },
+      { severity: '建议', cls: 'td-suggest', items: items.filter(item => item.severity !== '重要') }
+    ];
+    for (const group of groups) {
+      if (!group.items.length) continue;
+      const section = node('div', null, { class: 'td-advice-group ' + group.cls });
+      section.append(node('h4', `${group.severity}（${group.items.length}）`));
+      const list = node('ul');
+      for (const item of group.items) {
+        const li = node('li');
+        li.append(node('span', adviceFieldLabel(item.field_id), { class: 'td-advice-field' }));
+        li.append(node('p', item.message || '', { class: 'td-advice-msg' }));
+        if (item.evidence) li.append(node('blockquote', '原文依据：' + item.evidence, { class: 'td-advice-evidence' }));
+        list.append(li);
+      }
+      section.append(list);
+      A.panel.append(section);
+    }
+  }
+
+  async function runAdvice(trigger) {
+    if (A.running) return;
+    A.running = true;
+    const label = trigger.textContent;
+    trigger.disabled = true;
+    trigger.textContent = '模型审阅中…';
+    if (A.panel) {
+      A.panel.replaceChildren(node('p', '模型正在按字段审阅已确认模板，通常需要 30—90 秒，请不要关闭窗口。',
+        { class: 'td-advice-empty' }));
+    }
+    try {
+      const data = await call(`/api/templates/${A.taskId}/advice`, { method: 'POST' });
+      renderAdvice(data);
+      toast(`模型修改意见已返回 ${(data.items || []).length} 条（只读，不改模板）。`);
+    } catch (error) {
+      const message = error?.message || '审核未完成。';
+      if (A.panel) A.panel.replaceChildren(node('p', '审核未完成：' + message, { class: 'td-advice-error' }));
+      toast('审核未完成：' + message);
+    } finally {
+      A.running = false;
+      trigger.disabled = false;
+      trigger.textContent = label;
+    }
+  }
+
+  async function mountAdvice({ taskId, container }) {
+    A.taskId = taskId;
+    container.querySelectorAll('.td-advice-bar,.td-advice').forEach(element => element.remove());
+    try {
+      A.definition = (await api(`/api/templates/${taskId}/definition`)).definition;
+    } catch {
+      A.definition = null;
+    }
+    const bar = node('div', null, { class: 'td-bar td-advice-bar' });
+    bar.append(node('b', '模板已确认，只读。'));
+    bar.append(node('span', '可让模型再审一遍：只返回修改意见，不改模板与字段。', { class: 'td-count' }));
+    const run = node('button', 'LLM审核', { type: 'button' });
+    run.onclick = () => runAdvice(run);
+    bar.append(node('span', null, { class: 'td-spacer' }), run);
+    A.panel = node('div', null, { class: 'td-advice' });
+    container.prepend(bar);
+    container.append(A.panel);
+    renderAdvice(null);
+    try {
+      const last = await api(`/api/templates/${taskId}/advice`);
+      if (last && last.available) renderAdvice(last);
+    } catch {
+      // 读不回上次结果时保持空态，不阻塞预览。
+    }
+  }
+
   /* ---------------------------------------------------------------- 挂载 */
-  async function mount({ taskId, container, onField, onRevision } = {}) {
+  async function mount({ taskId, container, onField, onRevision, confirmed } = {}) {
     if (!taskId || !container) return;
+    if (confirmed) {
+      // 已确认模板不可再手动定义，只提供只读审核入口。
+      await mountAdvice({ taskId, container });
+      return;
+    }
     if (S.container && S.container !== container) hideCard();
     S.taskId = taskId;
     S.container = container;
     S.onField = onField;
     S.onRevision = onRevision;
-    ensureStyle();
 
     let data;
     try {
