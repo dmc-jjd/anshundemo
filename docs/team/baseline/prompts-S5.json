@@ -1,22 +1,22 @@
 {
   "canon": "sha256(json.dumps(obj,ensure_ascii=False,sort_keys=True,default=str).encode())",
-  "prompts_sha256": "a8dbc8c99beae8848611d420480109fdb55efec67cd9a87c7d9a1b96e9e902bb",
+  "prompts_sha256": "8bfd6bd7e080c29c30c41d948003a61b564d252bf3ec6175314c80a038b20be0",
   "parts": {
-    "AGENT_PROMPTS": "954c781af52ba4a0aa163aa2fdbb4cf88d508dc4555ac9f4995089c22aa7f955",
-    "AGENT_DEFINITIONS": "38f73eab831d00386659fd4cc00bf3f7adf95963cc96e876accef675ccebad61",
+    "AGENT_PROMPTS": "ffd85d5ccb9247f5b105fc82e968dab666c25d2cbc4c3d152d460011d00d20bc",
+    "AGENT_DEFINITIONS": "7a3e72e158da264c6b2e2b1615e542f0b874f65dfd90e176e6caf91535d10a01",
     "TEMPLATE_POLICY": "490a038d93987ad41c3a0f006b3a49d1d5c37c93a458420e9764e2e4d4902d18",
     "REPORT_PROMPT_PROFILES": "b4df32af7e6c8600b2200ac9575e745a8d02b76f90271bba23b0414166e060a9"
   },
   "counts": {
-    "prompts": 33,
-    "roles": 10,
+    "prompts": 34,
+    "roles": 11,
     "policy_top": 6,
     "profiles": 1,
     "default": "anshun_monthly"
   },
   "order": {
     "policy_sha256_unsorted": "9ddd5dc5fe2da8a634fe6167a7080c1e33107313345666870339fc137f316c65",
-    "all_sha256_unsorted": "9d4539fe8f2d54dfc5c3eca0e43da54ad01575ae240a4646a91210422eb455fb",
+    "all_sha256_unsorted": "1354ec3d8d516e9f40fc5c06725d826bdda2ec44a3cd7ac1afbb6da350cc3f9a",
     "prompt_keys": [
       "style.application",
       "format_reviewer.review",
@@ -50,7 +50,8 @@
       "template_analyst.charts",
       "template_analyst.advice",
       "model.json_output",
-      "model.tool_budget_exhausted"
+      "model.tool_budget_exhausted",
+      "hotspot_collector.collect"
     ],
     "role_keys": [
       "historical_researcher",
@@ -62,7 +63,8 @@
       "data_processor",
       "writer",
       "format_reviewer",
-      "content_reviewer"
+      "content_reviewer",
+      "hotspot_collector"
     ],
     "policy_keys": [
       "fixed_text",
@@ -89,14 +91,14 @@
     ]
   },
   "fingerprints": {
-    "default": "fd0ad70a94db03c77e38345c8eeac6852cd8cccb55b3b729dfc0a18eb8eb886e",
-    "historical_researcher": "c291f21de4d17f58f5c397d30d19c300c1d3ea5d580d9b934b41b487326312b2",
+    "default": "c6ec2a534bb904b3f4b96b6102b0c5e55d139e7c9a7b0bc32b2519970c6a3521",
+    "historical_researcher": "21a9c51e6be1b910a975953b8ed0e24561f7e4a6d6f6516f91e3abdba44032c8",
     "writer.analysis": "b20c64fcfa3d4058c14a16ec6612189cc9948d9c22d4354e65ac115801a7999f",
-    "writer.outlook": "717037b578e9eb0240d5e9773ef74639f36f0e0e955f534c8004902bab8d3196",
+    "writer.outlook": "e9a9c80a78f3630b332535e6da76e77f66e885cffe6d4c0ba4ba2c024596f130",
     "writer.general": "bd2cd11b8d232e52c1e229077d2b407d3fe5b425f5a1a4e1093869671de5775e"
   },
   "review_policy": "7d8c8cb58258441760b687e7d835db450f384f063ff3f8b27beda4ca8d8a35b7",
   "skill_sha256": "11fb295225e5a8df37d6109c0a7c19f37efe4cf694bcee7cd0da99b4ca3d468f",
   "python": "3.13.18",
-  "recorded_at": "2026-11-13T10:34:30+08:00"
+  "recorded_at": "2026-11-13T18:35:11+08:00"
 }
