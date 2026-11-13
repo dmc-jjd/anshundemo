@@ -71,3 +71,13 @@ def dedup_threshold() -> float:
 def dedup_candidate_floor() -> float:
     """候选下限比例（0-1），不是绝对条数。"""
     return float(_contract()['dedup']['candidate_floor_ratio'])
+
+
+def dedup_merge_rounds() -> int:
+    """去重轮次开关。缺省 1（只跑第一轮，行为与第二轮落地前逐字节一致），2=组级聚合归并。"""
+    return int((_contract().get('dedup') or {}).get('merge_rounds', 1))
+
+
+def dedup_merge_threshold() -> float:
+    """第二轮组级余弦阈值。缺省 0.5；客户包可单独标定，与第一轮 threshold 互不影响。"""
+    return float((_contract().get('dedup') or {}).get('merge_threshold', 0.5))

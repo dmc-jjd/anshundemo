@@ -10,6 +10,7 @@ import hashlib,re
 from datetime import datetime,timedelta
 from pathlib import Path
 
+from core.text import NORMALIZATION_VERSION, normalize_record
 from core.tools.ooxml import read_xlsx
 from core.tools.contracts import ToolResult
 from core.tools import vocabulary
@@ -37,13 +38,13 @@ def import_records(args,ctx):
             except (ValueError,OverflowError):pass
         mapped={field:data.get(column,'') for column,field in COLUMN_MAP.items()}
         mapped['published']=published
-        records.append({
+        records.append(normalize_record({
             'id':rid,
             **mapped,
             'summary':data.get(SUMMARY_COLUMNS[0]) or (data.get(SUMMARY_COLUMNS[1],'') or '')[:1200],
             'source_ref':{'file_hash':file_hash,'sheet':book['sheet'],'row':row['excel_row']},
-        })
-    ref=ctx.store.put_artifact(ctx.task_id,'records',{'records':records,'file_hash':file_hash,'header':header,'sheet':book['sheet']})
+        }))
+    ref=ctx.store.put_artifact(ctx.task_id,'records',{'records':records,'file_hash':file_hash,'header':header,'sheet':book['sheet'],'normalization':NORMALIZATION_VERSION})
     return ToolResult(status='ok',data_ref=ref,method=f'OOXML sheet {sheet}; every nonempty source row retained',warnings=[f'{len(records)} source rows'])
 
 def filter_records(args,ctx):

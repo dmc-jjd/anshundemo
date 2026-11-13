@@ -106,10 +106,17 @@ def _run_in_process(name,arguments,root,task_id,conn,package_dir=None):
 
 
 def _configure_package(package_dir):
-    """按客户包路径配置四个注册表（幂等）。子进程里调用，不依赖 app 的 import 副作用。"""
+    """按客户包路径配置四个注册表（幂等）。子进程里调用，不依赖 app 的 import 副作用。
+
+    第五件：`configure_tokenizer(package_dir)`——客户词典注入的来源目录必须由子进程
+    自己知道。jieba 的词表是**进程内**状态，父进程注过不等于子进程注过；而每组工具调用
+    都是一个新子进程，所以这一步挂在这里而不是宿主 import 期。
+    该调用只声明目录，不加载词典（加载推迟到首次 `tokenize()`），见 `core.text`。
+    """
     from core.manifest import load_manifest
     from core.paths import configure_data_root
     from core.tools import vocabulary
+    from core.text import configure_tokenizer
     from core.charts import registry as chart_registry
     from core.skills import registry as skill_registry
     from core.prompts import registry as prompt_registry
@@ -117,6 +124,7 @@ def _configure_package(package_dir):
     manifest = load_manifest(package_dir)
     root = Path(package_dir).resolve().parent.parent
     vocabulary.configure(package_dir)
+    configure_tokenizer(package_dir)
     chart_registry.configure(package_dir)
     skill_registry.configure(package_dir, root / "skills")
     prompt_registry.configure(package_dir)

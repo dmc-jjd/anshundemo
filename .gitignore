@@ -35,3 +35,8 @@ s4*/
 
 # 手动定义字段的隔离演示数据与验收证据（不参与交付）
 .demo-data/
+
+# jieba 词典缓存：本机 TEMP 指向仓库根，不忽略就会在根目录堆一个 9MB 文件
+# （`core/text.py` 已把 tmp_dir 钉到 `.conda/`，这一行是第二道保险）
+jieba.cache
+jieba.u*.cache

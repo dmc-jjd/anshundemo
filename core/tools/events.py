@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections import Counter,defaultdict
 from math import sqrt
 
+from core.text import NORMALIZATION_VERSION,TOKENIZER_VERSION,norm_or_raw
 from core.tools.contracts import ToolResult
 from . import vocabulary
 from ._shared import records_of,words
@@ -16,7 +17,7 @@ from ._shared import records_of,words
 
 def propose_keyword_event_candidates(args,ctx):
     """Stage 1: rare keyword overlap forms review candidates, preserving singleton records."""
-    records=records_of(ctx,args['records_ref']); token_sets=[words(r['title']) for r in records]
+    records=records_of(ctx,args['records_ref']); token_sets=[words(norm_or_raw(r,'normalized_title','title')) for r in records]
     freq=Counter(t for ts in token_sets for t in ts)
     postings=defaultdict(list)
     for i,ts in enumerate(token_sets):
@@ -41,7 +42,7 @@ def propose_keyword_event_candidates(args,ctx):
     groups=defaultdict(list)
     for i,r in enumerate(records): groups[find(i)].append(r['id'])
     out=[{'candidate_id':f'kw-{j}','member_ids':members,'status':'candidate' if len(members)>1 else 'unresolved_singleton'} for j,members in enumerate(groups.values(),1)]
-    ref=ctx.store.put_artifact(ctx.task_id,'keyword_candidates',{'groups':out,'records_ref':args['records_ref'],'method':{'threshold':threshold,'token':'Chinese bigrams and alphanumeric terms','pair_count':len(candidate_pairs)},'all_record_ids':[r['id'] for r in records]})
+    ref=ctx.store.put_artifact(ctx.task_id,'keyword_candidates',{'groups':out,'records_ref':args['records_ref'],'method':{'threshold':threshold,'token':'tokenizer output (jieba, HMM=False) with customer vocabulary','pair_count':len(candidate_pairs),'normalization':NORMALIZATION_VERSION,'tokenizer':TOKENIZER_VERSION},'all_record_ids':[r['id'] for r in records]})
     return ToolResult(status='needs_review',data_ref=ref,method='rare-keyword inverted index and Jaccard candidate grouping; never auto-confirm',warnings=[f'{len(out)} candidate groups from {len(records)} records'],unresolved=[{'kind':'event_confirmation','question':'关键词候选需人工确认、拆分或独立'}])
 
 def propose_vector_event_neighbors(args,ctx):
@@ -49,7 +50,7 @@ def propose_vector_event_neighbors(args,ctx):
     prior=ctx.store.get_artifact(args['keyword_candidates_ref']); records=records_of(ctx,prior['records_ref'])
     by_id={r['id']:r for r in records}; groups=prior['groups']
     group_of={rid:g['candidate_id'] for g in groups for rid in g['member_ids']}
-    docs=[words(r['title']+' '+r.get('summary','')[:80]) for r in records]
+    docs=[words(norm_or_raw(r,'normalized_title','title')+' '+norm_or_raw(r,'normalized_summary','summary')[:80]) for r in records]
     df=Counter(t for doc in docs for t in doc); n=len(docs)
     weights=[]; postings=defaultdict(list)
     for i,doc in enumerate(docs):
@@ -71,15 +72,18 @@ def propose_vector_event_neighbors(args,ctx):
             if score>=min_score: local.append((score,j))
         for score,j in sorted(local,reverse=True)[:max_neighbors]:
             other=records[j]; pairs[(r['id'],other['id'])]={'record_ids':[r['id'],other['id']],'candidate_groups':[group_of[r['id']],group_of[other['id']]],'score':round(score,4),'status':'candidate','reason':'cross-group lexical vector proximity; follow-up over days is eligible'}
-    ref=ctx.store.put_artifact(ctx.task_id,'vector_neighbors',{'neighbors':list(pairs.values()),'keyword_candidates_ref':args['keyword_candidates_ref'],'all_record_ids':prior['all_record_ids'],'method':{'type':'sparse TF-IDF-like cosine','min_score':min_score,'max_neighbors':max_neighbors,'max_candidates_per_record':max_candidates,'evaluated_pairs':evaluated,'time_window':'not enforced; calibrate with real adjudicated cases'}})
+    ref=ctx.store.put_artifact(ctx.task_id,'vector_neighbors',{'neighbors':list(pairs.values()),'keyword_candidates_ref':args['keyword_candidates_ref'],'all_record_ids':prior['all_record_ids'],'method':{'type':'sparse TF-IDF-like cosine','min_score':min_score,'max_neighbors':max_neighbors,'max_candidates_per_record':max_candidates,'evaluated_pairs':evaluated,'time_window':'not enforced; calibrate with real adjudicated cases','normalization':NORMALIZATION_VERSION,'tokenizer':TOKENIZER_VERSION}})
     return ToolResult(status='needs_review',data_ref=ref,method='inverted-index sparse vector neighbor search across keyword groups; similarity only proposes review',warnings=[f'{evaluated} candidate pairs scored; {len(pairs)} neighbors emitted'],unresolved=[{'kind':'event_confirmation','question':'向量近邻含跨日跟进候选，需人工合并、拆分、独立或排除'}])
 
 def group_events(args,ctx):
-    from .dedup import group_by_representative
+    from .dedup import group_by_representative,merge_group_round
     records=records_of(ctx,args['records_ref'])
     threshold=args.get('threshold')
     threshold=float(threshold) if threshold is not None else vocabulary.dedup_threshold()
     result=group_by_representative(records,threshold)
+    if vocabulary.dedup_merge_rounds()>=2:
+        result['groups'],merge_method=merge_group_round(result['groups'],records,threshold=vocabulary.dedup_merge_threshold())
+        result['method'].update(merge_method)
     result['source_records_ref']=args['records_ref']
     ref=ctx.store.put_artifact(ctx.task_id,'automatic_event_groups',result)
     return ToolResult(status='ok',data_ref=ref,method='title + summary cosine against immutable group representative; automatic grouping')
@@ -89,14 +93,14 @@ def cluster_event_themes(args,ctx):
     records=records_of(ctx,args['records_ref']); groups=defaultdict(list); items=[]
     terms=vocabulary.cluster_terms()
     for r in records:
-        text=r['title']+' '+r.get('summary','')[:300]
+        text=norm_or_raw(r,'normalized_title','title')+' '+norm_or_raw(r,'normalized_summary','summary')[:300]
         scores={label:sum(text.count(term) for term in label_terms) for label,label_terms in terms.items()}
         best=max(scores,key=scores.get) if scores else None
         label=best if best and scores[best]>0 else '待人工分类'
         evidence=[term for term in terms.get(label,[]) if term in text]
         groups[label].append(r['id'])
         items.append({'record_id':r['id'],'candidate_theme':label,'matched_terms':evidence,'source_ref':r['source_ref'],'source_category':r.get('category') or None,'status':'candidate'})
-    ref=ctx.store.put_artifact(ctx.task_id,'theme_clusters',{'groups':[{'candidate_theme':k,'member_ids':v} for k,v in groups.items()],'items':items,'all_record_ids':[r['id'] for r in records],'method':{'type':'versioned transparent term dictionary','terms':terms,'source_field':'title + first 300 chars of summary','human_confirmation_required':True},'source_records_ref':args['records_ref']})
+    ref=ctx.store.put_artifact(ctx.task_id,'theme_clusters',{'groups':[{'candidate_theme':k,'member_ids':v} for k,v in groups.items()],'items':items,'all_record_ids':[r['id'] for r in records],'method':{'type':'versioned transparent term dictionary','terms':terms,'source_field':'normalized_title + first 300 chars of normalized_summary','match':'substring count on normalized text (no tokenization)','normalization':NORMALIZATION_VERSION,'tokenizer':'not applicable: substring match','human_confirmation_required':True},'source_records_ref':args['records_ref']})
     return ToolResult(status='needs_review',data_ref=ref,method='lexical theme candidates; source category field is not silently filled',warnings=[f'{len(records)} records retained; {len(groups)} candidate buckets'],unresolved=[{'kind':'theme_confirmation','question':'主题词典候选需结合原文和 817 行测试表对照后人工确认'}])
 
 def discover_topics(args,ctx):

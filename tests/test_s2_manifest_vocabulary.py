@@ -63,6 +63,8 @@ def test_import_records_still_rejects_tables_missing_a_required_column(tmp_path)
 EXPECTED_RECORD_KEY_ORDER = [
     'id', 'title', 'published', 'source', 'author', 'source_id', 'category', 'url',
     'platform', 'media_attribute', 'media_level', 'sentiment', 'warning', 'summary', 'source_ref',
+    # S9-A 起：归一化产物固定追加在原文之后（原文不覆盖，出图/证据仍读原文）
+    'normalized_title', 'normalized_summary',
 ]
 
 

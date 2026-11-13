@@ -1,0 +1,34 @@
+# 运行期直接依赖（版本已按 2026-11 实测环境锁定）
+#
+# 为什么锁死版本：
+#   八组门禁里有多组对**输出字节/指纹**敏感（G-GOLDEN 28789→3914→1990、G-CHARTS
+#   逐字节 PNG、G-PROMPTS 指纹）。依赖版本漂移会静默改变数值或渲染结果，
+#   锁版本是让门禁可复现的前提，不是洁癖。
+#
+# 为什么没有 openpyxl / python-docx：
+#   core/tools/ooxml.py 刻意用 zipfile + xml.etree 直接读写 OOXML 子集
+#   （docstring: "dependency-free readers"）。加这两个包等于白胖一圈。
+
+fastapi==0.142.2
+uvicorn==0.41.0
+pydantic==2.13.5
+
+# OOXML / 图表 / 文档处理
+lxml==6.1.1
+pillow==12.2.0
+matplotlib==3.11.2
+
+# 结构化校验与客户包配置
+jsonschema==4.26.0
+pyyaml==6.0.3
+
+# 图编排（review_loop 与三张图的运行时）
+langgraph==1.0.1
+langchain-core==1.7.7
+
+# 中文分词（去重/候选/主题聚类共用同一入口 core/text.py）
+jieba==0.42.1
+
+# HTTP 客户端与表单（TestClient / 文件上传）
+httpx==0.28.1
+python-multipart==0.0.32
