@@ -214,8 +214,8 @@ async def _process_records(deps:Dependencies,task_id:str):
             state.planning_calls+=1; store.put_task(state,state.revision)
             try:
                 import json
-                from .config import ROOT
-                manifest=json.loads((ROOT/'templates/anshun-colored/report.template.json').read_text(encoding='utf-8'))
+                from core import paths
+                manifest=json.loads((paths.template_dir()/'report.template.json').read_text(encoding='utf-8'))
                 slot_goals=[{'id':x['id'],'semantic':x['semantic'],'scope':x['scope'],'statistical_unit':x['statistical_unit'],'calculation':x['calculation'],'source_fields':x['source_fields_or_calculation'],'review_required':x['review_required']} for x in manifest['placeholders']]
                 if state.template_ref and state.template_ref!='anshun-monthly-colored':
                     from .structured_template import load_confirmed_template

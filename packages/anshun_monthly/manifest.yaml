@@ -52,12 +52,13 @@ capabilities:
 # stages 是**有序降级链**：前一级判不出（低置信 / 判为新簇）才进下一级。
 # 现在没有微调模型，所以 bge 与 llm 均 enabled: false，行为与改造前完全一致。
 features:
+  # locality 只有一个开关：enabled 控制 resolve_locality 是否留在工具白名单。
+  # 更细的属地口径（八区县表、报告地域名、官方域名白名单、证据校验）是客户规则，
+  # 家分别在 app/section_two.py（validate_history/forecast_window）与 template.json，
+  # 不在本文件重复声明。早先这里复写的 require_unique / evidence_check /
+  # region_label / domain_allowlist 四个键全仓零消费者——删掉，不留第二次"假开关"。
   locality:
     enabled: true
-    require_unique: true
-    evidence_check: true
-    region_label: 安顺市
-    domain_allowlist: [anshun.gov.cn]
   event_classification:
     enabled: true
     stages:
@@ -71,6 +72,8 @@ features:
         enabled: false
   dedup:
     enabled: true
-    # 阈值不在这里写：唯一真相是 template.json 的 data_contract.dedup
-    # （早先两处都写 0.65，改一处不生效 —— verifier 抓出的双源）
-    representative: immutable_first
+    # 阈值与代表策略都不在这里写：
+    #   阈值    → template.json 的 data_contract.dedup（唯一真相）
+    #   代表策略 → 代码固定为「只与不可变代表比、防链式」（core/tools/dedup.py）
+    # 早先这里还写过一个 representative: immutable_first，全仓零消费者 ——
+    # 那是「描述」不是「开关」，留着会让人以为改了有用，一并删掉。

@@ -2,11 +2,12 @@
 from __future__ import annotations
 import html,io,zipfile,re,base64,copy
 from pathlib import Path
+from core import paths
 
 def _source_template_draft(draft,facts,issues):
     from lxml import etree as ET
-    from .config import ROOT,DATA
-    path=ROOT/'templates/anshun-colored/template-with-placeholders.docx'
+    from .config import DATA
+    path=paths.template_dir()/'template-with-placeholders.docx'
     if not path.exists(): return None
     ref=facts.get('result_refs',{}).get('calculate_metrics')
     if not ref: return None
@@ -75,7 +76,7 @@ def _source_template_draft(draft,facts,issues):
         chart_names=['sentiment','daily','platform','theme','locality']
         original=ET.fromstring(zin.read('word/document.xml'))
         # The template carries no old drawing, so use the supplied source's five drawing geometries.
-        with zipfile.ZipFile(ROOT/'templates/anshun-colored/source-2026-08.docx') as source_zip:
+        with zipfile.ZipFile(paths.template_dir()/'source-2026-08.docx') as source_zip:
             source_root=ET.fromstring(source_zip.read('word/document.xml'))
         old_drawings=source_root.xpath('//w:drawing',namespaces=ns)
         rel_path='word/_rels/document.xml.rels'

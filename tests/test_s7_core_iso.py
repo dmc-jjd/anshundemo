@@ -7,8 +7,8 @@ WP-S7-B 落地后（CORE-DEP 清零 = `core/` 按设计变动），两个基线�
 `core-S7-preB.json`——这是 A 包声明过的第二档，不改变判据语义。
 
 S8 起按「每层一档」推进：每层门禁全绿后录 `core-S8-L<层>.json`，本文件指向**当前层**那一档
-（现为 `core-S8-L4.json`；`core-S7-preB.json` / `core-S8-L0.json` / `core-S8-L1.json` /
-`core-S8-L2.json` / `core-S8-L3.json` 保留为历史档，不覆盖）。
+（现为 `core-S8-L5.json`；`core-S7-preB.json` / `core-S8-L0.json` / `core-S8-L1.json` /
+`core-S8-L2.json` / `core-S8-L3.json` / `core-S8-L4.json` 保留为历史档，不覆盖）。
 """
 
 import importlib
@@ -20,7 +20,7 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts"))
 import gate_core_iso  # noqa: E402
 
-BASELINE = REPO / "docs" / "team" / "baseline" / "core-S8-L4.json"
+BASELINE = REPO / "docs" / "team" / "baseline" / "core-S8-L5.json"
 
 
 def _baseline() -> dict:

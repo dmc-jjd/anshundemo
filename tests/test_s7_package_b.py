@@ -7,7 +7,7 @@
     4 白名单：**同一份样本、同一个 build_table 调用**，A 包下放行、B 包下 `tool_not_allowed`
       （负向对照；一个"永远拒绝"的门禁和一个"正确拒绝"的门禁是两件事）；
     5 基座：`CORE-HASH` 与 `APP-HASH` 与当前层基线逐字符相等（P7 最硬的一条；S8 起每层一档，
-      现指 `core-S8-L4.json`）。
+      现指 `core-S8-L5.json`）。
 
 两个必须遵守的隔离约束：
     * B 的加载验证**只能在子进程**：四个注册表都是 module-global（`core/tools/vocabulary.py:16`
@@ -34,7 +34,7 @@ from app.schemas import TaskState, ToolCall  # noqa: E402
 from app.storage import Store  # noqa: E402
 from app.tool_executor import RunContext, execute_tool  # noqa: E402
 
-BASELINE = REPO / "docs" / "team" / "baseline" / "core-S8-L4.json"
+BASELINE = REPO / "docs" / "team" / "baseline" / "core-S8-L5.json"
 SMOKE = REPO / "scripts" / "smoke_package_b.py"
 
 PROMPT_KEYS = {

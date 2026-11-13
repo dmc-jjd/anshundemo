@@ -2,6 +2,7 @@ from __future__ import annotations
 import asyncio,hashlib,uuid
 from datetime import date
 from pathlib import Path
+from core import paths
 from fastapi import FastAPI,UploadFile,File,HTTPException,BackgroundTasks,Header
 from fastapi.responses import HTMLResponse,FileResponse,Response,JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -74,11 +75,11 @@ def templates():
 @app.get('/api/template-manifest')
 def template_manifest():
     import json
-    return json.loads((Path(__file__).resolve().parents[1]/'templates/anshun-colored/report.template.json').read_text(encoding='utf-8'))
+    return json.loads((paths.template_dir()/'report.template.json').read_text(encoding='utf-8'))
 
 @app.get('/api/template-docx')
 def template_docx():
-    path=Path(__file__).resolve().parents[1]/'templates/anshun-colored/template-with-placeholders.docx'
+    path=paths.template_dir()/'template-with-placeholders.docx'
     return FileResponse(path,media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',filename='安顺月报五色占位模板.docx')
 
 class TaskCreate(BaseModel):
