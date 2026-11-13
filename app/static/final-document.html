@@ -7,11 +7,12 @@
 <!-- 方案 3：自研 A4 页 + contenteditable。只有一种操作——编辑占位符内容；图表不可编辑。
      顶栏与五阶段 tab 与主页面（index.html）同一套 .topbar / .stage-progress 结构：
      05 报告撰写为本页当前查看项，01–04 点击回主页面 ?view=。 -->
-<link rel="stylesheet" href="/static/style.css?v=20261113-v33">
+<link rel="stylesheet" href="/static/style.css?v=20261114-redhead">
 </head>
 <body class="fd-body">
 <header class="topbar">
   <div class="crumb">
+    <svg class="mark" viewBox="0 0 24 24" fill="none" aria-hidden="true"><g stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M12 3.2v17.6M3.2 12h17.6M5.6 5.6l12.8 12.8M18.4 5.6L5.6 18.4"/></g></svg>
     <b data-product-full>康奈 · 洞研智台</b>
     <span class="sep">/</span>
     <a class="here" id="fdCrumbHome" href="/">工作台</a>
@@ -26,11 +27,13 @@
 </header>
 
 <nav class="stage-progress" id="fdTabs" aria-label="五阶段">
-  <button class="stage" type="button" data-stage="1" data-view="overview" data-state="todo"><span class="idx">01</span><span class="nm">工作台</span><span class="dot" aria-hidden="true"></span></button>
-  <button class="stage" type="button" data-stage="2" data-view="template" data-state="todo"><span class="idx">02</span><span class="nm">模板确认</span><span class="dot" aria-hidden="true"></span></button>
-  <button class="stage" type="button" data-stage="3" data-view="report" data-state="todo"><span class="idx">03</span><span class="nm">数据处理</span><span class="dot" aria-hidden="true"></span></button>
-  <button class="stage" type="button" data-stage="4" data-view="tasks" data-state="todo"><span class="idx">04</span><span class="nm">模板/数据·审核</span><span class="dot" aria-hidden="true"></span></button>
-  <button class="stage" type="button" data-stage="5" data-state="current" aria-current="page"><span class="idx">05</span><span class="nm">报告撰写</span><span class="dot" aria-hidden="true"></span></button>
+  <div class="stage-pill">
+    <button class="stage" type="button" data-stage="1" data-view="overview" data-state="todo"><span class="idx">01</span><span class="nm">工作台</span><span class="dot" aria-hidden="true"></span></button>
+    <button class="stage" type="button" data-stage="2" data-view="template" data-state="todo"><span class="idx">02</span><span class="nm">模板确认</span><span class="dot" aria-hidden="true"></span></button>
+    <button class="stage" type="button" data-stage="3" data-view="report" data-state="todo"><span class="idx">03</span><span class="nm">数据处理</span><span class="dot" aria-hidden="true"></span></button>
+    <button class="stage" type="button" data-stage="4" data-view="tasks" data-state="todo"><span class="idx">04</span><span class="nm">模板/数据·审核</span><span class="dot" aria-hidden="true"></span></button>
+    <button class="stage" type="button" data-stage="5" data-state="current" aria-current="page"><span class="idx">05</span><span class="nm">报告撰写</span><span class="dot" aria-hidden="true"></span></button>
+  </div>
 </nav>
 
 <main class="fd-main" id="fdMain">

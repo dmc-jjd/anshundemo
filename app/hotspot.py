@@ -474,7 +474,10 @@ async def collect(store, *, model_adapter=None, today: date | None = None,
     except ValueError as exc:
         raise HotspotSearchNotConfigured('search_not_configured') from exc
     moment = now or datetime.now(timezone.utc)
-    today = today or moment.date()
+    # 窗口日期取**本地日期**，不取 moment 的 UTC 日期：本地部署在 UTC+8，
+    # 每日 00:00–08:00 期间 UTC 日期比本地少一天，会让最近 3 天窗口整体前移一天，
+    # 当天的要闻搜不到。collected_at 仍是 UTC 时间戳（前端 new Date() 自动转本地显示）。
+    today = today or date.today()
     window = window_for(today)
     collected_at = moment.isoformat()
     adapter = model_adapter if model_adapter is not None else MODEL_ADAPTER

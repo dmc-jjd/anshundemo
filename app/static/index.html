@@ -1,22 +1,23 @@
 <!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>舆情分析报告系统</title>
 <!-- PRODUCT_NAME: 康奈 · 洞研智台（单点常量：只改文件底部 script 里的 PRODUCT） -->
-<link rel="stylesheet" href="/static/style.css?v=20261113-v33"><link rel="stylesheet" href="/static/insights.css?v=20261113-redesign"></head><body>
+<link rel="stylesheet" href="/static/style.css?v=20261114-redhead"><link rel="stylesheet" href="/static/insights.css?v=20261114-redhead"></head><body>
 <header class="topbar">
-  <div class="crumb"><b data-product-full>康奈 · 洞研智台</b><span class="sep">/</span><span class="here" id="crumbHere">工作台</span></div>
+  <div class="crumb"><svg class="mark" viewBox="0 0 24 24" fill="none" aria-hidden="true"><g stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M12 3.2v17.6M3.2 12h17.6M5.6 5.6l12.8 12.8M18.4 5.6L5.6 18.4"/></g></svg><b data-product-full>康奈 · 洞研智台</b><span class="sep">/</span><span class="here" id="crumbHere">工作台</span></div>
   <div class="topmeta"><span id="taskMeta">—</span><span class="saved"><i></i>自动保存</span><span id="clock"></span></div>
 </header>
 
 <nav class="stage-progress" id="stageProgress" aria-label="五阶段">
-  <button class="stage" type="button" data-stage="1" data-go="overview" data-state="current"><span class="idx">01</span><span class="nm">工作台</span><span class="dot" aria-hidden="true"></span></button>
-  <button class="stage" type="button" data-stage="2" data-go="template" data-state="todo"><span class="idx">02</span><span class="nm">模板确认</span><span class="dot" aria-hidden="true"></span></button>
-  <button class="stage" type="button" data-stage="3" data-go="report" data-state="todo"><span class="idx">03</span><span class="nm">数据处理</span><span class="dot" aria-hidden="true"></span></button>
-  <button class="stage" type="button" data-stage="4" data-go="tasks" data-state="todo"><span class="idx">04</span><span class="nm">模板/数据·审核</span><span class="dot" aria-hidden="true"></span></button>
-  <button class="stage" type="button" data-stage="5" data-go="document" data-state="todo"><span class="idx">05</span><span class="nm">报告撰写</span><span class="dot" aria-hidden="true"></span></button>
+  <div class="stage-pill">
+    <button class="stage" type="button" data-stage="1" data-go="overview" data-state="current"><span class="idx">01</span><span class="nm">工作台</span><span class="dot" aria-hidden="true"></span></button>
+    <button class="stage" type="button" data-stage="2" data-go="template" data-state="todo"><span class="idx">02</span><span class="nm">模板确认</span><span class="dot" aria-hidden="true"></span></button>
+    <button class="stage" type="button" data-stage="3" data-go="report" data-state="todo"><span class="idx">03</span><span class="nm">数据处理</span><span class="dot" aria-hidden="true"></span></button>
+    <button class="stage" type="button" data-stage="4" data-go="tasks" data-state="todo"><span class="idx">04</span><span class="nm">模板/数据·审核</span><span class="dot" aria-hidden="true"></span></button>
+    <button class="stage" type="button" data-stage="5" data-go="document" data-state="todo"><span class="idx">05</span><span class="nm">报告撰写</span><span class="dot" aria-hidden="true"></span></button>
+  </div>
 </nav>
 
 <main>
 <section id="overview" class="tab active">
-  <div class="head"><h1>工作台</h1></div>
   <div id="status" class="notice"></div>
   <div class="wb-grid">
     <section class="card wb-now" aria-labelledby="wbNowTitle">
@@ -45,8 +46,9 @@
     </section>
 
     <section class="panel hotspot-panel" id="hotspotPanel" aria-labelledby="hotspotTitle">
-      <div class="card-h"><h2 id="hotspotTitle">今日热点话题</h2><span class="hint" id="hotspotMeta">窗口 — ~ — · 未采集</span></div>
-      <div class="hotspot-acts"><button class="btn ghost sm" id="hotspotCollect" type="button">采集要闻</button></div>
+      <div class="card-h"><h2 id="hotspotTitle">今日热点话题</h2>
+        <div class="hotspot-acts"><span class="hint" id="hotspotMeta">窗口 — ~ — · 未采集</span><button class="btn primary" id="hotspotCollect" type="button">采集要闻</button></div>
+      </div>
       <p class="hotspot-error" id="hotspotError" role="status" hidden></p>
       <ol class="hotspot-list" id="hotspotList"></ol>
     </section>
@@ -161,4 +163,4 @@ window.PRODUCT = { name: '康奈', subname: '洞研智台', tagline: '舆情洞�
   fill('[data-product-full]', full);
 })();
 </script>
-<script src="/static/review-tools.js?v=20261113-v32"></script><script src="/static/data-review-tools.js?v=20261108-mixed-risk"></script><script src="/static/app.js?v=20261113-v33"></script><script src="/static/template-draft.js?v=20261113-redesign"></script><script src="/static/insights.js?v=20261108-numbered-sources"></script><script src="/static/report-parameters.js?v=20261108-mixed-risk"></script><script src="/static/writing-review.js?v=20261109-resolved-findings"></script><script src="/static/hotspot.js?v=20261113-hotspot"></script></body></html>
+<script src="/static/review-tools.js?v=20261113-v32"></script><script src="/static/data-review-tools.js?v=20261108-mixed-risk"></script><script src="/static/app.js?v=20261114-redhead"></script><script src="/static/template-draft.js?v=20261113-redesign"></script><script src="/static/insights.js?v=20261108-numbered-sources"></script><script src="/static/report-parameters.js?v=20261108-mixed-risk"></script><script src="/static/writing-review.js?v=20261109-resolved-findings"></script><script src="/static/hotspot.js?v=20261113-hotspot"></script></body></html>
