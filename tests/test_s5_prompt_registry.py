@@ -24,6 +24,8 @@ PROMPT_KEYS = (
     'event_judge.repair', 'template_analyst.batch', 'template_analyst.repair',
     'data_processor.next_tool', 'template_analyst.charts', 'template_analyst.advice',
     'model.json_output', 'model.tool_budget_exhausted',
+    # 首页「今日热点话题」采集角色（新增提示词键，追加在末尾：既有键序一字不动）
+    'hotspot_collector.collect',
 )
 
 # 角色序即 roles.yaml 声明序（§0.3.3）
@@ -31,6 +33,8 @@ ROLE_KEYS = (
     'historical_researcher', 'writer_data_planner', 'event_judge', 'event_classifier',
     'event_summarizer', 'template_analyst', 'data_processor', 'writer',
     'format_reviewer', 'content_reviewer',
+    # 首页「今日热点话题」采集角色（roles.yaml 末尾追加，既有角色序不变）
+    'hotspot_collector',
 )
 
 POLICY_KEYS = ('fixed_text', 'semantic_units', 'recommendations', 'top10',
@@ -46,7 +50,7 @@ def test_prompt_keys_and_order():
 
 def test_prompt_values_are_str_and_nonempty():
     prompts = registry.prompts()
-    assert len(prompts) == 33
+    assert len(prompts) == 34  # 33 + hotspot_collector.collect（首页热点采集）
     assert all(isinstance(value, str) and value for value in prompts.values())
 
 
@@ -101,8 +105,26 @@ def test_prompt_keys_are_path_safe():
 
 
 def test_no_stray_prompt_files():
+    # 分层后（S10-E）：包内只放客户专属文件，通用 30 个在 `core/prompts/base/agent/`；
+    # 目录里不许出现没被本包声明/解析到的文件。
+    provenance = registry.provenance()
     on_disk = {path.stem for path in (PROMPTS_DIR / 'agent').glob('*.md')}
-    assert on_disk == set(registry.prompts())
+    assert on_disk == {key for key, source in provenance.items() if source == 'package'}
+    base_on_disk = {path.stem for path in (CORE_PROMPTS_DIR / 'base' / 'agent').glob('*.md')}
+    assert base_on_disk <= set(provenance)   # 基座文件必须在 A 的 34 键契约内，不是无主文件
+
+
+def test_provenance_split_is_0_package_34_base():
+    # 覆盖可见性（S10-F）：34 个提示词**全部由基座提供**，包内 agent/ 为空。
+    # 依据：模板制作、历史调研、要闻采集都是全局能力；原先残留的客户端 4 个只有
+    # 「安顺 / 贵州 / 黄果树 / 交通管理」这类**举例**，已泛化为「本地区 / 省域 /
+    # 示例地名 / 示例类目」，指令语义不变。
+    # 客户包只提供数据（template.json 词表 + manifest 开关）；若某客户要改口吻，
+    # 在包内放同名文件即可覆盖（provenance 会显示为 'package'）。
+    provenance = registry.provenance()
+    assert len(provenance) == 34
+    assert {key for key, source in provenance.items() if source == 'package'} == set()
+    assert [source for source in provenance.values() if source == 'base'] == ['base'] * 34
 
 
 def test_unconfigured_raises():

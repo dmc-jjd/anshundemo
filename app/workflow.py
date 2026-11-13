@@ -3,6 +3,7 @@ from __future__ import annotations
 from .agent import get_prompt
 import asyncio,hashlib,json,uuid
 from dataclasses import dataclass
+from core.agent_steps import graph_agents,prune_spec,resolve_enabled_agents
 from core.graph.compiler import END_TARGET,compile_graph
 from core.graph.review_loop import ReviewBudgets,build_review_loop
 from core.ports import GraphNode,GraphSpec,ReviewerSpec
@@ -21,6 +22,14 @@ class GraphState(TypedDict, total=False):
 class Dependencies:
     store: object
     model_adapter: object = None
+
+def _enabled_agents(agents=None):
+    """本次启用的角色集：显式传入优先，否则按客户包 manifest 的 `agents:` 解析。"""
+    return resolve_enabled_agents() if agents is None else frozenset(agents)
+
+def _record_agent_scope(store,task_id,graph,agents):
+    """把「本次这张图由哪些角色驱动」写进任务事件（审计可见；不产物件、不进指纹）。"""
+    store.append_event(task_id,{'type':'agent_scope','graph':graph,'agents':list(graph_agents(graph,agents))})
 
 def _graph_node(deps,name,action,graph_name):
     async def node(value):
@@ -45,7 +54,8 @@ def _report_spec():
         GraphNode('event_analysis','agent'),GraphNode('await_data_review','gate')))
 
 
-def build_report_graph(dependencies:Dependencies):
+def build_report_graph(dependencies:Dependencies,agents=None):
+    agents=_enabled_agents(agents)
     def validate(task_id):
         if dependencies.store.get_task(task_id).kind!='report':raise ValueError('not_report_task')
     def entry(value):
@@ -62,7 +72,8 @@ def build_report_graph(dependencies:Dependencies):
            'data_processing':(after_processing,{'analyse':'event_analysis','finish':'await_data_review'}),
            'event_analysis':(after_analysis,{'stop':END_TARGET,'finish':'await_data_review'}),
            'await_data_review':(lambda value:'end',{'end':END_TARGET})}
-    return compile_graph(_report_spec(),actions=actions,edges=edges,state_schema=GraphState,
+    spec,edges=prune_spec(_report_spec(),edges,'report',agents)
+    return compile_graph(spec,actions=actions,edges=edges,state_schema=GraphState,
                          node_wrapper=lambda name,action:_graph_node(dependencies,name,action,'report')).compile()
 
 
@@ -79,8 +90,9 @@ def _writing_spec(review_only=False):
         GraphNode('await_final_review','gate')))
 
 
-def build_writing_graph(dependencies:Dependencies,review_only=False):
+def build_writing_graph(dependencies:Dependencies,review_only=False,agents=None):
     from .reviewers import begin_run,local_review,style_review,run_reviewer,review_route,format_route,revise_draft,finish_review,repairable
+    agents=_enabled_agents(agents)
     store=dependencies.store
     def validate(task_id):
         task=store.get_task(task_id)
@@ -134,11 +146,15 @@ def build_writing_graph(dependencies:Dependencies,review_only=False):
              'content_review':lambda value:review_route(store,value['task_id']),'revise_draft':after_revision}
     edges={origin:(routers[origin],dict(branches)) for origin,branches in plan.conditional_edges}
     edges['await_final_review']=(lambda value:'end',{'end':END_TARGET})
-    return compile_graph(_writing_spec(review_only),actions=dict(nodes),edges=edges,state_schema=GraphState,
+    spec,edges=prune_spec(_writing_spec(review_only),edges,'writing',agents)
+    return compile_graph(spec,actions=dict(nodes),edges=edges,state_schema=GraphState,
                          node_wrapper=lambda name,action:_graph_node(dependencies,name,action,'writing')).compile()
 
-async def run_writing_graph(dependencies:Dependencies,task_id:str,review_only=False):
-    try:await build_writing_graph(dependencies,review_only).ainvoke({'task_id':task_id},config={'recursion_limit':100})
+async def run_writing_graph(dependencies:Dependencies,task_id:str,review_only=False,agents=None):
+    enabled=_enabled_agents(agents)
+    _record_agent_scope(dependencies.store,task_id,'writing',enabled)
+    graph=build_writing_graph(dependencies,review_only) if agents is None else build_writing_graph(dependencies,review_only,enabled)
+    try:await graph.ainvoke({'task_id':task_id},config={'recursion_limit':100})
     except TaskPaused:pass
     return dependencies.store.get_task(task_id)
 
@@ -152,7 +168,8 @@ def _template_spec():
         GraphNode('local_compare_and_analysis','tool')))
 
 
-def build_template_graph(dependencies:Dependencies):
+def build_template_graph(dependencies:Dependencies,agents=None):
+    agents=_enabled_agents(agents)
     def validate_input(state):
         task=dependencies.store.get_task(state['task_id'])
         if task.kind!='template': raise ValueError('not_template_task')
@@ -160,16 +177,23 @@ def build_template_graph(dependencies:Dependencies):
     async def compare(state):
         result=await run_template(dependencies,state['task_id'])
         return {'phase':result.phase}
-    return compile_graph(_template_spec(),actions={'validate_input':validate_input,'local_compare_and_analysis':compare},
-                         edges={'local_compare_and_analysis':(lambda state:'end',{'end':END_TARGET})},
-                         state_schema=GraphState).compile()
+    spec,edges=prune_spec(_template_spec(),{'local_compare_and_analysis':(lambda state:'end',{'end':END_TARGET})},
+                          'template',agents)
+    return compile_graph(spec,actions={'validate_input':validate_input,'local_compare_and_analysis':compare},
+                         edges=edges,state_schema=GraphState).compile()
 
-async def run_report_graph(dependencies:Dependencies,task_id:str):
-    try:return await build_report_graph(dependencies).ainvoke({'task_id':task_id})
+async def run_report_graph(dependencies:Dependencies,task_id:str,agents=None):
+    enabled=_enabled_agents(agents)
+    _record_agent_scope(dependencies.store,task_id,'report',enabled)
+    graph=build_report_graph(dependencies) if agents is None else build_report_graph(dependencies,enabled)
+    try:return await graph.ainvoke({'task_id':task_id})
     except TaskPaused:return dependencies.store.get_task(task_id)
 
-async def run_template_graph(dependencies:Dependencies,task_id:str):
-    try:return await build_template_graph(dependencies).ainvoke({'task_id':task_id})
+async def run_template_graph(dependencies:Dependencies,task_id:str,agents=None):
+    enabled=_enabled_agents(agents)
+    _record_agent_scope(dependencies.store,task_id,'template',enabled)
+    graph=build_template_graph(dependencies) if agents is None else build_template_graph(dependencies,enabled)
+    try:return await graph.ainvoke({'task_id':task_id})
     except TaskPaused:return dependencies.store.get_task(task_id)
 
 def _item(kind,question,blocking=True,details=None):

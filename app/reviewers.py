@@ -19,8 +19,9 @@ def document(store,state):
     if draft.get('structured_template_ref'):
         template=load_confirmed_template(store,state.template_ref);definitions={f['id']:f for f in template['fields']}
     else:
-        from .slot_writer import WRITER_SLOT_IDS
-        template={};definitions={key:{'id':key,'owner':'writer' if key in WRITER_SLOT_IDS else 'data','display_name':key} for key in draft.get('slot_values',{})}
+        from .slot_writer import writer_slot_ids
+        writer_ids=writer_slot_ids()
+        template={};definitions={key:{'id':key,'owner':'writer' if key in writer_ids else 'data','display_name':key} for key in draft.get('slot_values',{})}
     fields={key:{'id':key,'name':definitions[key].get('display_name',key),'value':value['value'],
         'source_refs':value.get('source_refs',[]),'text':text(value['value']),'owner':definitions[key]['owner'],'kind':definitions[key].get('kind'),'rule':definitions[key].get('rule'),'format':definitions[key].get('format'),'value_schema':definitions[key].get('value_schema')} for key,value in draft.get('slot_values',{}).items() if key in definitions}
     machine={key:value for key,value in fields.items() if value['owner']=='writer' and 'human_edit' not in value['source_refs']}

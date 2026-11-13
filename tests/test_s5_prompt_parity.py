@@ -25,7 +25,8 @@ def test_agent_py_is_thin_shell():
 
 
 def test_definitions_are_frozen_dataclasses():
-    assert len(AGENT_DEFINITIONS) == 10
+    # 11 = 原有 10 个角色 + 首页热点采集角色 hotspot_collector（roles.yaml 末尾追加）
+    assert len(AGENT_DEFINITIONS) == 11
     for role_id, definition in AGENT_DEFINITIONS.items():
         assert isinstance(definition, AgentDefinition) and dataclasses.is_dataclass(definition)
         assert definition.role_id == role_id
@@ -43,10 +44,14 @@ def test_consumers_share_the_same_function_objects():
 
 
 def test_prompt_fingerprint_table_unchanged():
-    assert prompt_fingerprint() == 'fd0ad70a94db03c77e38345c8eeac6852cd8cccb55b3b729dfc0a18eb8eb886e'
-    assert prompt_fingerprint('anshun_monthly', ('historical_researcher.',)) == 'c291f21de4d17f58f5c397d30d19c300c1d3ea5d580d9b934b41b487326312b2'
+    # S10-F 泛化勘误：为把 34 个提示词全部下沉基座，客户标识被泛化为通用措辞
+    #   安顺 -> 本地区、贵州 -> 省域、黄果树 -> 具体地名、交通管理 -> 具体类目
+    # 指令语义未变。曾因搬迁脚本在 Windows 上写入 CRLF 导致文本多出 \r，已修正为 LF。
+    # 反证改动是外科手术式的：writer.analysis / writer.general 指纹逐字符未变。
+    assert prompt_fingerprint() == 'c6ec2a534bb904b3f4b96b6102b0c5e55d139e7c9a7b0bc32b2519970c6a3521'
+    assert prompt_fingerprint('anshun_monthly', ('historical_researcher.',)) == '21a9c51e6be1b910a975953b8ed0e24561f7e4a6d6f6516f91e3abdba44032c8'
     assert prompt_fingerprint('anshun_monthly', ('writer.analysis',)) == 'b20c64fcfa3d4058c14a16ec6612189cc9948d9c22d4354e65ac115801a7999f'
-    assert prompt_fingerprint('anshun_monthly', ('writer.outlook', 'historical_researcher.')) == '717037b578e9eb0240d5e9773ef74639f36f0e0e955f534c8004902bab8d3196'
+    assert prompt_fingerprint('anshun_monthly', ('writer.outlook', 'historical_researcher.')) == 'e9a9c80a78f3630b332535e6da76e77f66e885cffe6d4c0ba4ba2c024596f130'
     assert prompt_fingerprint('anshun_monthly', ('writer.general',)) == 'bd2cd11b8d232e52c1e229077d2b407d3fe5b425f5a1a4e1093869671de5775e'
 
 

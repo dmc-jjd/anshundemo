@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import json
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -81,3 +82,42 @@ def dedup_merge_rounds() -> int:
 def dedup_merge_threshold() -> float:
     """第二轮组级余弦阈值。缺省 0.5；客户包可单独标定，与第一轮 threshold 互不影响。"""
     return float((_contract().get('dedup') or {}).get('merge_threshold', 0.5))
+
+
+#: 兜底推导用的四类文本槽位（见 `writer_slots` docstring 第 2 条）。
+_DERIVED_WRITER_SLOT_TYPES = frozenset({
+    'theme_cluster', 'source_text', 'narrative_from_sources', 'computed_judgement',
+})
+
+
+def writer_slots() -> tuple[str, ...]:
+    """模板声明的可写槽位（writer 负责填写的占位符 id），**客户业务口径**。
+
+    来源优先级：
+    1. 包内 `template.json` 顶层 `writer_slots`（字符串数组，元素是占位符 id）。
+       新客户**应显式声明**：这组 id 是业务口径的产物，推导不出来——当前客户模板
+       99 个占位符里 `kind='highlight'` 有 66 个，而这 9 个只是其中被业务选中的子集。
+    2. 缺省（旧包没写 `writer_slots`）才回退：读注入的模板目录里
+       `report.template.json`，取 `slot_type` ∈ {theme_cluster, source_text,
+       narrative_from_sources, computed_judgement} 的占位符（当前模板 15 个）。
+       这是**兼容旧包的近似兜底，不是权威口径**：它比业务口径宽 6 个槽位，
+       会让 writer 多写；新客户请走第 1 条显式声明。
+
+    只许函数内调用：模块级求值会在 configure 之前炸（与 `paths` 各取值函数同一条纪律）。
+    """
+    template = _get()
+    if 'writer_slots' in template:
+        return tuple(str(slot_id) for slot_id in (template['writer_slots'] or ()))
+    return _derived_writer_slots()
+
+
+def _derived_writer_slots() -> tuple[str, ...]:
+    """兜底推导（仅旧包无 `writer_slots` 时走）：占位符清单不在包内，在注入的模板目录。"""
+    from core import paths
+
+    manifest = json.loads((paths.template_dir() / 'report.template.json').read_text(encoding='utf-8'))
+    return tuple(
+        str(placeholder['id'])
+        for placeholder in (manifest.get('placeholders') or ())
+        if placeholder.get('slot_type') in _DERIVED_WRITER_SLOT_TYPES
+    )

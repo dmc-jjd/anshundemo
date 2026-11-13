@@ -2,7 +2,8 @@
  * 纪律：只有「编辑占位符内容」一种操作——无富文本工具栏；图表只显示、不可编辑。
  * 数据：GET /api/tasks/{id}/final-document 的渲染模型；保存走 POST …/save，
  *      只提交前端 diff 出来的变化槽，并带 expected_revision 防并发。
- * 修改日志：GET …/versions（倒序），抽屉里逐条列出 before → after。 */
+ * 修改日志：GET …/versions（倒序），抽屉里逐条列出 before → after。
+ * 主壳：本页顶栏与五阶段 tab 与 index.html 同款；05 为本页当前项，01–04 回主页面 ?view=。 */
 (function () {
   'use strict';
 
@@ -16,12 +17,24 @@
     theme: '图4 负面舆情分类分布情况',
     locality: '图5 各区县舆情分布情况'
   };
+  /* 阶段 → 主轴序号：只有 4/5 段的任务会落到本页，其余按 0 处理（tab 全 todo）。 */
+  var PHASE_STAGE = function (phase) {
+    if (!phase) return 0;
+    if (phase === 'awaiting_final_review' || phase === 'approved' || phase === 'writing' ||
+        phase === 'style_detection' || phase === 'format_review' || phase === 'content_review' ||
+        phase === 'final_format_review' || phase === 'revising' || phase === 'facts_frozen') return 5;
+    if (phase === 'awaiting_review') return 4;
+    if (/^template_/.test(phase) || phase === 'awaiting_template_confirmation' || phase === 'template_confirmed') return 2;
+    if (['queued', 'processing', 'analyzing', 'analysis_pending'].indexOf(phase) >= 0) return 3;
+    return 0;
+  };
 
   var $ = function (selector) { return document.querySelector(selector); };
   var model = null;
   var initial = new Map();   // slot id -> 载入时的值（用于 diff）
   var dirty = new Map();     // slot id -> 当前编辑值（仅变化项）
   var saving = false;
+  var reports = [];          // 已生成报告（draft_ref 非空的报告任务）
 
   function toast(text) {
     var node = $('#toast');
@@ -46,7 +59,78 @@
     });
   }
 
-  function status(text) { $('#fdStatus').textContent = text; }
+  function status(text) { $('#fdStatus').textContent = text || ''; }
+
+  /* 五阶段 tab：05 恒为本页当前项；01–04 按任务阶段画 done / todo。 */
+  function paintStages(stage) {
+    var tabs = document.querySelectorAll('#fdTabs .stage');
+    Array.prototype.forEach.call(tabs, function (el) {
+      var index = Number(el.dataset.stage);
+      if (index === 5) {
+        el.dataset.state = 'current';
+        el.setAttribute('aria-current', 'page');
+        return;
+      }
+      el.removeAttribute('aria-current');
+      el.dataset.state = (stage && index < stage) ? 'done' : 'todo';
+    });
+  }
+
+  function renderReports() {
+    var host = $('#fdReportList');
+    if (!host) return;
+    host.textContent = '';
+    host.classList.toggle('is-empty', !reports.length);
+    if (!reports.length) {
+      var count = document.createElement('p');
+      count.className = 'fd-report-count';
+      count.textContent = '0 份';
+      host.appendChild(count);
+      return;
+    }
+    reports.forEach(function (item) {
+      var row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'fd-report-item' + (item.id === taskId ? ' active' : '');
+      if (item.id === taskId) row.setAttribute('aria-current', 'true');
+      var name = document.createElement('strong');
+      name.textContent = item.display_name || item.id;
+      var meta = document.createElement('small');
+      meta.textContent = item.report_month || '—';
+      row.appendChild(name);
+      row.appendChild(meta);
+      row.addEventListener('click', function () { selectTask(item.id); });
+      host.appendChild(row);
+    });
+  }
+
+  function taskName(id) {
+    var hit = reports.filter(function (item) { return item.id === id; })[0];
+    return (hit && hit.display_name) || id;
+  }
+
+  function selectTask(id) {
+    if (!id || id === taskId) return;
+    taskId = id;
+    try { history.replaceState(null, '', '?task=' + encodeURIComponent(id)); } catch (error) { /* 非网页环境忽略 */ }
+    $('#fdDrawer').hidden = true;
+    renderReports();
+    load();
+  }
+
+  function loadReports() {
+    return api('/api/tasks').then(function (tasks) {
+      reports = (tasks || []).filter(function (task) {
+        return task && task.draft && task.id !== 'hotspot-homepage';
+      }).sort(function (a, b) {
+        return String(b.created_at).localeCompare(String(a.created_at));
+      }).map(function (task) {
+        return { id: task.id, display_name: task.display_name || task.id, report_month: task.report_month || '' };
+      });
+      if (!taskId && reports.length) taskId = reports[0].id;
+      renderReports();
+    });
+  }
 
   function slotNodes(slotId) {
     return Array.prototype.slice.call(document.querySelectorAll('[data-slot="' + slotId + '"]'));
@@ -180,18 +264,46 @@
     $('#fdVersion').textContent = 'v' + ((model && model.revision) || 0);
   }
 
+  /* 无终稿数据：左侧 0 份；右侧一整张空白 A4 纸，纸面只有居中一点，底部操作条不出现。 */
+  function renderEmpty() {
+    model = null;
+    initial = new Map();
+    dirty = new Map();
+    $('#fdTaskMeta').hidden = true;
+    $('#fdTaskName').textContent = '';
+    $('#fdDefinitions').hidden = true;
+    $('#fdDefCount').textContent = '0';
+    $('#fdDefBody').textContent = '';
+    $('#fdDrawer').hidden = true;
+    $('#fdBar').hidden = true;
+    var sheet = $('#fdSheet');
+    sheet.textContent = '';
+    sheet.classList.remove('fd-readonly');
+    sheet.classList.add('fd-sheet-blank');
+    var dot = document.createElement('span');
+    dot.className = 'fd-sheet-dot';
+    dot.textContent = '·';
+    sheet.appendChild(dot);
+    paintStages(0);
+    status('');
+  }
+
   function render(modelData) {
     model = modelData;
     initial = new Map();
     dirty = new Map();
-    $('#fdTaskId').textContent = taskId;
-    $('#fdPhase').textContent = model.phase || '—';
+    $('#fdBar').hidden = false;
+    $('#fdDefinitions').hidden = false;
+    $('#fdTaskMeta').hidden = false;
+    $('#fdTaskName').textContent = taskName(taskId);
+    paintStages(PHASE_STAGE(model.phase));
     var definition = model.sections[0] || { blocks: [], count: 0 };
     var body = model.sections[1] || { blocks: [], count: 0 };
     $('#fdDefCount').textContent = definition.count || definition.blocks.length;
     renderDefinition(definition.blocks || [], $('#fdDefBody'));
 
     var sheet = $('#fdSheet');
+    sheet.classList.remove('fd-sheet-blank');
     sheet.textContent = '';
     var preambles = (body.blocks || []).filter(function (block) { return block.kind === 'preamble'; });
     var position = 0;
@@ -348,20 +460,33 @@
   }
 
   function load() {
-    if (!taskId) {
-      status('缺少 task 参数');
-      $('#fdSheet').innerHTML = '<p class="fd-loading">请在地址后附加 <code>?task=&lt;任务ID&gt;</code>。</p>';
-      return Promise.resolve();
-    }
+    if (!taskId) { renderEmpty(); return Promise.resolve(); }
     return api('/api/tasks/' + encodeURIComponent(taskId) + '/final-document')
       .then(function (payload) { render(payload); })
       .catch(function (error) {
+        if (error.status === 404) { renderEmpty(); return; }
         status('载入失败：' + error.message);
-        $('#fdSheet').innerHTML = '<p class="fd-loading">载入失败：' + error.message + '</p>';
+        $('#fdSheet').textContent = '';
+        $('#fdSheet').classList.add('fd-sheet-blank');
+        var note = document.createElement('span');
+        note.className = 'fd-sheet-dot';
+        note.textContent = '·';
+        $('#fdSheet').appendChild(note);
       });
   }
 
+  function wireShell() {
+    Array.prototype.forEach.call(document.querySelectorAll('#fdTabs .stage[data-view]'), function (el) {
+      el.addEventListener('click', function () {
+        window.location.href = '/?view=' + encodeURIComponent(el.dataset.view);
+      });
+    });
+    $('#fdBack').addEventListener('click', function () { window.location.href = '/'; });
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
+    wireShell();
+    paintStages(0);
     $('#fdSheet').addEventListener('input', onInput);
     $('#fdSheet').addEventListener('paste', onPaste);
     $('#fdSheet').addEventListener('keydown', onKeyDown);
@@ -371,6 +496,6 @@
     $('#fdSave').addEventListener('click', save);
     $('#fdLog').addEventListener('click', openLog);
     $('#fdDrawerClose').addEventListener('click', function () { $('#fdDrawer').hidden = true; });
-    load();
+    loadReports().catch(function () { renderReports(); }).then(load);
   });
 })();

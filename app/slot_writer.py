@@ -2,7 +2,8 @@
 
 旧公开面全部经本壳保持（同一对象引用，不是副本）：
     `write_first_section_slots`  —— `app/workflow.py:440`
-    `WRITER_SLOT_IDS`            —— `app/reviewers.py:22`
+    `writer_slot_ids`            —— `app/reviewers.py:22`（原常量 `WRITER_SLOT_IDS`
+                                    已搬回客户包 `template.json`，基座只留函数）
     `SlotAnswer`                 —— `scripts/inspect_writer_request.py:8`
     `_issue` 不导出：全仓 0 消费，且下划线名本来就不进星号导出面。
 

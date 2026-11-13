@@ -4,6 +4,7 @@ from .agent import get_prompt,prompt_profile,prompt_fingerprint,DEFAULT_PROMPT_P
 import copy,hashlib,uuid,zipfile
 from pathlib import Path
 from pydantic import BaseModel,Field,ValidationError
+from core.agent_steps import resolve_enabled_agents
 from .structured_template import load_confirmed_template,validate_values
 from .config import DATA
 from .model_client import invoke_agent
@@ -97,8 +98,10 @@ def save_draft(store,state,template,values,allowed,charts,issues):
     store.append_event(state.id,{'type':'structured_writer_result','template_ref':state.template_ref,'filled':list(values),'missing':missing,'issues':issues,'pending_charts':pending})
     return state
 
-async def write_structured_preview(deps,task_id):
+async def write_structured_preview(deps,task_id,agents=None):
     store=deps.store;report=FrozenReport(store,task_id);state=report.state
+    # 声明式调度：历史调研由角色声明决定，不再靠"模板里有没有 outlook 字段"猜。
+    agents=frozenset(resolve_enabled_agents() if agents is None else agents)
     template=load_confirmed_template(store,state.template_ref);fields={f['id']:f for f in template['fields']}
     profile=prompt_profile(state.metadata,template)
     fingerprint=prompt_fingerprint(profile)
@@ -148,7 +151,7 @@ async def write_structured_preview(deps,task_id):
             try:validate_values(template,{key:answer},allowed,writer_only=True);values[key]=answer
             except Exception:pass
     history=None;history_ref=None;generated_policy={};pending_sources={}
-    if any(second_role(f)=='outlook' and f['id'] not in values for f in fields.values()):
+    if 'historical_researcher' in agents and any(second_role(f)=='outlook' and f['id'] not in values for f in fields.values()):
         from .historical_research import prepare_history
         history_ref,history=await prepare_history(report,ctx,profile=profile);allowed.add(history_ref)
         allowed.update(c['page_ref'] for t in history['topics'] for c in t['evidence'])

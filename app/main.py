@@ -15,11 +15,12 @@ from .export import export_docx
 from .report_validation import validate_draft
 from .api_views.approval import approval_gate
 from .api_views.data_review import apply_event_settings
-from .api_views.task_resume import resume_plan
+from .api_views.task_resume import resume_plan,display_name
 from .api_views.template import apply_definition_patch,confirm_candidate
 from .template_draft_api import router as manual_definition_router
 from .template_advice_api import router as template_advice_router
 from .final_document_api import router as final_document_router
+from .hotspot_api import router as hotspot_router
 from .api_views.writing import apply_slot_values,assemble_review_view
 
 store=Store(); deps=Dependencies(store)
@@ -33,6 +34,9 @@ app.include_router(template_advice_router)
 # 终稿人工审核页（A4 渲染模型 / 保存人工覆盖 / 修改日志 / 还原），同样刻意不进 OpenAPI：
 # 见 app/final_document.py 与 app/final_document_api.py。
 app.include_router(final_document_router)
+# 首页两个新模块（今日热点话题 / 社媒热榜占位），同样刻意不进 OpenAPI：
+# 见 app/hotspot_api.py 与 app/hotspot.py。
+app.include_router(hotspot_router)
 app.mount('/static',StaticFiles(directory=Path(__file__).parent/'static'),name='static')
 UPLOADS=DATA/'uploads'; UPLOADS.mkdir(exist_ok=True)
 
@@ -137,7 +141,7 @@ async def report_task(req:TaskCreate,background_tasks:BackgroundTasks,idempotenc
     if idempotency_key:
         existing=store.idempotent('report:'+idempotency_key,task_id)
         if existing!=task_id: return store.get_task(existing)
-    state=TaskState(id=task_id,kind='report',phase='queued',template_ref=req.template_ref,input_refs=req.file_ids,metadata={'input_path':paths[0],'report_month':req.report_month,'sheet_index':req.sheet_index,'mode':req.mode,'event_scope':'negative_or_warning','event_scope_confirmed':True,'event_scope_applies_to':'first_section_four_categories_districts_top10','event_scope_authority':'user_confirmed_2026_11_06','template_rules':rules,'event_threshold':req.event_threshold or rules.get('event_threshold',.65)})
+    state=TaskState(id=task_id,kind='report',phase='queued',template_ref=req.template_ref,input_refs=req.file_ids,metadata={'input_path':paths[0],'report_month':req.report_month,'report_issue':req.issue_number,'report_date':req.publication_date,'sheet_index':req.sheet_index,'mode':req.mode,'event_scope':'negative_or_warning','event_scope_confirmed':True,'event_scope_applies_to':'first_section_four_categories_districts_top10','event_scope_authority':'user_confirmed_2026_11_06','template_rules':rules,'event_threshold':req.event_threshold or rules.get('event_threshold',.65)})
     parameters={key:value for key,value in req.model_dump(mode='json').items() if key in ('issue_number','publication_date') and value is not None}
     if parameters:
         state.metadata['report_parameters']=parameters
@@ -156,7 +160,8 @@ def report_parameter_suggestions(template_ref:str,report_month:str):
 
 @app.get('/api/tasks')
 def tasks():
-    return [{'id':task.id,'kind':task.kind,'phase':task.phase,'revision':task.revision,'created_at':task.created_at,
+    index={item['id']:item for item in templates()}
+    return [{'id':task.id,'display_name':display_name(task,index),'kind':task.kind,'phase':task.phase,'revision':task.revision,'created_at':task.created_at,'draft':bool(task.draft_ref),'report_month':task.metadata.get('report_month'),
              'metadata':{'simulation':task.metadata.get('simulation',False)}} for task in store.list_tasks()]
 @app.get('/api/tasks/{task_id}')
 def task(task_id:str): return get_task(task_id)

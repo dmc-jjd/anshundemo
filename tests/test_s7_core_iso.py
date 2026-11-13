@@ -7,11 +7,12 @@ WP-S7-B 落地后（CORE-DEP 清零 = `core/` 按设计变动），两个基线�
 `core-S7-preB.json`——这是 A 包声明过的第二档，不改变判据语义。
 
 S8 起按「每层一档」推进：每层门禁全绿后录 `core-S8-L<层>.json`，本文件指向**当前层**那一档
-（S10-C 起现为 `core-S10-C.json`——该档 `app/` 新增终稿人工审核页的领域层与路由
-（`app/final_document.py` / `app/final_document_api.py`），并在 `app/export.py` 增加可选
-`overrides` 参数与 `template_values` 抽取函数，`app_hash` 因此前进；`core_hash` 与
-`core_files` 不变。`core-S7-preB.json` / `core-S8-L0.json` / … / `core-S10-A.json` /
-`core-S10-B.json` 保留为历史档，不覆盖）。
+（S10-H 起现为 `core-S10-H.json`——该档三项收尾：`core/slot_writer.py` 删掉写死的 9 个客户
+槽位 id（改由客户包 `template.json` 的 `writer_slots` 声明、`vocabulary.writer_slots()` 读取），
+`core/prompts/base/agent/hotspot_collector.collect.md` 删掉两处硬编码类别清单（单一事实源 =
+payload `categories`）；`core_files` 仍 92（新增门禁脚本在 `scripts/` 不入 `core/`），`core_hash`
+前进；`app/reviewers.py` 与 `app/api_views/{approval,writing}.py` 改调 `writer_slot_ids()`，
+`app_hash` 同步前进；`CORE-DEP` 仍 0/0。`core-S10-G.json` 及更早各档保留为历史档，不覆盖）。
 """
 
 import importlib
@@ -23,7 +24,7 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts"))
 import gate_core_iso  # noqa: E402
 
-BASELINE = REPO / "docs" / "team" / "baseline" / "core-S10-C.json"
+BASELINE = REPO / "docs" / "team" / "baseline" / "core-S10-H.json"
 
 
 def _baseline() -> dict:

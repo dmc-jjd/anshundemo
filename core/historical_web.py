@@ -3,8 +3,12 @@ import json,time,re,urllib.request,urllib.error
 from datetime import datetime,timezone
 from urllib.parse import urlparse
 from pydantic import BaseModel,ConfigDict,Field
-from .config import MODEL_URL,MODEL_KEY
+from .config import SEARCH_ERROR,SEARCH_ERROR_LEGACY,search_endpoint  # SEARCH_ERROR 供壳层再导出
 from .schemas import ToolResult
+
+# 旧错误码别名：值（旧字符串）不变，名字仍可被 `web.<name>` / `from ... import` 取到，
+# 既有按旧错误码匹配的调用方零改动；**派发面只抛 `search_not_configured`**（SEARCH_ERROR）。
+historical_web_requires_configured_deepseek_endpoint=SEARCH_ERROR_LEGACY
 
 class SearchQuery(BaseModel):
     model_config=ConfigDict(extra='forbid')
@@ -35,11 +39,18 @@ def page_read_error(content):
                 return '网页返回'+kind+'，尚未取得文章正文；不能引用搜索摘要，请更换可读来源或采用有条件的季节风险。'
     return None
 
+def tools_url(base,kind):
+    """搜索工具地址：`<base>/tools/<kind>`；base 无路径段时补 `/v1`（旧行为是硬编码 /v1）。"""
+    base=(base or '').rstrip('/')
+    if not urlparse(base).path.strip('/'):base+='/v1'
+    return base+'/tools/'+kind
+
 def request(kind,args,ctx):
-    if urlparse(MODEL_URL).hostname!='api.deepseek.com' or not MODEL_KEY:raise ValueError('historical_web_requires_configured_deepseek_endpoint')
-    url='https://api.deepseek.com/v1/tools/'+kind
+    # 搜索凭据与生成模型解耦：未配置时抛 `search_not_configured`（不带任何网络请求）。
+    base,key=search_endpoint()
+    url=tools_url(base,kind)
     started=time.monotonic()
-    req=urllib.request.Request(url,json.dumps(args,ensure_ascii=False).encode(),{'Authorization':'Bearer '+MODEL_KEY,'Content-Type':'application/json'})
+    req=urllib.request.Request(url,json.dumps(args,ensure_ascii=False).encode(),{'Authorization':'Bearer '+key,'Content-Type':'application/json'})
     try:
         with urllib.request.urlopen(req,timeout=40) as response:data=json.load(response)
         billable=bool(data.get('results')) if kind=='search' else bool(data.get('content'))

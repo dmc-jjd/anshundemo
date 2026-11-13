@@ -3,6 +3,21 @@ report_type: 舆情月报
 version: 1.0.0
 template: template.json
 prompts: prompts/
+
+# 角色清单（声明式调度）：本客户参与哪些角色。
+# 不写这段 = 全部角色参与（向后兼容，老包不炸）；写了 = 只有列出的角色参与，
+# 未列出角色驱动的流程步骤整段跳过（角色→步骤的映射在 core/agent_steps.py）。
+# 角色 id 必须存在于 prompts/roles.yaml，否则启动即失败 manifest_unknown_agent:<id>。
+agents:
+  - template_analyst
+  - data_processor
+  - event_judge
+  - event_classifier
+  - event_summarizer
+  - writer
+  - historical_researcher
+  - format_reviewer
+  - content_reviewer
 tools:
   allow:
     - import_records

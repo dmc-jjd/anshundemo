@@ -3,42 +3,54 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>终稿人工审核 · 安顺月报工作台</title>
-<!-- 方案 3：自研 A4 页 + contenteditable。
-     只有一种操作——编辑占位符内容；图表不可编辑。
-     本页只读 app/static/style.css 的现有令牌，终稿页样式见文件末尾「终稿人工审核」段。 -->
-<link rel="stylesheet" href="/static/style.css?v=20261113-final-document">
+<title>终稿审核 · 康奈 · 洞研智台</title>
+<!-- 方案 3：自研 A4 页 + contenteditable。只有一种操作——编辑占位符内容；图表不可编辑。
+     顶栏与五阶段 tab 与主页面（index.html）同一套 .topbar / .stage-progress 结构：
+     05 报告撰写为本页当前查看项，01–04 点击回主页面 ?view=。 -->
+<link rel="stylesheet" href="/static/style.css?v=20261113-v33">
 </head>
 <body class="fd-body">
-<header class="topbar fd-topbar">
-  <div class="brand">
-    <span class="seal" aria-hidden="true">终</span>
-    <div class="brand-text">
-      <strong>终稿人工审核</strong>
-      <small>人工研判后提交的终稿为最终稿 · 每处修改留痕</small>
-    </div>
+<header class="topbar">
+  <div class="crumb">
+    <b data-product-full>康奈 · 洞研智台</b>
+    <span class="sep">/</span>
+    <a class="here" id="fdCrumbHome" href="/">工作台</a>
+    <span class="sep">/</span>
+    <span class="here" aria-current="page">终稿审核</span>
   </div>
-  <nav aria-label="终稿页信息">
-    <span class="fd-task">任务 <span id="fdTaskId" class="mono">—</span></span>
-    <span class="fd-task">阶段 <span id="fdPhase">—</span></span>
-  </nav>
-  <div class="topmeta"><span id="fdStatus" class="fd-status">正在载入终稿…</span></div>
+  <div class="topmeta">
+    <span class="fd-task-meta" id="fdTaskMeta" hidden><span class="fd-task-label">任务</span> <span class="fd-task-name" id="fdTaskName">—</span></span>
+    <span class="saved"><i></i>自动保存</span>
+    <span class="fd-status" id="fdStatus"></span>
+  </div>
 </header>
 
+<nav class="stage-progress" id="fdTabs" aria-label="五阶段">
+  <button class="stage" type="button" data-stage="1" data-view="overview" data-state="todo"><span class="idx">01</span><span class="nm">工作台</span><span class="dot" aria-hidden="true"></span></button>
+  <button class="stage" type="button" data-stage="2" data-view="template" data-state="todo"><span class="idx">02</span><span class="nm">模板确认</span><span class="dot" aria-hidden="true"></span></button>
+  <button class="stage" type="button" data-stage="3" data-view="report" data-state="todo"><span class="idx">03</span><span class="nm">数据处理</span><span class="dot" aria-hidden="true"></span></button>
+  <button class="stage" type="button" data-stage="4" data-view="tasks" data-state="todo"><span class="idx">04</span><span class="nm">模板/数据·审核</span><span class="dot" aria-hidden="true"></span></button>
+  <button class="stage" type="button" data-stage="5" data-state="current" aria-current="page"><span class="idx">05</span><span class="nm">报告撰写</span><span class="dot" aria-hidden="true"></span></button>
+</nav>
+
 <main class="fd-main" id="fdMain">
+  <aside class="fd-reports" aria-label="已生成报告">
+    <h2>已生成报告</h2>
+    <div class="fd-report-list" id="fdReportList"></div>
+  </aside>
   <div class="fd-stage">
-    <details class="fd-defs" id="fdDefinitions">
-      <summary>核验口径 <b id="fdDefCount">99</b> 项<span class="fd-defs-hint">占位符定义与核验口径（默认收起；展开同样可直接编辑槽位内容）</span></summary>
+    <div class="fd-stage-bar">
+      <button class="fd-back" id="fdBack" type="button">← 返回</button>
+    </div>
+    <details class="fd-defs" id="fdDefinitions" hidden>
+      <summary>核验口径 <b id="fdDefCount">0</b> 项</summary>
       <div class="fd-defs-body" id="fdDefBody"></div>
     </details>
-
-    <article class="fd-sheet" id="fdSheet" aria-label="A4 终稿纸面">
-      <p class="fd-loading">正在渲染终稿…</p>
-    </article>
+    <article class="fd-sheet" id="fdSheet" aria-label="A4 终稿纸面"></article>
   </div>
 </main>
 
-<footer class="fd-bottom" id="fdBar">
+<footer class="fd-bottom" id="fdBar" hidden>
   <div class="fd-bottom-meta">
     <span class="fd-edited" id="fdEdited">已改 0 处</span>
     <span class="fd-version" id="fdVersion">v0</span>
@@ -58,6 +70,6 @@
 </aside>
 <div id="toast" role="status" aria-live="polite"></div>
 
-<script src="/static/final-document.js?v=20261113-final-document"></script>
+<script src="/static/final-document.js?v=20261113-v33"></script>
 </body>
 </html>

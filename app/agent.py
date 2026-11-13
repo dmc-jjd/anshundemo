@@ -9,3 +9,4 @@ L2 的 `model_client` 依赖它，按层序补齐，不新增任何注入函数�
 标量常量（如 `MODEL_*`）则相反，patch 必须打在 `core` 侧，打在壳上只改副本。
 """
 from core.agent import *  # noqa: F401,F403
+from core.agent import provenance  # noqa: F401  # 键 → 'package' | 'base'（分层解析来源）

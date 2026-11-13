@@ -1,6 +1,6 @@
 let flowClock=null;
 function durationText(ms){if(ms>0&&ms<1000)return Math.round(ms)+'毫秒';const sec=Math.max(0,Math.floor(ms/1000)),h=Math.floor(sec/3600),m=Math.floor(sec%3600/60),s=sec%60;return (h?h+'小时 ':'')+(m||h?m+'分 ':'')+s+'秒'}
-function tickFlowClock(){if(!flowClock)return;const x=flowClock.value,delta=x.ended_at?0:Math.max(0,Date.now()-flowClock.received);for(const key of ['total_ms','processing_ms','human_wait_ms','recovery_wait_ms']){const n=document.querySelector(`[data-flow-clock="${key}"]`);if(n)n.textContent=durationText(x[key]+((key==='total_ms'||key===x.current_bucket)?delta:0))}document.querySelectorAll('[data-running-ms]').forEach(n=>n.textContent=durationText(Number(n.dataset.runningMs)+delta))}
+function tickFlowClock(){if(!flowClock)return;const x=flowClock.value,frozen=!!x.ended_at||x.current_phase==='paused',delta=frozen?0:Math.max(0,Date.now()-flowClock.received);for(const key of ['total_ms','processing_ms','human_wait_ms','recovery_wait_ms']){const n=document.querySelector(`[data-flow-clock="${key}"]`);if(n)n.textContent=durationText(x[key]+((key==='total_ms'||key===x.current_bucket)?delta:0))}document.querySelectorAll('[data-running-ms]').forEach(n=>n.textContent=durationText(Number(n.dataset.runningMs)+delta))}
 setInterval(tickFlowClock,1000);
 async function showTiming(id,revision){
  const x=await api(`/api/tasks/${id}/timing`);let panel=$('#flowTiming');if(!panel){panel=node('section',null,{id:'flowTiming',class:'flow-timing'});$('#taskDetail').before(panel)}

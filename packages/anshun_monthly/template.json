@@ -1,6 +1,9 @@
 {
   "package": "anshun_monthly",
   "version": "1.0.0",
+  "writer_slots": ["B17_GREEN_09", "B26_YELLOW_24", "B26_LIGHTGRAY_25",
+                   "B29_MAGENTA_02", "B29_YELLOW_03", "B29_LIGHTGRAY_04",
+                   "B30_RED_02", "B30_RED_05", "B30_YELLOW_06"],
   "data_contract": {
     "sheet_index": 3,
     "required_columns": ["标题", "舆情调性"],

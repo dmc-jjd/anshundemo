@@ -8,6 +8,10 @@
   - 角色职责与边界   → `<prompts>/roles.yaml`
   - 各阶段提示词     → `<prompts>/agent/<key>.md`（一个键一个文件）
 
+提示词正文分层查找（S10-E 起）：客户包优先，基座 `core/prompts/base/agent/` 兜底。
+客户包 `index.yaml` 照旧声明**全部键**（契约不变），但文件可以只在基座里——
+通用方法论只留一份，客户包只放客户专属文本。来源由 `provenance()` 暴露。
+
 字节口径（改任何一条都会让已落盘的 writer_prompt_fingerprint / policy_version 集体失效）：
   1 读文件一律 `read_bytes().decode('utf-8')`。**不用** `read_text`：它默认做通用换行翻译，
     会把 CRLF 静默改成 LF，从而把"文件已被 Windows 工具写成 CRLF"这个事实掩盖掉；
@@ -39,6 +43,8 @@ class PromptBundleError(RuntimeError):
 _INDEX_KEYS = ('agent_prompts', 'template_policy', 'report_prompt_profiles', 'default_prompt_profile')
 _ROLE_FIELDS = ('responsibility', 'boundary', 'output')
 _package_dir: Path | None = None
+#: 基座提示词根：仓库内 `core/prompts/base/`（与包内 `<prompts>/` 同构，`agent/<key>.md` 相对路径一致）
+BASE_DIR = Path(__file__).resolve().parent / 'base'
 
 
 def configure(package_dir: Path) -> None:
@@ -71,6 +77,22 @@ def _yaml(path: Path, label: str) -> Any:
         raise PromptBundleError('prompt_yaml_invalid:' + label) from exc
 
 
+def _resolve(base: Path, rel: str, key: str) -> tuple[str, str]:
+    """分层解析：客户包优先，基座兜底；返回 (全文, 来源)，来源 ∈ {'package', 'base'}。
+
+    两级都缺才 `prompt_missing`——**不回落任何内置默认值**（口径同上）。
+    `rel` 是 index.yaml 里的相对路径（当前均为 `agent/<key>.md`），两级用同一相对路径，
+    基座目录因此与包内 `<prompts>/` 同构。
+    """
+    pkg_file = base / rel
+    if pkg_file.is_file():
+        return _text(pkg_file, key), 'package'
+    base_file = BASE_DIR / rel
+    if base_file.is_file():
+        return _text(base_file, key), 'base'
+    raise PromptBundleError('prompt_missing:' + key)
+
+
 @lru_cache(maxsize=4)
 def _bundle(package_dir: Path) -> dict[str, Any]:
     base = Path(package_dir) / load_manifest(package_dir).prompts
@@ -84,11 +106,13 @@ def _bundle(package_dir: Path) -> dict[str, Any]:
     if not isinstance(declared, dict) or not declared:
         raise PromptBundleError('prompt_index_invalid:agent_prompts')
     prompts: dict[str, str] = {}
+    sources: dict[str, str] = {}
     for key, rel in declared.items():
         if not isinstance(key, str) or not isinstance(rel, str):
             raise PromptBundleError('prompt_index_invalid:agent_prompts')
-        text = _text(base / rel, key)
+        text, source = _resolve(base, rel, key)
         prompts[key] = text[:-1] if text.endswith('\n') else text
+        sources[key] = source
     roles = _yaml(base / 'roles.yaml', 'roles.yaml')
     if not isinstance(roles, dict) or not roles:
         raise PromptBundleError('prompt_roles_invalid:roles.yaml')
@@ -109,13 +133,19 @@ def _bundle(package_dir: Path) -> dict[str, Any]:
     default = index['default_prompt_profile']
     if not isinstance(default, str) or default not in profiles:
         raise PromptBundleError('prompt_profile_invalid:default_prompt_profile')
-    return {'prompts': prompts, 'roles': roles, 'template_policy': policy,
-            'report_profiles': profiles, 'default_profile': default}
+    return {'prompts': prompts, 'sources': sources, 'roles': roles,
+            'template_policy': policy, 'report_profiles': profiles,
+            'default_profile': default}
 
 
 def prompts() -> dict[str, str]:
     """键 → 提示词全文（副本；键序 = index.yaml 声明序）。"""
     return dict(_bundle(_require_configured())['prompts'])
+
+
+def provenance() -> dict[str, str]:
+    """键 → 实际来源：'package'（客户包文件）或 'base'（基座兜底；顺序 = 声明序）。"""
+    return dict(_bundle(_require_configured())['sources'])
 
 
 def roles() -> dict[str, dict[str, str]]:

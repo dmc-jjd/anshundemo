@@ -16,8 +16,8 @@ def approval_gate(store, state, req, *, validate_draft, export_docx):
     if state.metadata.get('preview_only'):return (409,'preview_cannot_be_approved'),None
     draft=store.get_artifact(state.draft_ref)
     if state.template_ref=='anshun-monthly-colored':
-        from ..slot_writer import WRITER_SLOT_IDS
-        unfilled=[slot_id for slot_id in sorted(WRITER_SLOT_IDS) if not (draft.get('slot_values',{}).get(slot_id) or {}).get('value')]
+        from ..slot_writer import writer_slot_ids
+        unfilled=[slot_id for slot_id in sorted(writer_slot_ids()) if not (draft.get('slot_values',{}).get(slot_id) or {}).get('value')]
         if unfilled:return (409,'writer_slots_unfilled:'+','.join(unfilled)),None
     if req.draft_hash!=draft['content_hash']:return (409,'stale_draft'),None
     problems=validate_draft(DraftVersion.model_validate(draft),store.get_artifact(draft['fact_ref']))

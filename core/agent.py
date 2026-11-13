@@ -24,6 +24,9 @@ TEMPLATE_POLICY = _registry.template_policy()
 REPORT_PROMPT_PROFILES = _registry.report_profiles()
 DEFAULT_PROMPT_PROFILE = _registry.default_profile()
 
+# 覆盖可见性：键 → 实际来源（'package' 客户包文件 / 'base' 基座兜底）；只读，供排障与测试
+provenance = _registry.provenance
+
 # 旧文本常量保留为别名（全仓 0 消费，但保留零成本；见 docs/team/任务分解-S5.md §7 D2）
 RISK_COMPARISON_PROMPT = AGENT_PROMPTS['historical_researcher.plan']
 RESEARCH_PROMPT = AGENT_PROMPTS['historical_researcher.research']

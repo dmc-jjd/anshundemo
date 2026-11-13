@@ -22,10 +22,26 @@ import sys
 REPO = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
+import yaml  # noqa: E402
+
 from core.manifest import load_manifest  # noqa: E402
 
 PACKAGES = sorted(path for path in (REPO / 'packages').iterdir()
                   if path.is_dir() and (path / 'manifest.yaml').is_file())
+#: 基座提示词根（S10-E 起通用提示词只留这一份；包的 index.yaml 仍声明全部键）
+BASE_PROMPTS = REPO / 'core' / 'prompts' / 'base'
+
+
+def _resolved_prompt_files(package: pathlib.Path) -> list[pathlib.Path]:
+    """该包实际解析到的提示词文件：包内优先，`core/prompts/base/` 兜底。
+
+    与 `core/prompts/registry.py::_resolve` 同一顺序；不 configure 注册表（module-global，§5 RISK-1），
+    所以在这里按同一契约重算文件面。
+    """
+    prompts_dir = package / load_manifest(package).prompts
+    index = yaml.safe_load((prompts_dir / 'index.yaml').read_text(encoding='utf-8'))
+    return [prompts_dir / rel if (prompts_dir / rel).is_file() else BASE_PROMPTS / rel
+            for rel in index['agent_prompts'].values()]
 
 #: 子进程里跑 `import app`——`app/__init__.py:8-12` 就是那四件 configure 的唯一组合根。
 #: 打印计数是为了让 FAIL 时能看出「加载到了什么」，而不是只知道非零退出。
@@ -66,15 +82,17 @@ def test_every_package_loads_in_isolated_process() -> None:
 def test_prompt_skill_refs_are_declared() -> None:
     """§7 债 6 的治理测试：提示词里提到的每个**已注册技能 id** 都必须在该包的 `manifest.skills.use` 里。
 
-    放大到 `packages/**/prompts`（S4/S5/S6 的同一笔债），且只认已注册 id——按任意 kebab 串扫会
-    把 `per-event` 这类普通英文误判成技能名（F8）。
+    放大到每个包**实际解析到**的提示词文件（包内优先 + `core/prompts/base/` 兜底，
+    S4/S5/S6 的同一笔债），且只认已注册 id——按任意 kebab 串扫会把 `per-event` 这类普通英文
+    误判成技能名（F8）。只看包内文件会漏掉已下沉到基座的通用提示词（如
+    `content_reviewer.review` 里的 `lieflat-less-ai-tone`）。
     """
     registered = _registered_skill_ids()
     hits_total = 0
     for package in PACKAGES:
         declared = set(load_manifest(package).skill_use)
         mentioned: set[str] = set()
-        for path in sorted((package / 'prompts' / 'agent').glob('*.md')):
+        for path in sorted(_resolved_prompt_files(package)):
             text = path.read_text(encoding='utf-8')
             mentioned |= {skill_id for skill_id in registered if skill_id in text}
         hits_total += len(mentioned)
@@ -84,14 +102,14 @@ def test_prompt_skill_refs_are_declared() -> None:
 
 
 def test_prompt_files_end_with_at_most_one_lf() -> None:
-    """提示词文件的字节口径：正文 + **至多一个**结尾 LF，加载期剥掉一个（`core/prompts/registry.py:15-17`）。
+    """提示词文件的字节口径：正文 + **至多一个**结尾 LF，加载期剥掉一个（`core/prompts/registry.py` 模块 docstring 口径 2）。
 
-    注意方向：任务分解 §3 WP-C 写的是「每个 .md 不以换行结尾」，与实测**相反**——A 的 32 个文件
-    全部以恰好一个 LF 结尾（`b'...\\n'`），剥掉那份 LF 的正是 `_bundle`。所以钉的是
-    「剥一个之后不再以 LF 结尾」，它同时排除「两个及以上结尾 LF」这种会让剥一规则产生歧义的形态。
+    注意方向：任务分解 §3 WP-C 写的是「每个 .md 不以换行结尾」，与实测**相反**——A 的 34 个文件
+    全部以恰好一个 LF 结尾（`b'...\\n'`；S10-E 起 29 个在 `core/prompts/base/`），剥掉那份 LF 的
+    正是 `_bundle`。所以钉的是「剥一个之后不再以 LF 结尾」，它同时排除「两个及以上结尾 LF」
+    这种会让剥一规则产生歧义的形态。扫描面 = 每个包实际解析到的文件（含基座兜底）。
     """
-    files = sorted(path for package in PACKAGES
-                   for path in (package / 'prompts' / 'agent').glob('*.md'))
+    files = sorted({path for package in PACKAGES for path in _resolved_prompt_files(package)})
     assert files, '扫描面为空会让本用例空转通过'
     for path in files:
         text = path.read_bytes().decode('utf-8')

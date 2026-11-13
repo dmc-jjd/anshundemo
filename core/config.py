@@ -12,6 +12,7 @@
 """
 
 from pathlib import Path
+from urllib.parse import urlparse
 import os
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,6 +30,7 @@ def _load_local_env() -> None:
         name = name.strip()
         if name not in {'REPORT_MODEL_URL', 'REPORT_MODEL_NAME', 'REPORT_MODEL_KEY',
                         'REPORT_MODEL_THINKING', 'REPORT_MODEL_REASONING_EFFORT',
+                        'REPORT_SEARCH_URL', 'REPORT_SEARCH_KEY',
                         'REPORT_DEMO_DATA', 'REPORT_MAX_TOOL_CALLS',
                         'REPORT_MAX_PLANNING_CALLS'}:
             continue
@@ -47,3 +49,31 @@ MODEL_THINKING = os.getenv('REPORT_MODEL_THINKING', 'enabled')
 MODEL_REASONING_EFFORT = os.getenv('REPORT_MODEL_REASONING_EFFORT', 'low')
 MAX_TOOL_CALLS = int(os.getenv('REPORT_MAX_TOOL_CALLS', '40'))
 MAX_PLANNING_CALLS = int(os.getenv('REPORT_MAX_PLANNING_CALLS', '12'))
+
+# 联网搜索是**独立凭据**，不绑在生成模型上：搜索工具链路
+# （`core/historical_web.py:request` → `<base>/tools/search`）只需 DeepSeek 搜索接口那一对
+# URL/KEY；生成模型可以换任何 OpenAI 兼容端点（火山 ark 等），两者互不牵连。
+SEARCH_URL = os.getenv('REPORT_SEARCH_URL', '')
+SEARCH_KEY = os.getenv('REPORT_SEARCH_KEY', '')
+
+# 唯一对外错误码；旧错误码作为**别名**保留（既有按旧字符串匹配的调用方/测试过渡用，
+# 派发面不再抛旧名）。
+SEARCH_ERROR = 'search_not_configured'
+SEARCH_ERROR_LEGACY = 'historical_web_requires_configured_deepseek_endpoint'
+
+
+def search_endpoint() -> tuple[str, str]:
+    """返回联网搜索的 `(base_url, api_key)`；不可用时抛 `ValueError(SEARCH_ERROR)`。
+
+    三级取值，前一级优先：
+    1. `REPORT_SEARCH_URL` + `REPORT_SEARCH_KEY` 都配了 → 用它们（搜索与生成彻底解耦）；
+    2. 否则回退 `REPORT_MODEL_URL` + `REPORT_MODEL_KEY`，但**仅当它是 api.deepseek.com**
+       （保持改动前的旧行为，不把任意生成端点误当搜索端点）；
+    3. 都不可用 → `ValueError('search_not_configured')`。
+    """
+    if SEARCH_URL and SEARCH_KEY:
+        return SEARCH_URL.rstrip('/'), SEARCH_KEY
+    if MODEL_URL and MODEL_KEY and urlparse(MODEL_URL).hostname == 'api.deepseek.com':
+        return MODEL_URL.rstrip('/'), MODEL_KEY
+    raise ValueError(SEARCH_ERROR)
+

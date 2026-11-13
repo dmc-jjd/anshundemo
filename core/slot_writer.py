@@ -7,7 +7,10 @@ WP-S8-L4：自 `app/slot_writer.py` 逐字搬出（四处改动，全是宿主�
 2. `ROOT/'templates/<客户模板目录>'` → `paths.template_dir()`。客户模板目录是**宿主绑定**
    （换包即换模板），按 `core/paths.py` 既有注入纪律由宿主在 import 期 configure 一次。
 3. `from .config import ROOT` / `from pathlib import Path` 随之不再需要（原文即未用 `Path`）。
-4. 其余逻辑、槽位常量、错误文案、事件名逐字未改。
+4. 其余逻辑、错误文案、事件名逐字未改。
+5. 原 `WRITER_SLOT_IDS` 常量（客户模板的 9 个槽位 id，属客户业务口径）已搬回
+   `packages/<包>/template.json` 的 `writer_slots`；本模块只经 `writer_slot_ids()`
+   函数内取值（模块级求值会在未 configure 时炸）。
 """
 from __future__ import annotations
 from .agent import get_prompt,prompt_profile
@@ -16,6 +19,7 @@ from pydantic import BaseModel,Field
 from . import paths
 from .model_client import invoke_agent
 from .tool_executor import RunContext
+from .tools import vocabulary
 from .tools.ooxml import read_docx
 from .source_binding import SourceCatalog,NumberedSlot,invoke_numbered_writer,SourceBindingError
 
@@ -26,9 +30,10 @@ class SlotAnswer(BaseModel):
 
 TEXT_TYPES={'source_text','existing_field','theme_cluster','narrative_from_sources','computed_judgement'}
 FIRST_BLOCKS={17,26,29,30}
-WRITER_SLOT_IDS={'B17_GREEN_09','B26_YELLOW_24','B26_LIGHTGRAY_25',
-                 'B29_MAGENTA_02','B29_YELLOW_03','B29_LIGHTGRAY_04',
-                 'B30_RED_02','B30_RED_05','B30_YELLOW_06'}
+
+def writer_slot_ids()->set[str]:
+    """可写槽位集合：客户包 `template.json` 的 `writer_slots`（缺省走 vocabulary 兜底）。"""
+    return set(vocabulary.writer_slots())
 
 def _issue(slot,error_type,message):
     return {'slot_id':slot['id'],'semantic':slot['semantic'],'error_type':error_type,'message':message}
@@ -37,7 +42,7 @@ async def write_first_section_slots(deps,task_id:str,result_refs:dict,only_slots
     store=deps.store
     profile=prompt_profile(store.get_task(task_id).metadata)
     manifest=json.loads((paths.template_dir()/'report.template.json').read_text(encoding='utf-8'))
-    slots=[x for x in manifest['placeholders'] if x['id'] in (only_slots or WRITER_SLOT_IDS)]
+    slots=[x for x in manifest['placeholders'] if x['id'] in (only_slots or writer_slot_ids())]
     template_blocks=read_docx(paths.template_dir()/'template-with-placeholders.docx')['blocks']
     template_paragraphs=[b['text'] for b in template_blocks if b['kind']=='paragraph']
     records=store.get_artifact(result_refs['import_records'])['records']

@@ -32,6 +32,7 @@ agent_prompts:
   template_analyst.advice: agent/template_analyst.advice.md
   model.json_output: agent/model.json_output.md
   model.tool_budget_exhausted: agent/model.tool_budget_exhausted.md
+  hotspot_collector.collect: agent/hotspot_collector.collect.md
 template_policy:
   fixed_text: 语义稳定且不随月份数据变化；相同文本仅为证据
   semantic_units: 完整列表、标题、句子、分析段；禁止字符级槽位

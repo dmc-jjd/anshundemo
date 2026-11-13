@@ -1,140 +1,138 @@
 <!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>舆情分析报告系统</title>
-<!-- ==========================================================================
-     PRODUCT_NAME: 康奈 · 洞研智台（单点常量，替换此处即可）
-     只改文件底部那一段 script 里的 PRODUCT 常量（name / subname / tagline）：
-     页头品牌、页脚、浏览器标题、印章字都从它渲染，JS 与 CSS 不散落名字；
-     带 data-product-* 的节点里保留的同名文字只是无脚本时的兜底，
-     载入时会被常量覆盖，不必逐个改。
-     换更长的名字时同步调 style.css 的 --brand-w（品牌位固定宽度）。
-     ========================================================================== -->
-<link rel="stylesheet" href="/static/style.css?v=20261113-redesign"><link rel="stylesheet" href="/static/insights.css?v=20261113-redesign"></head><body>
+<!-- PRODUCT_NAME: 康奈 · 洞研智台（单点常量：只改文件底部 script 里的 PRODUCT） -->
+<link rel="stylesheet" href="/static/style.css?v=20261113-v33"><link rel="stylesheet" href="/static/insights.css?v=20261113-redesign"></head><body>
 <header class="topbar">
-  <div class="brand"><span class="seal" data-product-seal aria-hidden="true">康</span><div class="brand-text"><strong data-product-full>康奈 · 洞研智台</strong><small data-product-tagline>舆情洞察与研判平台</small></div></div>
-  <nav aria-label="主视图切换"><button data-tab="overview" class="active" type="button">工作概览</button><button data-tab="template" type="button">模板比对</button><button data-tab="report" type="button">报告处理</button><button data-tab="tasks" type="button">任务记录</button></nav>
-  <div class="topmeta"><span class="save"><i></i>自动保存</span><span id="clock"></span></div>
+  <div class="crumb"><b data-product-full>康奈 · 洞研智台</b><span class="sep">/</span><span class="here" id="crumbHere">工作台</span></div>
+  <div class="topmeta"><span id="taskMeta">—</span><span class="saved"><i></i>自动保存</span><span id="clock"></span></div>
 </header>
+
+<nav class="stage-progress" id="stageProgress" aria-label="五阶段">
+  <button class="stage" type="button" data-stage="1" data-go="overview" data-state="current"><span class="idx">01</span><span class="nm">工作台</span><span class="dot" aria-hidden="true"></span></button>
+  <button class="stage" type="button" data-stage="2" data-go="template" data-state="todo"><span class="idx">02</span><span class="nm">模板确认</span><span class="dot" aria-hidden="true"></span></button>
+  <button class="stage" type="button" data-stage="3" data-go="report" data-state="todo"><span class="idx">03</span><span class="nm">数据处理</span><span class="dot" aria-hidden="true"></span></button>
+  <button class="stage" type="button" data-stage="4" data-go="tasks" data-state="todo"><span class="idx">04</span><span class="nm">模板/数据·审核</span><span class="dot" aria-hidden="true"></span></button>
+  <button class="stage" type="button" data-stage="5" data-go="document" data-state="todo"><span class="idx">05</span><span class="nm">报告撰写</span><span class="dot" aria-hidden="true"></span></button>
+</nav>
+
 <main>
 <section id="overview" class="tab active">
-  <div class="page-head">
-    <div><p class="kicker">本地工作台 · 2026 年 11 月</p><h1>从来源记录到可核查的月报事实</h1><p class="sub">上传资料，查看每一步工具结果；标题与梗概向量达到阈值后自动归并为事件，再整体审核本期数据。当前演示边界在下方明确展示。</p></div>
-    <div class="page-actions"><span class="pill line">本地演示 · 单人操作</span><button class="btn ghost" type="button" data-go="template">开始建模板</button></div>
-  </div>
+  <div class="head"><h1>工作台</h1></div>
   <div id="status" class="notice"></div>
-  <div class="stat-row">
-    <div class="card stat"><div class="top"><span class="k">本期进度</span><span class="badge">三步工作流</span></div><div class="v">3 <small>个阶段</small></div><div class="meter"><i style="width:33%"></i></div><p class="s">模板比对 → 数据处理 → 报告写作，每步结果都可回溯</p></div>
-    <div class="card stat"><div class="top"><span class="k">演示边界</span><span class="badge">本地</span></div><div class="v">单人 <small>操作</small></div><div class="wrap"><span class="pill mute">无账号体系</span><span class="pill mute">本地文件</span></div><p class="s">所有结论按实际状态标记，不做推测性补全</p></div>
-    <div class="card stat"><div class="top"><span class="k">数据与模型</span><span class="badge">可配置</span></div><div class="v">本地 <small>工具链</small></div><div class="wrap"><span class="pill ok">事件自动归并</span><span class="pill info">模型可插拔</span></div><p class="s">阈值与单价可调整，每次调用只计一次</p></div>
-  </div>
-  <div class="stage-cards">
-    <div class="stage-card"><span class="no">01</span><h3>比对历史报告</h3><p>本地提取段落与表格，保存差异和来源。</p><button type="button" data-go="template">查看模板比对</button></div>
-    <div class="stage-card"><span class="no">02</span><h3>处理全量数据</h3><p>记录数与事件数分开，事件自动归并且来源可查。</p><button type="button" data-go="report">创建报告任务</button></div>
-    <div class="stage-card"><span class="no">03</span><h3>人工研判</h3><p>解决候选与口径问题后再冻结事实。</p><button type="button" data-go="tasks">查看任务记录</button></div>
-  </div>
-  <div class="panel pipeline-panel">
-    <div class="card-h"><h2>五个阶段与实际流程</h2><span class="hint">单页多阶段 · 不做五套页面</span></div>
-    <table class="pipeline">
-      <thead><tr><th class="idx">#</th><th>阶段</th><th>实际流程</th><th>产物</th><th class="st">状态</th></tr></thead>
-      <tbody>
-        <tr><td class="idx">01</td><td><div class="nm">模板比对</div><div class="ds">历史材料</div></td><td class="out">本地结构对齐 → 模型语义研判 → 人工确认，固定文字与变化槽位一并留痕</td><td class="out">结构化模板与字段定义</td><td class="st"><span class="pill ok">已实现</span></td></tr>
-        <tr><td class="idx">02</td><td><div class="nm">数据处理</div><div class="ds">全量明细</div></td><td class="out">导入明细 → 计算统计 → 事件自动归并，来源行可逐条回溯</td><td class="out">记录、事件与统计口径</td><td class="st"><span class="pill ok">已实现</span></td></tr>
-        <tr><td class="idx">03</td><td><div class="nm">事件组审核</div><div class="ds">事实研判</div></td><td class="out">合并、拆分、改分类、补梗概，整体确认后冻结</td><td class="out">冻结事实与审核草稿</td><td class="st"><span class="pill ok">已实现</span></td></tr>
-        <tr><td class="idx">04</td><td><div class="nm">报告撰写</div><div class="ds">逐字段写作</div></td><td class="out">Writer 按模板槽位写作，图表样式与缺失项同页可查</td><td class="out">草稿与缺失项清单</td><td class="st"><span class="pill ok">已实现</span></td></tr>
-        <tr><td class="idx">05</td><td><div class="nm">双审核</div><div class="ds">格式 + 内容</div></td><td class="out">格式审核 → 内容审核 → 人工终审 → 导出 Word</td><td class="out">终稿与审核记录</td><td class="st"><span class="pill ok">已实现</span></td></tr>
-      </tbody>
-    </table>
+  <div class="wb-grid">
+    <section class="card wb-now" aria-labelledby="wbNowTitle">
+      <div class="card-head"><h2 id="wbNowTitle">正在进行</h2><span class="meta" id="wbNowMeta">—</span></div>
+      <div class="card-body">
+        <div class="now-name" id="wbTaskName">—</div>
+        <div class="now-progress">
+          <span class="aux">报告进度</span>
+          <div class="meter"><i id="wbProgressBar"></i></div>
+          <span class="now-pct" id="wbProgressNum">—</span>
+        </div>
+        <div class="stats scope-stats">
+          <div><div class="v" id="scopeRecords">—<small>条</small></div><div class="k">原始采集</div></div>
+          <div><div class="v" id="scopeNegative">—<small>条</small></div><div class="k">负向预警</div></div>
+          <div><div class="v" id="scopeGroups">—<small>组</small></div><div class="k">去重归组</div></div>
+          <div><div class="v" id="scopeWarned">—<small>条</small></div><div class="k">已预警</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card wb-recent" aria-labelledby="wbRecentTitle">
+      <div class="card-head"><h2 id="wbRecentTitle">最近完成</h2><span class="meta" id="wbRecentMeta">—</span></div>
+      <div class="card-body">
+        <table class="tbl recent-tbl"><tbody id="recentList"><tr><td class="aux">—</td><td>—</td></tr></tbody></table>
+      </div>
+    </section>
+
+    <section class="panel hotspot-panel" id="hotspotPanel" aria-labelledby="hotspotTitle">
+      <div class="card-h"><h2 id="hotspotTitle">今日热点话题</h2><span class="hint" id="hotspotMeta">窗口 — ~ — · 未采集</span></div>
+      <div class="hotspot-acts"><button class="btn ghost sm" id="hotspotCollect" type="button">采集要闻</button></div>
+      <p class="hotspot-error" id="hotspotError" role="status" hidden></p>
+      <ol class="hotspot-list" id="hotspotList"></ol>
+    </section>
+
+    <section class="panel social-panel" id="socialPanel" aria-labelledby="socialTitle">
+      <div class="card-h"><h2 id="socialTitle">社媒热榜</h2></div>
+      <div class="social-tabs" role="tablist">
+        <button type="button" role="tab" class="social-tab" data-platform="weibo" data-state="active">微博热榜</button>
+        <button type="button" role="tab" class="social-tab" data-platform="douyin">抖音热榜</button>
+        <button type="button" role="tab" class="social-tab" data-platform="toutiao">头条热榜</button>
+        <button type="button" role="tab" class="social-tab" data-platform="baidu">百度热榜</button>
+      </div>
+      <div class="social-body" id="socialBody"><p class="social-empty">—</p></div>
+    </section>
   </div>
 </section>
 
 <section id="template" class="tab">
-  <div class="page-head">
-    <div><p class="kicker">历史材料</p><h1>模板比对</h1><p class="sub">上传两份及以上不同的可读 DOCX。本地比对后，由模型结合全部原文和制定规则生成完整模板，再审阅确认。</p></div>
-    <div class="page-actions"><a class="btn ghost" href="/api/template-manifest" target="_blank" rel="noopener">查看全部占位符与待审项</a></div>
+  <div class="head">
+    <h1>模板确认</h1>
+    <div class="head-actions"><a class="btn ghost sm" href="/api/template-manifest" target="_blank" rel="noopener">全部占位符与待审项</a></div>
   </div>
+  <section id="templateDetail" class="template-detail" aria-label="模板详情" hidden></section>
   <div class="split">
     <div class="stack">
       <div class="panel">
-        <div class="card-h"><h2>五色基准模板</h2><span class="hint">来源为 8 月标色 Word</span></div>
-        <div id="template-status" class="notice"></div>
-        <div class="colors"><span class="red">红：计算数据</span><span class="green">绿：原文概要</span><span class="yellow">黄：事件聚类</span><span class="purple">粉紫：已有字段</span><span class="gray">灰：事件原文概述</span></div>
-        <p class="help">占位符定义位于模板正文之前。误标的红色文字已改为文字型槽位；字段确认后本月数据与写作结果按槽位回填。</p>
-        <div class="row"><a class="btn ghost" href="/api/template-docx">下载带定义的 Word 模板</a><a href="/api/template-manifest" target="_blank" rel="noopener">查看全部占位符与待审项</a></div>
+        <div class="card-h"><h2>新建比对任务</h2><span class="hint">≥ 2 份 · 第一份为排版基准</span></div>
+        <label>历史报告 DOCX<input type="file" id="templateFiles" accept=".docx" multiple></label>
+        <div class="row row-end"><button class="primary" id="startTemplate" type="button">上传并比对</button></div>
+        <div id="templateMsg" class="message"></div>
       </div>
       <div class="panel">
-        <div class="card-h"><h2>新建比对任务</h2><span class="hint">至少两份 DOCX · 第一份为排版基准</span></div>
-        <label>历史报告 DOCX（至少两份，可多选；第一份作为排版基准）<input type="file" id="templateFiles" accept=".docx" multiple></label>
-        <div class="row" style="margin-top:12px"><button class="primary" id="startTemplate" type="button">上传并比对</button></div>
-        <div id="templateMsg" class="message"></div>
+        <div class="card-h"><h2>当前模板库</h2><span class="hint" id="templateLibraryMeta">—</span></div>
+        <div id="template-status" class="notice"></div>
+        <table class="tbl template-library">
+          <thead><tr><th>模板</th><th>版本</th><th>状态</th><th class="r">操作</th></tr></thead>
+          <tbody id="templateLibrary"><tr><td colspan="4" class="aux">—</td></tr></tbody>
+        </table>
       </div>
     </div>
     <aside class="stack">
       <div class="panel">
-        <div class="card-h"><h2>比对与确认要点</h2><span class="hint">人工可改</span></div>
-        <p class="help">本地先做结构对齐，再由模型按语义制定字段；字段名称、固定文字与处理规则都能人工修订，修订留痕。</p>
-        <div class="divider"></div>
-        <p class="help">确认后的模板不可再改，可让模型再做一次只读审核（只返回意见，不写回模板）。</p>
-      </div>
-      <div class="panel">
-        <div class="card-h"><h2>操作顺序</h2><span class="hint">三步</span></div>
-        <ol class="plain-list">
-          <li>上传两份及以上 DOCX，第一份作为排版基准。</li>
-          <li>在预览里逐段核对固定文字与变化槽位，必要时手动定义。</li>
-          <li>确认模板版本；本月数据与写作结果随后按槽位回填。</li>
-        </ol>
+        <div class="card-h"><h2>基准模板</h2><span class="hint">8 月标色 Word</span></div>
+        <table class="tbl">
+          <tbody>
+            <tr><td class="t-main">占位符</td><td class="num" id="tplPlaceholders">—</td></tr>
+            <tr><td class="t-main">待审项</td><td class="num" id="tplReviewItems">—</td></tr>
+            <tr><td class="t-main">状态</td><td class="num" id="tplStatus">—</td></tr>
+          </tbody>
+        </table>
       </div>
     </aside>
   </div>
 </section>
 
 <section id="report" class="tab">
-  <div class="page-head">
-    <div><p class="kicker">全量明细</p><h1>报告处理</h1><p class="sub">按确认模板处理本期数据，审核通过后开始逐字段写作。</p></div>
-    <div class="page-actions"><span class="pill line">需要已确认的模板版本</span></div>
-  </div>
-  <div class="split">
-    <div class="panel form-grid">
-      <label>全量 Excel<input type="file" id="reportFile" accept=".xlsx"></label>
-      <label>写作模板<select id="reportTemplate"><option value="">请选择已确认的模板版本</option></select></label>
-      <label>报告月份<input type="month" id="reportMonth" value="2026-10"></label>
-      <label>报告期号（自动推算，可修改）<input type="number" id="reportIssue" min="1" placeholder="请输入本期实际期号"></label>
-      <label>成文日期（默认今天，可修改）<input type="date" id="reportDate"></label>
-      <label>明细工作表序号<input type="number" id="sheetIndex" value="3" min="1"></label>
-      <p id="parameterSuggestion" class="help full" role="status"></p>
-      <div><button class="primary" id="startReport" type="button">上传并开始处理</button></div>
-      <div id="reportMsg" class="message full"></div>
-    </div>
-    <aside class="stack">
-      <div class="panel">
-        <div class="card-h"><h2>处理规则</h2><span class="hint">自动归并</span></div>
-        <p class="help">事件按标题与梗概的向量相似度自动归并；新记录只与各组代表内容比较，达到模板阈值即加入。整体数据审核页可以查看成员并主动调整，无须逐组确认。当前使用本地词项向量，阈值可配置。</p>
-      </div>
-      <div class="panel">
-        <div class="card-h"><h2>本期产物</h2><span class="hint">可回溯</span></div>
-        <ul class="plain-list">
-          <li>全量明细与统计口径：记录数与事件数分开计算。</li>
-          <li>事件分组与成员来源：可合并、拆分、改分类。</li>
-          <li>数据审核草稿与冻结事实版本，逐条留痕。</li>
-        </ul>
-      </div>
-    </aside>
+  <div class="head"><h1>数据处理</h1></div>
+  <div class="panel form-grid">
+    <label>全量 Excel<input type="file" id="reportFile" accept=".xlsx"></label>
+    <label>写作模板<select id="reportTemplate"><option value="">请选择已确认的模板版本</option></select></label>
+    <label>报告月份<input type="month" id="reportMonth" value="2026-10"></label>
+    <label>报告期号<input type="number" id="reportIssue" min="1" placeholder="本期实际期号"></label>
+    <label>成文日期<input type="date" id="reportDate"></label>
+    <label>明细工作表序号<input type="number" id="sheetIndex" value="3" min="1"></label>
+    <p id="parameterSuggestion" class="help full" role="status"></p>
+    <div class="full"><button class="primary" id="startReport" type="button">上传并开始处理</button></div>
+    <div id="reportMsg" class="message full"></div>
   </div>
 </section>
 
 <section id="tasks" class="tab">
-  <div class="page-head">
-    <div><p class="kicker">持续记录</p><h1>任务记录</h1><p class="sub">任务 ID 可用于刷新后恢复查看。事件日志显示实际调用、结果与人工决定。</p></div>
-    <div class="page-actions"><button id="refreshTasks" type="button">刷新</button></div>
+  <div class="head">
+    <h1>模板/数据·审核</h1>
+    <div class="head-actions"><button class="btn ghost sm" id="refreshTasks" type="button">刷新</button></div>
   </div>
   <div class="task-layout">
     <div class="panel">
-      <div class="card-h"><h2>最近任务</h2><span class="hint">按更新时间排序</span></div>
+      <div class="card-h"><h2>任务</h2><span class="hint">按更新时间</span></div>
       <div id="taskList"></div>
     </div>
     <div class="panel task-detail">
-      <div class="card-h"><h2>任务详情 <span id="taskId" class="mono"></span></h2><span class="hint">刷新后仍可恢复</span></div>
-      <div id="taskDetail" class="muted">选择左侧任务查看。</div>
+      <div class="card-h"><h2>任务详情 <span id="taskId" class="mono"></span></h2><a id="fullLogs" class="log-link" target="_blank" rel="noopener">完整日志</a></div>
+      <div id="taskDetail" class="muted">—</div>
       <div id="reviews"></div>
       <div id="taskActions"></div>
-      <h3>运行动态 <a id="fullLogs" class="log-link" target="_blank" rel="noopener">下载完整日志</a></h3>
+      <h3>运行动态</h3>
       <div id="eventList" class="events" role="log" aria-live="polite"></div>
     </div>
   </div>
@@ -148,22 +146,19 @@
 </dialog>
 <div id="toast" role="status" aria-live="polite"></div>
 </main>
-<footer><span><span data-product-full>康奈 · 洞研智台</span> · 本地单人演示 · 所有结果按实际状态标记</span><span>DEMO · 数据不出本机</span></footer>
 
 <script>
-/* PRODUCT_NAME: 康奈 · 洞研智台（单点常量，替换此处即可） */
+/* PRODUCT_NAME: 康奈 · 洞研智台（单点常量：只改这里） */
 window.PRODUCT = { name: '康奈', subname: '洞研智台', tagline: '舆情洞察与研判平台' };
 (function () {
   var P = window.PRODUCT;
   var full = P.name + ' · ' + P.subname;
-  document.title = full + ' · ' + P.tagline;
+  document.title = full;
   var fill = function (selector, text) {
     document.querySelectorAll(selector).forEach(function (el) { el.textContent = text; });
   };
   document.querySelectorAll('[data-product-full]').forEach(function (el) { el.title = full; });
   fill('[data-product-full]', full);
-  fill('[data-product-tagline]', P.tagline);
-  fill('[data-product-seal]', P.name.slice(0, 1));
 })();
 </script>
-<script src="/static/review-tools.js?v=20261108-mixed-risk"></script><script src="/static/data-review-tools.js?v=20261108-mixed-risk"></script><script src="/static/app.js?v=20261113-redesign"></script><script src="/static/template-draft.js?v=20261113-redesign"></script><script src="/static/insights.js?v=20261108-numbered-sources"></script><script src="/static/report-parameters.js?v=20261108-mixed-risk"></script><script src="/static/writing-review.js?v=20261109-resolved-findings"></script></body></html>
+<script src="/static/review-tools.js?v=20261113-v32"></script><script src="/static/data-review-tools.js?v=20261108-mixed-risk"></script><script src="/static/app.js?v=20261113-v33"></script><script src="/static/template-draft.js?v=20261113-redesign"></script><script src="/static/insights.js?v=20261108-numbered-sources"></script><script src="/static/report-parameters.js?v=20261108-mixed-risk"></script><script src="/static/writing-review.js?v=20261109-resolved-findings"></script><script src="/static/hotspot.js?v=20261113-hotspot"></script></body></html>

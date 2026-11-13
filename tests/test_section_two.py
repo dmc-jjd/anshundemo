@@ -158,7 +158,10 @@ def test_web_tools_only_fetch_actual_search_results_and_meter_success(tmp_path,m
     store,_=fixture(tmp_path)
     from app.tool_executor import RunContext
     ctx=RunContext(store,'r',phase='writing')
-    monkeypatch.setattr(web,'MODEL_URL','https://api.deepseek.com');monkeypatch.setattr(web,'MODEL_KEY','test-key')
+    # 改指原因：搜索通道已与生成模型解耦（core/config.py::search_endpoint），本模块不再有
+    # MODEL_URL / MODEL_KEY 两个模块全局；patch 点改成直接替换 request() 调用的 search_endpoint，
+    # 否则旧 patch 目标是 AttributeError（打壳上同样静默失效）。
+    monkeypatch.setattr(web,'search_endpoint',lambda:('https://api.deepseek.com/v1','test-key'))
     class Reply:
         def __init__(self,data):self.data=data
         def __enter__(self):return io.StringIO(json.dumps(self.data))

@@ -37,10 +37,11 @@ def apply_slot_values(store, state, req):
         from ..writing_review import edit_structured
         try:return None,edit_structured(store,state.id,req.values,req.expected_hash)
         except (ValueError,KeyError) as exc:return (409,str(exc)),None
-    from ..slot_writer import WRITER_SLOT_IDS
+    from ..slot_writer import writer_slot_ids
     if state.phase not in ('awaiting_final_review','facts_frozen'):return (409,'report_not_editable_in_current_phase'),None
+    writer_ids=writer_slot_ids()
     for slot_id,value in req.values.items():
-        if slot_id not in WRITER_SLOT_IDS: return (422,'unknown_writer_slot:'+slot_id),None
+        if slot_id not in writer_ids: return (422,'unknown_writer_slot:'+slot_id),None
         if not isinstance(value,str):return (422,'invalid_slot_value:'+slot_id),None
         if not value.strip() or re.search(r'\{\{|\}\}',value): return (422,'invalid_slot_value:'+slot_id),None
     draft=store.get_artifact(state.draft_ref)

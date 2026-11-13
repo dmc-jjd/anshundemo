@@ -274,6 +274,10 @@ class Manifest:
     #: 可插拔能力的配置：能力名 → 配置字典（如 locality / event_classification / dedup）。
     #: 基座只按声明执行，不认识具体客户；未声明即视为未启用。
     features: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
+    #: 参与本报告的角色清单（声明式调度）。空 = 全部角色参与（向后兼容）；
+    #: 非空 = 只有列出的角色参与，未列出角色驱动的流程步骤整段跳过。
+    #: 角色 → 步骤的映射在 `core/agent_steps.py`，客户包只写角色 id。
+    agents: tuple[str, ...] = ()
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> "Manifest":
@@ -290,6 +294,13 @@ class Manifest:
         charts_cfg = data.get("charts") or {}
         skills_cfg = data.get("skills") or {}
         caps_cfg = data.get("capabilities") or {}
+        agents_cfg = data.get("agents")
+        if agents_cfg is None:
+            agents: tuple[str, ...] = ()
+        elif isinstance(agents_cfg, (list, tuple)):
+            agents = tuple(str(agent) for agent in agents_cfg if agent)
+        else:
+            raise ValueError("manifest_agents_must_be_list")
         return cls(
             package=str(data["package"]),
             report_type=str(data["report_type"]),
@@ -303,6 +314,7 @@ class Manifest:
             skill_use=tuple(skills_cfg.get("use") or ()),
             required_capabilities=tuple(caps_cfg.get("require") or ()),
             features={str(k): dict(v or {}) for k, v in (data.get("features") or {}).items()},
+            agents=agents,
         )
 
 

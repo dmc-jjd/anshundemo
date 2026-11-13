@@ -1,3 +1,49 @@
+def _template_name(template_ref, templates_by_id):
+    """模板库里有 name 就用 name；取不到就退回 template_ref 本身，绝不拼出 None。"""
+    item = (templates_by_id or {}).get(template_ref) or {}
+    return str(item.get('name') or template_ref or '').strip()
+
+
+def _month_text(report_month):
+    parts = str(report_month or '').split('-')
+    if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+        return f'{int(parts[0])} 年 {int(parts[1])} 月'
+    return str(report_month or '').strip()
+
+
+def _first_present(metadata, keys):
+    """顶层 metadata 优先；旧任务只在 report_parameters 存档里，故回退读存档。"""
+    parameters = metadata.get('report_parameters') or {}
+    for key in keys:
+        for source in (metadata, parameters):
+            value = source.get(key)
+            if value not in (None, ''): return value
+    return None
+
+
+def display_name(state, templates_by_id):
+    """`/api/tasks` 的派生显示名（单一事实源）：模板名 · 报告月份 · 第N期 · 成文日期。
+
+    纯派生：不写进 `TaskState`、不参与任何门禁哈希；缺哪个字段就省掉那一段。
+    """
+    metadata = state.metadata or {}
+    if state.kind == 'report':
+        issue = _first_present(metadata, ('report_issue', 'issue_number'))
+        report_date = _first_present(metadata, ('report_date', 'publication_date'))
+        segments = [
+            _template_name(state.template_ref, templates_by_id),
+            _month_text(metadata.get('report_month')),
+            f'第{issue}期' if issue not in (None, '') else '',
+            str(report_date) if report_date not in (None, '') else '',
+        ]
+        return ' · '.join(text for text in segments if text) or '报告任务'
+    if state.kind == 'template':
+        count = len(state.input_refs or []) or len(metadata.get('paths') or [])
+        segments = ['模板比对', f'{count} 份报告' if count else '', str(state.created_at or '')[:10]]
+        return ' · '.join(text for text in segments if text)
+    return f'任务 {str(state.id)[:8]}'
+
+
 def resume_plan(store, state):
     """`/resume` 的阶段判定：返回 (error, plan)。
 
