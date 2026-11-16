@@ -6,13 +6,20 @@
 <title>对话验证</title>
 <link rel="stylesheet" href="/static/style.css">
 <style>
+  html,body{height:auto;display:block}
   body{background:var(--bg);color:var(--ink);font:14px/1.7 system-ui,-apple-system,"Microsoft YaHei",sans-serif}
   .chat-shell{max-width:820px;margin:0 auto;padding:28px 20px 148px;display:flex;flex-direction:column;min-height:100vh}
   .messages{display:flex;flex-direction:column;gap:18px;flex:1}
   .turn{display:flex;flex-direction:column;gap:10px}
+  .status{display:flex;flex-direction:column;gap:2px;align-self:flex-start;color:var(--muted);font-size:12.5px}
+  .status[hidden]{display:none}
+  .status .timer{font-variant-numeric:tabular-nums}
+  .status .analyzing{word-break:break-word}
+  .think-slot,.search-slot{display:flex;flex-direction:column;gap:8px}
   .bubble{padding:12px 14px;border-radius:var(--radius);border:1px solid var(--line);background:var(--card);box-shadow:var(--shadow);white-space:pre-wrap;word-break:break-word}
   .bubble.user{align-self:flex-end;max-width:min(78%,620px);background:var(--brand-bg);border-color:var(--brand);color:var(--ink)}
   .bubble.answer{white-space:pre-wrap}
+  .bubble.answer:empty{display:none}
   details.think{border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--field);color:var(--muted);font-size:12.5px}
   details.think summary{cursor:pointer;padding:7px 11px;list-style:none;color:var(--faint);user-select:none}
   details.think summary::-webkit-details-marker{display:none}

@@ -76,14 +76,16 @@ def propose_vector_event_neighbors(args,ctx):
     return ToolResult(status='needs_review',data_ref=ref,method='inverted-index sparse vector neighbor search across keyword groups; similarity only proposes review',warnings=[f'{evaluated} candidate pairs scored; {len(pairs)} neighbors emitted'],unresolved=[{'kind':'event_confirmation','question':'向量近邻含跨日跟进候选，需人工合并、拆分、独立或排除'}])
 
 def group_events(args,ctx):
-    from .dedup import group_by_representative,merge_group_round
+    from .dedup import group_by_representative,merge_group_round,remap_borderline_candidates
     records=records_of(ctx,args['records_ref'])
     threshold=args.get('threshold')
     threshold=float(threshold) if threshold is not None else vocabulary.dedup_threshold()
     result=group_by_representative(records,threshold)
     if vocabulary.dedup_merge_rounds()>=2:
-        result['groups'],merge_method=merge_group_round(result['groups'],records,threshold=vocabulary.dedup_merge_threshold())
+        result['groups'],merge_method,id_map=merge_group_round(result['groups'],records,threshold=vocabulary.dedup_merge_threshold(),with_id_map=True)
         result['method'].update(merge_method)
+        # 第二轮把组重编号/吞并：候选对里的旧组号必须跟着重映射，否则研判阶段按旧组号取组会 KeyError。
+        result['borderline_candidates']=remap_borderline_candidates(result['borderline_candidates'],id_map)
     result['source_records_ref']=args['records_ref']
     ref=ctx.store.put_artifact(ctx.task_id,'automatic_event_groups',result)
     return ToolResult(status='ok',data_ref=ref,method='title + summary cosine against immutable group representative; automatic grouping')

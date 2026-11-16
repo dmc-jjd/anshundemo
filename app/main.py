@@ -3,7 +3,7 @@ import asyncio,hashlib,uuid,zipfile
 from datetime import date
 from pathlib import Path
 from core import paths
-from fastapi import FastAPI,UploadFile,File,HTTPException,BackgroundTasks,Header
+from fastapi import FastAPI,Request,UploadFile,File,HTTPException,BackgroundTasks,Header
 from fastapi.responses import HTMLResponse,FileResponse,Response,JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel,Field
@@ -11,19 +11,23 @@ from .config import DATA,MODEL_URL,MODEL_NAME,MODEL_KEY
 from .schemas import TaskState,HumanDecision,DraftVersion
 from .storage import Store,ConflictError
 from .workflow import Dependencies,run_report_graph,run_template_graph,freeze_facts,make_draft,make_preview_with_charts
+from .workflow import effective_features,task_feature_snapshot
 from .export import export_docx
 from .report_validation import validate_draft
 from .api_views.approval import approval_gate
 from .api_views.data_review import apply_event_settings
 from .api_views.task_resume import resume_plan,display_name
 from .api_views.template import apply_definition_patch,confirm_candidate,definition_with_charts
+from .api_views.template import apply_top10_rule_preserving,resolve_template_name,template_name_from_request
+from .upload_names import remember as remember_upload_name
 from .template_draft_api import router as manual_definition_router
+from .template_field_api import router as template_field_api_router
 from .template_advice_api import router as template_advice_router
 from .final_document_api import router as final_document_router
 from .hotspot_api import router as hotspot_router
 from .editor_api import router as editor_router
 from .chat_api import router as chat_router
-from .api_views.writing import apply_slot_values,assemble_review_view
+from .api_views.writing import apply_slot_values,assemble_review_view,draft_content_hash,DRAFT_SCHEMA_OUTDATED_DETAIL
 
 store=Store(); deps=Dependencies(store)
 app=FastAPI(title='安顺月报工作台 Demo')
@@ -33,6 +37,7 @@ app.include_router(manual_definition_router)
 # 确认后的只读 LLM 审核（只提修改意见、不改模板），同样刻意不进 OpenAPI：
 # 见 app/template_advice.py 与 app/template_advice_api.py。
 app.include_router(template_advice_router)
+app.include_router(template_field_api_router)  # 模板候选字段的人工编辑（显示名称/字段语义/归属），同样不进 OpenAPI：见 app/template_field_api.py
 # 终稿人工审核页（A4 渲染模型 / 保存人工覆盖 / 修改日志 / 还原），同样刻意不进 OpenAPI：
 # 见 app/final_document.py 与 app/final_document_api.py。
 app.include_router(final_document_router)
@@ -71,6 +76,7 @@ async def upload(file:UploadFile=File(...)):
     sha=hashlib.sha256(content).hexdigest(); fid=f'file-{sha[:20]}'
     dest=UPLOADS/f'{fid}{Path(name).suffix.lower()}'
     if not dest.exists(): dest.write_bytes(content)
+    remember_upload_name(UPLOADS,fid,name)
     from core.tools.doc97 import is_legacy_doc
     readable=is_legacy_doc(dest) or zipfile.is_zipfile(dest)  # .doc 不是 ZIP，但完全可读
     reason=None if readable else ('legacy_doc_unreadable' if dest.suffix.lower()=='.doc' else 'not_unencrypted_ooxml')
@@ -85,7 +91,7 @@ def templates():
             except (KeyError,FileNotFoundError,ValueError,OSError): continue
             if not artifact.get('writer_schema'): continue
             count=len(artifact.get('source_reports',[]))
-            items.append({'id':task.metadata['confirmed_template_ref'],'name':f'{count} 份报告生成的结构化模板','version':1,'status':'confirmed_by_human','usable_for_final':False,'reason':'结构与 Schema 已确认；尚缺数据绑定的字段保留待填'})
+            items.append({'id':task.metadata['confirmed_template_ref'],'name':str(artifact.get('name') or '').strip() or f'{count} 份报告生成的结构化模板','version':1,'status':'confirmed_by_human','usable_for_final':False,'reason':'结构与 Schema 已确认；尚缺数据绑定的字段保留待填'})
     return items
 
 @app.get('/api/template-manifest')
@@ -118,7 +124,7 @@ def _resolve_files(ids:list[str]):
     return out
 
 @app.post('/api/template-tasks')
-async def template_task(req:TaskCreate,background_tasks:BackgroundTasks,idempotency_key:str|None=Header(None)):
+async def template_task(req:TaskCreate,request:Request,background_tasks:BackgroundTasks,idempotency_key:str|None=Header(None)):
     paths=_resolve_files(req.file_ids)
     if len(paths)<2: raise HTTPException(422,'at_least_two_uploaded_reports_required')
     if any(not path.lower().endswith(('.doc','.docx')) for path in paths):raise HTTPException(422,'docx_reports_required')
@@ -128,7 +134,8 @@ async def template_task(req:TaskCreate,background_tasks:BackgroundTasks,idempote
     if idempotency_key:
         existing=store.idempotent('template:'+idempotency_key,task_id)
         if existing!=task_id: return store.get_task(existing)
-    state=TaskState(id=task_id,kind='template',phase='queued',input_refs=req.file_ids,metadata={'paths':paths})
+    template_name=resolve_template_name(UPLOADS,req.file_ids,await template_name_from_request(request))
+    state=TaskState(id=task_id,kind='template',phase='queued',input_refs=req.file_ids,metadata={'paths':paths,'template_name':template_name})
     store.put_task(state); background_tasks.add_task(run_template_graph,deps,task_id)
     return state
 
@@ -145,7 +152,7 @@ async def report_task(req:TaskCreate,background_tasks:BackgroundTasks,idempotenc
     if idempotency_key:
         existing=store.idempotent('report:'+idempotency_key,task_id)
         if existing!=task_id: return store.get_task(existing)
-    state=TaskState(id=task_id,kind='report',phase='queued',template_ref=req.template_ref,input_refs=req.file_ids,metadata={'input_path':paths[0],'report_month':req.report_month,'report_issue':req.issue_number,'report_date':req.publication_date,'sheet_index':req.sheet_index,'mode':req.mode,'event_scope':'negative_or_warning','event_scope_confirmed':True,'event_scope_applies_to':'first_section_four_categories_districts_top10','event_scope_authority':'user_confirmed_2026_11_06','template_rules':rules,'event_threshold':req.event_threshold or rules.get('event_threshold',.65)})
+    state=TaskState(id=task_id,kind='report',phase='queued',template_ref=req.template_ref,input_refs=req.file_ids,metadata={'input_path':paths[0],'report_month':req.report_month,'report_issue':req.issue_number,'report_date':req.publication_date,'sheet_index':req.sheet_index,'mode':req.mode,'event_scope':'negative_or_warning','event_scope_confirmed':True,'event_scope_applies_to':'first_section_four_categories_districts_top10','event_scope_authority':'user_confirmed_2026_11_06','template_rules':task_feature_snapshot(rules),'event_threshold':req.event_threshold or rules.get('event_threshold',.65)})
     parameters={key:value for key,value in req.model_dump(mode='json').items() if key in ('issue_number','publication_date') and value is not None}
     if parameters:
         state.metadata['report_parameters']=parameters
@@ -290,7 +297,7 @@ class DraftReviewRequest(BaseModel):
 async def review_current_draft(task_id:str,req:DraftReviewRequest,background_tasks:BackgroundTasks):
     state=get_task(task_id)
     if state.phase not in ('awaiting_final_review','facts_frozen') or not state.draft_ref:raise HTTPException(409,'invalid_writing_stage')
-    if store.get_artifact(state.draft_ref)['content_hash']!=req.expected_hash:raise HTTPException(409,'stale_draft_hash')
+    if draft_content_hash(store,state,store.get_artifact(state.draft_ref))!=req.expected_hash:raise HTTPException(409,'stale_draft_hash')
     state.phase='writing';store.put_task(state,state.revision);background_tasks.add_task(generate_draft,task_id,True)
     return state
 
@@ -500,11 +507,10 @@ def template_definition(task_id:str):
     state=get_task(task_id)
     ref=state.metadata.get('confirmed_template_ref') or state.metadata.get('structured_template_ref')
     if not ref: raise HTTPException(404,'structured_template_missing')
-    from .structured_template import apply_top10_rule
     definition=store.get_artifact(ref)
     error,definition=definition_with_charts(definition)
     if error:raise HTTPException(*error)
-    if definition.get('status')=='candidate_requires_review':definition=apply_top10_rule(definition)
+    if definition.get('status')=='candidate_requires_review':definition=apply_top10_rule_preserving(definition)
     questions=[dict(x,details=dict(x['details'])) for x in state.review_items if x['kind']=='template_business_question']
     if questions and state.metadata.get('template_input_ref'):
         packet=store.get_artifact(state.metadata['template_input_ref'])
@@ -585,12 +591,12 @@ def export(task_id:str,req:ExportRequest):
     if not state.fact_ref:raise HTTPException(409,'data_review_required')
     if req.mode not in ('draft','final'): raise HTTPException(422,'invalid_mode')
     if not state.draft_ref: raise HTTPException(409,'draft_missing')
-    draft=store.get_artifact(state.draft_ref)
-    if req.mode=='final' and state.metadata.get('approval_hash')!=draft['content_hash']: raise HTTPException(409,'current_approval_required')
+    draft=store.get_artifact(state.draft_ref);content_hash=draft_content_hash(store,state,draft)
+    if req.mode=='final' and (content_hash is None or state.metadata.get('approval_hash')!=content_hash): raise HTTPException(409,DRAFT_SCHEMA_OUTDATED_DETAIL if content_hash is None else 'current_approval_required')
     issues=[x for x in state.review_items if x['status']!='resolved']
     data=export_docx(draft,store.get_artifact(draft['fact_ref']),None,req.mode,issues,local_store=store,
-                     overrides=state.metadata.get('final_overrides') or None)
-    ref=store.put_artifact(task_id,'export_meta',{'mode':req.mode,'fact_ref':draft['fact_ref'],'draft_hash':draft['content_hash'],'sha256':hashlib.sha256(data).hexdigest()})
+                     overrides=state.metadata.get('final_overrides') or None,features=effective_features(store,state))
+    ref=store.put_artifact(task_id,'export_meta',{'mode':req.mode,'fact_ref':draft['fact_ref'],'draft_hash':content_hash,'sha256':hashlib.sha256(data).hexdigest()})
     path=DATA/'artifacts'/f'{ref}.docx'; path.write_bytes(data)
     return {'artifact_id':ref,'download_url':f'/api/artifacts/{ref}/download','sha256':hashlib.sha256(data).hexdigest()}
 

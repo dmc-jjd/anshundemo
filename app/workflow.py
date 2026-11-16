@@ -31,6 +31,160 @@ def _record_agent_scope(store,task_id,graph,agents):
     """把「本次这张图由哪些角色驱动」写进任务事件（审计可见；不产物件、不进指纹）。"""
     store.append_event(task_id,{'type':'agent_scope','graph':graph,'agents':list(graph_agents(graph,agents))})
 
+#: 模板级开关 → 客户包 `features` 键（同一条语义，两个作用域：模板 / 客户包）。
+#: 两层是**相与**：包级关 = 这个客户永远不做，模板级再怎么开都当作关（`_template_features`）。
+#: 四个键都已在 `core/tools/registry.py:FEATURE_TOOLS` 登记，`resolve_tools` 认识它们；
+#: `first_warning` 登记的是空组——预警只是 `filter_records` 的共用 scope，没有专属工具。
+_FEATURE_SWITCHES={'dedup':'dedup','classification':'event_classification',
+                   'first_warning':'first_warning','top10':'top10'}
+#: 规划器不可见的工具（两轮事件候选由本地保底链路负责，从来不给模型）。
+_PLANNER_HIDDEN=('propose_keyword_event_candidates','propose_vector_event_neighbors')
+#: 数据处理节点（`data_processor`）允许规划器点名的工具集。
+_PLANNER_TOOLS=('import_records','calculate_metrics','filter_records','resolve_locality','classify_records',
+                'cluster_event_themes','discover_topics','select_materials','read_evidence','group_events')
+#: 只服务 TOP10 榜单的工具：`select_materials` 的保底口令就是 `B30_top10_candidates`。
+_TOP10_TOOLS=('select_materials',)
+
+def _package_feature_switches():
+    """客户包级开关：`manifest.features.<键>.enabled` → {模板开关名: bool}。
+
+    未声明 = 开（老包不写 `first_warning` / `top10`，行为与改造前逐字一致）；
+    只有显式 `enabled: false` 才是关。读清单失败也按全开处理：坏清单该在启动期被
+    `load_manifest` 拒绝，不能在这里静默把客户流程关掉。不缓存——清单很小，而缓存会把
+    「改配置要重启」变成一条隐性契约。
+    """
+    try:
+        from core import paths
+        from core.manifest import load_manifest
+        declared=load_manifest(paths.package_dir()).features
+    except Exception:
+        return {name:True for name in _FEATURE_SWITCHES}
+    return {name:(declared.get(key) or {}).get('enabled') is not False
+            for name,key in _FEATURE_SWITCHES.items()}
+
+
+#: 建任务时落盘的「生效开关快照」标记：有它 = `features` 已经是模板级 AND 客户包级的结果，
+#: 运行期不再叠加一次包级判断（否则包级配置一改，已建任务的口径也跟着变，快照就白冻了）。
+FEATURES_SNAPSHOT='task_snapshot'
+
+
+def task_feature_snapshot(rules):
+    """建报告任务时把**生效**开关算好写进 `template_rules.features`（宿主落盘方案）。
+
+    必须落盘，因为 core 侧的消费者（`core/structured_template.template_feature_switches`
+    及其下游 `core/event_analysis` / `core/storage`）只读任务里已经写好的值，看不见宿主侧
+    的客户包 manifest：不落盘 = 包级关了 core 照跑（B7-1）。
+
+    这里**不另算一套**：直接调 `_template_features`（唯一真相）算一次，把结果冻进任务。
+    传 `template_ref=None` 的探针对象是为了让它走「只读 rules」这条路径——建任务时模板级值
+    已经在 `rules` 里，不需要（也不该）再回读一次模板。
+
+    **任务级快照不可变**：落盘之后改客户包 manifest 或模板配置都不影响已建任务——口径随任务
+    固定，要换口径就新建任务。`features_source` 标记让 `_template_features` 认出这份值已生效。
+    """
+    from types import SimpleNamespace
+    probe=SimpleNamespace(metadata={'template_rules':rules},template_ref=None)
+    return {**(rules if isinstance(rules,dict) else {}),
+            'features':_template_features(None,probe),'features_source':FEATURES_SNAPSHOT}
+
+
+def effective_features(store,state):
+    """本任务生效开关（导出/终审与运行时同一口径：`_template_features` 的公开别名）。"""
+    return _template_features(store,state)
+
+
+def _template_features(store,state):
+    """本任务的**生效**处理开关 = 模板级 AND 客户包级（缺省全开 = 改造前行为）。
+
+    两层各管一段语义，这里取交集（任一关即关）：
+    - 模板级：确认模板时随 `template_version.rules` 存下的四个布尔值。建报告任务时
+      `template_rules` 已把它整份带过来，所以正常不再回读模板；只在老任务/老版本缺该键时
+      回读一次已确认模板——不回读等于把用户的显式关闭当成默认开。
+    - 客户包级：`manifest.features.<键>.enabled`。客户级是**硬约束**：这个客户永远不做
+      TOP10，就该在包级关掉，此时模板级怎么写开着都不算数。
+
+    四个开关的全部下游消费者都读这个函数：工具白名单/保底步骤（`_processing_policy`、
+    `_disabled_steps`）、完成判据（`_needed_refs`）、冻结事实的口径（`freeze_facts`）。
+
+    建报告任务时 `task_feature_snapshot` 已把 AND 结果冻进任务（`features_source` 标记），
+    这时直接读快照、不再叠加包级——core 读的是同一份值，快照对已建任务不可变。
+    只有老任务（没有标记）才回落到「模板级 AND 客户包级」的现算路径。
+    """
+    rules=state.metadata.get('template_rules')
+    if isinstance(rules,dict) and rules.get('features_source')==FEATURES_SNAPSHOT:
+        raw=rules.get('features') if isinstance(rules.get('features'),dict) else {}
+        return {name:raw.get(name) is not False for name in _FEATURE_SWITCHES}
+    if not isinstance(rules,dict) or 'features' not in rules:
+        ref=state.template_ref
+        rules={}
+        if ref and ref!='anshun-monthly-colored':
+            try:
+                from .structured_template import load_confirmed_template
+                rules=load_confirmed_template(store,ref).get('rules') or {}
+            except (KeyError,ValueError): rules={}
+    raw=rules.get('features') if isinstance(rules,dict) else None
+    raw=raw if isinstance(raw,dict) else {}
+    template={name:raw.get(name) is not False for name in _FEATURE_SWITCHES}
+    package=_package_feature_switches()
+    return {name:template[name] and package[name] for name in _FEATURE_SWITCHES}
+
+
+def _processing_policy(features):
+    """把**生效**开关折进工具白名单：客户包策略在基底，开关只做减法。
+
+    `resolve_tools` 是既有的剪枝面（能力依赖 + `features.*` 开关），这里只是把
+    「生效开关」（模板级 AND 客户包级，见 `_template_features`）翻译成它认识的
+    `{'enabled': bool}` 形状再用一次，不另造剪枝逻辑。
+    `top10` 的产出工具 `select_materials`（保底口令 `B30_top10_candidates`）现在已在
+    `core/tools/registry.py:FEATURE_TOOLS` 登记；下面那次显式扣除保留作第二层保险：
+    白名单是唯一门禁，少扣一次就是「配了关却还在跑」。
+    """
+    from core import tool_executor as executor
+    from core.ports import ToolPolicy
+    from core.tools.registry import CAPABILITY_TOOLS,resolve_tools
+    base=executor._default_policy()
+    switches={key:{'enabled':features[name]} for name,key in _FEATURE_SWITCHES.items()}
+    allow=set(base.allow)&resolve_tools(tuple(CAPABILITY_TOOLS),switches)
+    if not features['top10']:allow-=set(_TOP10_TOOLS)
+    return ToolPolicy(allow=frozenset(allow),phases=base.phases,budgets=base.budgets)
+
+
+def _required_refs(features):
+    """「数据处理完成 / 可以交人工审核」所需的产物：关掉的步骤不再算必需。"""
+    refs={'calculate_metrics'}
+    if features['dedup']: refs.add('group_events')
+    if features['classification']: refs.add('cluster_event_themes')
+    return refs
+
+
+def _analysis_refs(features):
+    """进入事件研判所需的产物。研判消费的是归组结果：关掉去重就没有组可研判，整段跳过。"""
+    return _required_refs(features)|{'group_events'}
+
+
+def _needed_refs(features):
+    """数据处理节点的完成判据（含各口径的筛选产物）。
+
+    `first_warning` 关掉时「第一部分重点预警」那段不生成，但它不额外要求产物：
+    `filter_records:warning` 仍被别的统计口径（敏感及负面量）共用，不能顺手一起停。
+    """
+    return {'import_records','filter_records:positive','filter_records:neutral','filter_records:negative',
+            'filter_records:warning','filter_records:negative_or_warning'}|_required_refs(features)
+
+
+def _disabled_steps(features):
+    """被模板开关关掉的保底步骤名（`fallback_policy` 的步骤词表）。
+
+    `top10` 关掉 → `select_materials`（TOP10 候选材料）整步不进计划；
+    `first_warning` 关掉没有专有步骤（预警范围是共用筛选面），只停「口径产物」，
+    见 `freeze_facts` 里不再写 `first_section_warning_event_count`。
+    """
+    off=set()
+    if not features['dedup']: off.add('group_events')
+    if not features['classification']: off|={'classify_records','cluster_event_themes','discover_topics'}
+    if not features['top10']: off|=set(_TOP10_TOOLS)
+    return off
+
 def _graph_node(deps,name,action,graph_name):
     async def node(value):
         task_id=value['task_id'];store=deps.store
@@ -63,7 +217,9 @@ def build_report_graph(dependencies:Dependencies,agents=None):
         return 'process' if not task.fact_ref and not task.metadata.get('human_review_final') and task.phase in ('queued','processing','awaiting_review','analysis_pending') else 'stop'
     def after_processing(value):
         task=dependencies.store.get_task(value['task_id'])
-        return 'analyse' if {'calculate_metrics','group_events','cluster_event_themes'}<=task.result_refs.keys() and not task.cancel_requested else 'finish'
+        # 研判阶段消费的是归组结果：关掉去重就不会有组可研判，直接交给人工数据审核。
+        needed=_analysis_refs(_template_features(dependencies.store,task))
+        return 'analyse' if needed<=task.result_refs.keys() and not task.cancel_requested else 'finish'
     def after_analysis(value):return 'stop' if dependencies.store.get_task(value['task_id']).phase=='analysis_pending' else 'finish'
     actions={'validate_input':validate,'data_processing':lambda tid:_process_records(dependencies,tid),
              'event_analysis':lambda tid:_analyse_report_events(dependencies,tid),'await_data_review':lambda tid:_await_data_review(dependencies,tid)}
@@ -227,9 +383,17 @@ async def _process_records(deps:Dependencies,task_id:str):
     if task.metadata.get('human_review_final') and task.result_refs.get('event_analysis'):return task
     store=deps.store; state=store.get_task(task_id)
     if state.fact_ref or state.phase not in ('queued','processing','awaiting_review','analysis_pending'): return state
+    features=_template_features(store,state); policy=_processing_policy(features)
+    from .tool import get_tool_specs
+    # 裁剪**给模型的清单**而不只是执行层拒绝：模型看得见被拒工具就会反复重试，产出垃圾。
+    available=[spec.model_dump() for spec in get_tool_specs()
+               if spec.name not in _PLANNER_HIDDEN and spec.name in policy.allow]
+    state.metadata['available_tools']=[spec['name'] for spec in available]
     state.phase='processing'; store.put_task(state,state.revision)
     store.append_event(task_id,{'type':'phase','phase':'processing'})
-    ctx=RunContext(store,task_id,model_adapter=deps.model_adapter)
+    store.append_event(task_id,{'type':'processing_features',
+                                **{name:features[name] for name in _FEATURE_SWITCHES}})
+    ctx=RunContext(store,task_id,model_adapter=deps.model_adapter,policy=policy)
     if state.metadata.get('mode')=='dynamic' and not state.metadata.get('reprocess_events'):
         no_progress=0
         while True:
@@ -246,29 +410,33 @@ async def _process_records(deps:Dependencies,task_id:str):
                     definition=load_confirmed_template(store,state.template_ref)
                     slot_goals=[{'id':f['id'],'semantic':f['semantic'],'owner':f['owner'],'value_schema':f['value_schema'],'binding':f.get('binding')} for f in definition['fields']]
                     manifest={**manifest,'template_id':definition['id']}
-                from .tool import get_tool_specs
-                decision=await invoke_agent('data_processor',{'template_id':manifest['template_id'],'slot_goals':slot_goals,'confirmed_scope_requirements':manifest['scope_requirements'],'input':{'path':state.metadata.get('input_path'),'sheet_index':state.metadata.get('sheet_index',3)},'template_rules':state.metadata.get('template_rules',{}),'results':state.result_refs,'tools':[x.model_dump() for x in get_tool_specs() if x.name not in ('propose_keyword_event_candidates','propose_vector_event_neighbors')],'instruction':get_prompt('data_processor.next_tool')},ToolDecision,ctx)
+                decision=await invoke_agent('data_processor',{'template_id':manifest['template_id'],'slot_goals':slot_goals,'confirmed_scope_requirements':manifest['scope_requirements'],'input':{'path':state.metadata.get('input_path'),'sheet_index':state.metadata.get('sheet_index',3)},'template_rules':state.metadata.get('template_rules',{}),'results':state.result_refs,'tools':available,'instruction':get_prompt('data_processor.next_tool')},ToolDecision,ctx)
             except Exception as e:
                 store.append_event(task_id,{'type':'planning_error','error':type(e).__name__}); break
             if decision.action=='finish_processing':
-                needed={'import_records','calculate_metrics','filter_records:positive','filter_records:neutral','filter_records:negative','filter_records:warning','filter_records:negative_or_warning','group_events','cluster_event_themes'}
+                needed=_needed_refs(features)
                 if needed<=state.result_refs.keys(): break
                 no_progress+=1; store.append_event(task_id,{'type':'coverage_rejected','missing':list(needed-state.result_refs.keys())}); continue
             if decision.action=='request_human':
                 store.append_event(task_id,{'type':'planner_handoff','reason':decision.reason}); break
-            if decision.tool_name not in ('import_records','calculate_metrics','filter_records','resolve_locality','classify_records','cluster_event_themes','discover_topics','select_materials','read_evidence','group_events'):
+            if decision.tool_name not in _PLANNER_TOOLS or decision.tool_name not in policy.allow:
                 no_progress+=1; continue
             before=len(state.result_refs)
             call=ToolCall(call_id=uuid.uuid4().hex,tool_name=decision.tool_name,arguments=decision.arguments,reason=decision.reason)
             await execute_tool(call,ctx)
             no_progress=0 if len(store.get_task(task_id).result_refs)>before else no_progress+1
     state=store.get_task(task_id)
-    needed={'import_records','calculate_metrics','filter_records:positive','filter_records:neutral','filter_records:negative','filter_records:warning','filter_records:negative_or_warning','group_events','cluster_event_themes'}
+    needed=_needed_refs(features)
     if not needed<=state.result_refs.keys():
         reason='model_unavailable_or_no_progress' if state.metadata.get('mode')=='dynamic' else 'model_not_configured'
         state.fallback=build_fallback_plan(state,reason)
         if state.metadata.get('event_scope')=='negative_warning' and 'filter_records:negative_warning' not in state.result_refs:
             state.fallback['steps'].insert(state.fallback['steps'].index('group_events'),'filter_negative_warning_scope')
+        # 保底链路同样受模板开关约束：关掉的步骤根本不进计划，而不是进去撞白名单。
+        disabled=_disabled_steps(features)
+        if disabled:
+            state.fallback['steps']=[step for step in state.fallback['steps'] if step not in disabled]
+            state.fallback['goal_by_step']={key:value for key,value in state.fallback['goal_by_step'].items() if key not in disabled}
         store.put_task(state,state.revision)
         store.append_event(task_id,{'type':'fallback_started',**state.fallback})
         for name in list(state.fallback['steps']):
@@ -286,7 +454,7 @@ async def _process_records(deps:Dependencies,task_id:str):
 async def _analyse_report_events(deps:Dependencies,task_id:str):
     store=deps.store
     state=store.get_task(task_id)
-    if {'calculate_metrics','group_events','cluster_event_themes'}<=state.result_refs.keys() and not state.cancel_requested:
+    if _analysis_refs(_template_features(store,state))<=state.result_refs.keys() and not state.cancel_requested:
         from .event_analysis import analyse_events
         state.phase='analyzing';store.put_task(state,state.revision)
         analysis=await analyse_events(deps,task_id)
@@ -306,17 +474,17 @@ def _await_data_review(deps:Dependencies,task_id:str):
         for item in state.review_items:
             if item['kind'] in obsolete and item.get('status')!='resolved':
                 item.update(status='superseded',blocking=False,superseded_reason='已采用模板规则、自动事件归并和整体数据审核')
-        required={'calculate_metrics','group_events','cluster_event_themes'}
+        required=_required_refs(_template_features(store,state))
         if not required<=state.result_refs.keys():
             state.phase='failed'
             state.metadata['failure_message']='数据处理未完成，请查看运行动态并重试。'
         elif not any(x['kind']=='data_review' and x['status']=='open' for x in state.review_items):
-            state.review_items.append(_item('data_review','请查看本期统计、自动归并事件与分类结果，修改后确认本期数据。',True,{'metrics_ref':state.result_refs['calculate_metrics'],'event_ref':state.result_refs['event_analysis'],'cluster_ref':state.result_refs['cluster_event_themes'],'analysis_ref':state.result_refs['event_analysis']}))
+            state.review_items.append(_item('data_review','请查看本期统计、自动归并事件与分类结果，修改后确认本期数据。',True,{'metrics_ref':state.result_refs['calculate_metrics'],'event_ref':state.result_refs.get('event_analysis'),'cluster_ref':state.result_refs.get('cluster_event_themes'),'analysis_ref':state.result_refs.get('event_analysis')}))
         else:
             for item in state.review_items:
                 if item['kind']=='data_review' and item['status']=='open':
-                    item['details']={'metrics_ref':state.result_refs['calculate_metrics'],'event_ref':state.result_refs['event_analysis'],
-                                     'cluster_ref':state.result_refs['cluster_event_themes'],'analysis_ref':state.result_refs['event_analysis']}
+                    item['details']={'metrics_ref':state.result_refs['calculate_metrics'],'event_ref':state.result_refs.get('event_analysis'),
+                                     'cluster_ref':state.result_refs.get('cluster_event_themes'),'analysis_ref':state.result_refs.get('event_analysis')}
         if state.phase!='failed':state.phase='awaiting_review'
     store.put_task(state,state.revision); store.append_event(task_id,{'type':'phase','phase':state.phase})
     return state
@@ -410,17 +578,29 @@ def freeze_facts(deps:Dependencies,task_id:str):
     if not {'filter_records:negative_or_warning','confirmed_event_groups','confirmed_theme_groups'}<=state.result_refs.keys(): raise ValueError('data_review_required')
     metrics=store.get_artifact(state.result_refs['calculate_metrics'])
     metrics['negative_record_count']=len(store.get_artifact(state.result_refs['filter_records:negative'])['records'])
-    metrics['warning_record_count']=len(store.get_artifact(state.result_refs['filter_records:warning'])['records'])
+    if state.result_refs.get('filter_records:warning'):
+        metrics['warning_record_count']=len(store.get_artifact(state.result_refs['filter_records:warning'])['records'])
     metrics['negative_or_warning_record_count']=len(store.get_artifact(state.result_refs['filter_records:negative_or_warning'])['records'])
     groups=store.get_artifact(state.result_refs['confirmed_event_groups'])['groups']
-    warning_ids={r['id'] for r in store.get_artifact(state.result_refs['filter_records:warning'])['records']}
     metrics['automatic_event_count']=len(groups)
-    metrics['first_section_warning_event_count']=(sum(bool(set(g['member_ids'])&warning_ids) for g in groups)
-        if state.metadata.get('template_rules',{}).get('first_warning_scope')=='warning' else len(groups))
-    snapshot=FactSnapshot(id=uuid.uuid4().hex,template_ref=state.template_ref or '',input_refs=state.input_refs,result_refs=state.result_refs,report_month=state.metadata.get('report_month'),metrics=metrics,confirmed_event_count=len(groups),top10=state.metadata.get('reviewed_top10',[]),decisions=[x['decision'] for x in state.review_items if x.get('decision')])
+    features=_template_features(store,state)
+    if features['first_warning']:
+        warning_ids={r['id'] for r in store.get_artifact(state.result_refs['filter_records:warning'])['records']} \
+            if state.result_refs.get('filter_records:warning') else set()
+        metrics['first_section_warning_event_count']=(sum(bool(set(g['member_ids'])&warning_ids) for g in groups)
+            if state.metadata.get('template_rules',{}).get('first_warning_scope')=='warning' else len(groups))
+    else:
+        # 口径关掉 = 不产出该统计量（不是产出 0）：报告里那一段也不会生成。
+        metrics.pop('first_section_warning_event_count',None)
+    snapshot=FactSnapshot(id=uuid.uuid4().hex,template_ref=state.template_ref or '',input_refs=state.input_refs,result_refs=state.result_refs,report_month=state.metadata.get('report_month'),metrics=metrics,confirmed_event_count=len(groups),top10=(state.metadata.get('reviewed_top10',[]) if features['top10'] else []),decisions=[x['decision'] for x in state.review_items if x.get('decision')])
     payload=snapshot.model_dump(exclude={'content_hash'}); snapshot.content_hash=hashlib.sha256(json.dumps(payload,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
     state.fact_ref=store.put_artifact(task_id,'facts',snapshot.model_dump()); state.phase='facts_frozen'
     store.put_task(state,state.revision); store.append_event(task_id,{'type':'facts_frozen','fact_ref':state.fact_ref})
+    reviewed=len(state.metadata.get('reviewed_top10') or []); frozen=len(snapshot.top10)
+    if reviewed!=frozen:
+        # 不静默、也不强行对齐：数据审核（core 侧）与冻结（宿主侧）若用了不同的开关口径，
+        # 先把差异记进事件流，是否算 bug 由人判断。
+        store.append_event(task_id,{'type':'feature_mismatch','key':'top10','reviewed':reviewed,'facts':frozen})
     return state
 
 def make_draft(deps:Dependencies,task_id:str):

@@ -146,20 +146,27 @@ CREATE TABLE IF NOT EXISTS idempotency(key TEXT PRIMARY KEY, value TEXT);''')
                 if action not in ('same','different'):raise ValueError('merge_ambiguity_unresolved')
                 together=assignments[case['source_id']]==assignments[case['target_id']]
                 if together!=(action=='same'):raise ValueError('merge_decision_members_disagree')
-            from .event_analysis import negative_ranking
-            source=self.get_artifact(state.result_refs['filter_records:negative_or_warning'])['records']
-            ranked=negative_ranking(groups,source)
-            available={row['fingerprint']:row for row in events.get('top10',[])}
-            patches=decision.payload.get('briefs',{})
-            top10=[]
-            for rank,row in enumerate(ranked,1):
-                brief=patches.get(row['fingerprint'],available.get(row['fingerprint']))
-                if not brief:raise ValueError('top10_needs_refresh')
-                if brief.get('status')!='complete' or not str(brief.get('summary','')).strip():raise ValueError('top10_summary_required')
-                if not 15<=len(brief['summary'].strip())<=35:raise ValueError('top10_summary_length')
-                if not brief.get('source_refs') or not set(brief['source_refs'])<=set(row['negative_ids']):raise ValueError('invalid_top10_sources')
-                top10.append({**row,'rank':rank,'summary':brief['summary'],'source_refs':brief['source_refs'],'status':'complete'})
-            state.metadata['reviewed_top10']=top10
+            from .structured_template import template_feature_switches
+            features=template_feature_switches(state,self)
+            if features['top10']:
+                from .event_analysis import negative_ranking
+                source=self.get_artifact(state.result_refs['filter_records:negative_or_warning'])['records']
+                ranked=negative_ranking(groups,source)
+                available={row['fingerprint']:row for row in events.get('top10',[])}
+                patches=decision.payload.get('briefs',{})
+                top10=[]
+                for rank,row in enumerate(ranked,1):
+                    brief=patches.get(row['fingerprint'],available.get(row['fingerprint']))
+                    if not brief:raise ValueError('top10_needs_refresh')
+                    if brief.get('status')!='complete' or not str(brief.get('summary','')).strip():raise ValueError('top10_summary_required')
+                    if not 15<=len(brief['summary'].strip())<=35:raise ValueError('top10_summary_length')
+                    if not brief.get('source_refs') or not set(brief['source_refs'])<=set(row['negative_ids']):raise ValueError('invalid_top10_sources')
+                    top10.append({**row,'rank':rank,'summary':brief['summary'],'source_refs':brief['source_refs'],'status':'complete'})
+                state.metadata['reviewed_top10']=top10
+            else:
+                # 模板关掉 TOP10：该段不再产出，也就没有梗概可校验——「没有数据」不是错误。
+                # 其余数据审核校验（组成员覆盖、分类一致、关系裁决）照旧逐条执行。
+                state.metadata['reviewed_top10']=[]
             state.result_refs['confirmed_event_groups']=self.put_artifact(task_id,'confirmed_event_groups',{'groups':groups,'source_ref':item['details']['event_ref'],'decision':decision.model_dump()})
             state.result_refs['confirmed_theme_groups']=self.put_artifact(task_id,'confirmed_theme_groups',{'groups':theme_groups,'source_ref':item['details']['cluster_ref'],'decision':decision.model_dump()})
         if item.get('kind')=='event_scope' and decision.action!='defer':

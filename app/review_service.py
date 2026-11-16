@@ -1,5 +1,6 @@
 """Visible review documents and stage gates shared by the API and UI."""
 from .structured_template import load_confirmed_template
+from .api_views.writing import draft_content_hash,DRAFT_SCHEMA_OUTDATED_DETAIL
 
 def check_rules(rules):
     if not isinstance(rules,dict):raise ValueError('template_rules_required')
@@ -40,18 +41,21 @@ def draft_view(store,task_id):
     state=store.get_task(task_id)
     if not state.draft_ref:raise ValueError('draft_missing')
     draft=store.get_artifact(state.draft_ref)
+    content_hash=draft_content_hash(store,state,draft)
     definition=load_confirmed_template(store,state.template_ref) if draft.get('structured_template_ref') else None
     if definition:
         from .chart_spec import with_styles,styles_for
         definition=with_styles(definition,styles_for(definition,state.metadata.get('chart_styles')))
     from .reviewers import review_ready,active_issues
-    ready=review_ready(state,draft['content_hash'])
+    ready=bool(content_hash) and review_ready(state,content_hash)
     pending={}
     for field_id,ref in state.metadata.get('writer_pending_sources',{}).items():
         if field_id not in state.metadata.get('missing_fields',[]):continue
         item=store.get_artifact(ref)
         if item.get('fact_ref')==state.fact_ref and item.get('template_ref')==state.template_ref:pending[field_id]=item
     return {'draft':draft,'definition':definition,'missing':state.metadata.get('missing_fields',[]),
+            'draft_hash':content_hash,'draft_schema_outdated':content_hash is None,
+            'detail':None if content_hash else DRAFT_SCHEMA_OUTDATED_DETAIL,
             'pending_sources':pending,
             'issues':state.metadata.get('writer_issues',[]),'pending_charts':state.metadata.get('pending_charts',0),
             'report_parameters':state.metadata.get('report_parameters',{}),

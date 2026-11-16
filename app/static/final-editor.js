@@ -66,14 +66,20 @@
   // 点工具栏按钮不把焦点从编辑器抢走：否则「点 B → 接着打字」会把字打到按钮上。
   // 只拦 mousedown 的默认动作（焦点转移），click 与视觉反馈不受影响。
   barEl.addEventListener('mousedown', function (event) {
-    if (event.target.closest('.ed-btn')) event.preventDefault();
+    if (event.target.closest('.ed-btn, .ed-mi')) event.preventDefault();
   });
 
   barEl.addEventListener('click', function (event) {
-    var btn = event.target.closest('.ed-btn');
+    var btn = event.target.closest('.ed-btn, .ed-mi');
     if (!btn || btn.disabled) return;
+    if (btn.id === 'edMoreBtn') { toggleMore(); return; }
+    var isItem = btn.classList.contains('ed-mi');
     var d = btn.dataset;
-    if (!d.cmd && !d.size && !d.align && !d.title && !d.list && !d.table) return;
+    if (!d.cmd && !d.size && !d.align && !d.title && !d.list && !d.table) {
+      // 载入模板 / 载入报告 走各自监听器；无论哪条路，点了菜单项就收起菜单。
+      if (isItem) closeMore();
+      return;
+    }
     try {
       if (d.cmd) { cmd[d.cmd](); }
       else if (d.size === '+') { cmd.executeSizeAdd(); }
@@ -86,6 +92,45 @@
     } catch (err) {
       status('命令不支持: ' + (d.cmd || d.align || d.title || d.list || ''));
     }
+    if (isItem) closeMore();
+  });
+
+  // ── 「更多」菜单 ─────────────────────────────────────────────
+  // 6 个低频命令（列表×2 / 插表格 / 载入×2 / 打印）在左栏占掉 240px 后放不进
+  // 一行，收进最右侧「更多」。菜单项与工具栏共用同一套 data-* 契约，所以命令
+  // 派发仍走上面那个委托口；.ed-mi 也沿用 .ed-btn 的 .on + aria-pressed 按下态，
+  // 状态由已有的 rangeStyleChange（applyRangeStyle）直接写，不需要第二份同步逻辑。
+  var moreBtn = document.getElementById('edMoreBtn');
+  var morePanel = document.getElementById('edMorePanel');
+
+  function moreOpen() { return barEl.classList.contains('more-open'); }
+  function openMore() {
+    barEl.classList.add('more-open');
+    if (moreBtn) moreBtn.setAttribute('aria-expanded', 'true');
+  }
+  function closeMore() {
+    barEl.classList.remove('more-open');
+    if (moreBtn) moreBtn.setAttribute('aria-expanded', 'false');
+  }
+  function toggleMore() { if (moreOpen()) { closeMore(); } else { openMore(); } }
+
+  // 点面板外关闭。用捕获阶段：画布（canvas-editor）会吃掉自己那侧的冒泡，
+  // 冒泡监听在画布上点一下收不起菜单。
+  document.addEventListener('click', function (event) {
+    if (!moreOpen()) return;
+    var t = event.target;
+    if (!t || !t.closest) return;
+    if (morePanel && morePanel.contains(t)) return;
+    if (moreBtn && moreBtn.contains(t)) return;
+    closeMore();
+  }, true);
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Escape' && event.key !== 'Esc') return;
+    if (!moreOpen()) return;
+    closeMore();
+    if (moreBtn) moreBtn.focus();
+    event.preventDefault();
   });
 
   // ── 工具栏按下态（事件驱动）────────────────────────────────────
@@ -208,15 +253,20 @@
   });
 
   // ── 导出 / 保存 ─────────────────────────────────────────────
+  // 插件 A2() 内部固定拼 `${fileName}.docx`（canvas-editor.js: E2(W, `${i}.docx`)），
+  // 所以这里只传基名，否则会得到 xxx.docx.docx。
+  function fileNameBase() {
+    return (taskId || '终稿') + '-' + new Date().toISOString().slice(0, 10);
+  }
   function fileName() {
-    return (taskId || '终稿') + '-' + new Date().toISOString().slice(0, 10) + '.docx';
+    return fileNameBase() + '.docx';
   }
 
   // 导出到本地（插件原生下载，不拦截）
   document.getElementById('edExport').addEventListener('click', function () {
     var name = fileName();
     try {
-      var maybe = cmd.executeExportDocx({ fileName: name });
+      var maybe = cmd.executeExportDocx({ fileName: fileNameBase() });
       if (maybe && typeof maybe.then === 'function') { maybe.catch(function () {}); }
       say('已导出 ' + name); status('已导出');
     } catch (err) {
@@ -226,6 +276,7 @@
 
   // 导出但拿到 Blob：插件内部的 E2() 会造一个 <a download> 并立刻 click，
   // 这里在导出期间只拦「带 download 属性的锚」的 click，结束后立即恢复原型。
+  // name 同样是「基名」：插件自己补 .docx（这里只用于被拦截的临时锚）。
   function exportBlobSilently(name) {
     var proto = window.HTMLAnchorElement.prototype;
     var original = proto.click;
@@ -251,7 +302,7 @@
     }
     saving = true; saveBtn.disabled = true;
     say('正在生成 docx 并上传…'); status('保存中');
-    exportBlobSilently(fileName())
+    exportBlobSilently(fileNameBase())
       .then(function (blob) {
         if (!blob || typeof blob.arrayBuffer !== 'function') {
           throw new Error('插件未返回 docx 字节');
@@ -308,6 +359,168 @@
 
   say('就绪 · 载入模板或报告后可编辑、保存到系统或导出');
   status('就绪');
+
+  // ── 左栏「历史生成报告」──────────────────────────────────────
+  // 列表只有「有报告的任务」（后端 /api/reports/editable 已判定）；
+  // 点条目 = 载入该报告（saved 读编辑版，draft 读产物下载），删除 = 软删（只写时间戳）。
+  var listEl = document.getElementById('edReports');
+
+  function mmdd(value) {
+    var d = value instanceof Date ? value : new Date(value);
+    if (isNaN(d.getTime())) return '--';
+    return ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+  }
+
+  function setActive(id) {
+    var rows = listEl.querySelectorAll('.ed-rep');
+    for (var i = 0; i < rows.length; i++) {
+      var on = rows[i].getAttribute('data-id') === id;
+      rows[i].classList.toggle('on', on);
+      if (on) { rows[i].setAttribute('aria-current', 'true'); }
+      else { rows[i].removeAttribute('aria-current'); }
+    }
+  }
+
+  function closeMenus(keep) {
+    var rows = listEl.querySelectorAll('.ed-rep.menu');
+    for (var i = 0; i < rows.length; i++) { if (rows[i] !== keep) rows[i].classList.remove('menu'); }
+  }
+
+  function renderEmpty() {
+    listEl.textContent = '';
+    var empty = document.createElement('div');
+    empty.className = 'ed-empty';
+    empty.textContent = '暂无报告';
+    listEl.appendChild(empty);
+  }
+
+  function loadReport(item) {
+    taskId = item.task_id;
+    if (nameEl) nameEl.textContent = item.name || item.task_id;
+    setActive(item.task_id);
+    refreshSaved();
+    say('正在载入 ' + (item.name || item.task_id) + '…'); status('载入中');
+    var url = item.url || ('/api/tasks/' + encodeURIComponent(item.task_id) + '/final-docx');
+    fetch(url)
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
+      .then(function (buf) { importBuffer(buf, item.status === 'saved' ? '编辑版 docx' : '报告 docx'); })
+      .catch(function (err) { say('载入失败：' + err.message); status('载入失败'); });
+  }
+
+  function deleteReport(item, row) {
+    say('正在删除 ' + (item.name || item.task_id) + '…'); status('删除中');
+    fetch('/api/reports/editable/' + encodeURIComponent(item.task_id), { method: 'DELETE' })
+      .then(function (r) {
+        return r.text().then(function (text) {
+          if (!r.ok) {
+            var detail = text;
+            try { detail = JSON.parse(text).detail || text; } catch (e) {}
+            throw new Error('HTTP ' + r.status + (detail ? ' ' + String(detail).slice(0, 60) : ''));
+          }
+          var data = {};
+          try { data = JSON.parse(text); } catch (e) {}
+          row.parentNode.removeChild(row);
+          if (!listEl.querySelector('.ed-rep')) renderEmpty();
+          say('已删除 ' + (item.name || item.task_id) + ' · '
+              + String(data.deleted_at || '').slice(0, 16).replace('T', ' '));
+          status('已删除');
+        });
+      })
+      .catch(function (err) { say('删除失败：' + err.message); status('删除失败'); });
+  }
+
+  function reportRow(item) {
+    var row = document.createElement('div');
+    row.className = 'ed-rep';
+    row.setAttribute('data-id', item.task_id);
+    row.setAttribute('role', 'button');
+    row.setAttribute('tabindex', '0');
+    row.title = item.name || item.task_id;
+
+    var name = document.createElement('div');
+    name.className = 'ed-rep-name';
+    name.textContent = item.name || item.task_id;
+
+    var meta = document.createElement('div');
+    meta.className = 'ed-rep-meta';
+    var date = document.createElement('span');
+    date.textContent = mmdd(item.updated_at);
+    var st = document.createElement('span');
+    st.className = 'st';
+    st.textContent = item.status === 'saved' ? '已保存' : '草稿';
+    meta.appendChild(date);
+    meta.appendChild(st);
+
+    var more = document.createElement('button');
+    more.className = 'ed-rep-more';
+    more.type = 'button';
+    more.title = '更多';
+    more.setAttribute('aria-label', '更多操作');
+    more.textContent = '⋯';
+
+    var menu = document.createElement('div');
+    menu.className = 'ed-rep-menu';
+    var del = document.createElement('button');
+    del.className = 'del';
+    del.type = 'button';
+    del.textContent = '删除';
+    var cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.textContent = '取消';
+    menu.appendChild(del);
+    menu.appendChild(cancel);
+
+    row.appendChild(name);
+    row.appendChild(meta);
+    row.appendChild(more);
+    row.appendChild(menu);
+
+    row.addEventListener('click', function (event) {
+      if (event.target.closest('.ed-rep-more') || event.target.closest('.ed-rep-menu')) return;
+      closeMenus(null);
+      loadReport(item);
+    });
+    row.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); loadReport(item); }
+    });
+    more.addEventListener('click', function (event) {
+      event.stopPropagation();
+      var open = row.classList.contains('menu');
+      closeMenus(row);
+      if (open) { row.classList.remove('menu'); } else { row.classList.add('menu'); }
+    });
+    cancel.addEventListener('click', function (event) {
+      event.stopPropagation();
+      row.classList.remove('menu');
+    });
+    del.addEventListener('click', function (event) {
+      event.stopPropagation();
+      row.classList.remove('menu');
+      deleteReport(item, row);
+    });
+    return row;
+  }
+
+  function renderReports(items) {
+    listEl.textContent = '';
+    if (!items.length) { renderEmpty(); return; }
+    for (var i = 0; i < items.length; i++) { listEl.appendChild(reportRow(items[i])); }
+    if (taskId) setActive(taskId);
+  }
+
+  function refreshReports() {
+    fetch('/api/reports/editable')
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (items) { renderReports(Array.isArray(items) ? items : []); })
+      .catch(function () { renderEmpty(); });
+  }
+
+  // 点空白处收起行内菜单（不拦截、不冒泡到条目自己的 click）
+  document.addEventListener('click', function (event) {
+    if (!event.target.closest || !event.target.closest('.ed-rep')) closeMenus(null);
+  });
+
+  refreshReports();
 
   // 测试钩子：?load=tpl 自动载入模板；?load=doc 自动载入报告
   var auto = params.get('load');

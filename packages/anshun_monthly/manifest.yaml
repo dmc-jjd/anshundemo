@@ -92,3 +92,13 @@ features:
     #   代表策略 → 代码固定为「只与不可变代表比、防链式」（core/tools/dedup.py）
     # 早先这里还写过一个 representative: immutable_first，全仓零消费者 ——
     # 那是「描述」不是「开关」，留着会让人以为改了有用，一并删掉。
+  # 以下两项是客户级硬开关：与模板级 rules.features **相与**，包级关 = 这个客户永远不做，
+  # 模板级再怎么开都当作关（合并点在 app/workflow.py `_template_features`）。
+  # 工具侧消费者是 core/tools/registry.py:FEATURE_TOOLS（first_warning 无专属工具：
+  # 预警只是 filter_records 的一个共用 scope；top10 对应 select_materials）。
+  # 段落侧：关掉后对应段落整段不生成（确认模板时由模板级开关删段；包级关时事实里不产出
+  # top10 / first_section_warning_event_count）。
+  first_warning:
+    enabled: true
+  top10:
+    enabled: true

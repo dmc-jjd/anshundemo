@@ -93,10 +93,24 @@ CAPABILITY_TOOLS: dict[str, tuple[str, ...]] = {
 #: 早先 `manifest.features.locality/dedup` 只被解析、无任何消费者，等于谎称可关。
 #: `capabilities.require` 回答「要哪些产物」，这张表回答「某个能力开不开」——
 #: 前者管有无，后者管开关，两者缺一都会让客户以为改了配置就生效。
+#:
+#: 空组 `()` 是**合法的显式声明**：该能力可关，但没有专属工具（下面 `first_warning`）。
+#: 它让 `tests/test_s8_feature_switches.py::test_feature_tools_registry_covers_every_switchable_group`
+#: 仍然成立，同时不妨碍 `resolve_tools` 对它是无操作。
 FEATURE_TOOLS: dict[str, tuple[str, ...]] = {
     'locality': ('resolve_locality',),
     'dedup': ('group_events', 'propose_keyword_event_candidates', 'propose_vector_event_neighbors'),
     'event_classification': ('classify_records', 'cluster_event_themes', 'discover_topics'),
+    # 「第一部分重点预警」**没有独立工具**：它只是 `filter_records` 的一个 scope
+    # （`filter_records:warning` / `negative_or_warning`），而该工具同时被正面/中性/负面
+    # 等共用口径使用（`workflow._needed_refs` 里 warning 口径还被「敏感及负面量」共用）。
+    # 把 `filter_records` 映射进来会让客户一关预警就整段筛选停摆，所以这里映射为空：
+    # `resolve_tools` 对它是显式无操作，开关的真实消费者在下游——`freeze_facts` 不再产出
+    # `first_section_warning_event_count`，确认模板期「重点预警」段整段不生成。
+    'first_warning': (),
+    # TOP10 榜单的候选材料工具：`select_materials` 的保底口令就是 `B30_top10_candidates`。
+    # 与 `app/workflow.py:_TOP10_TOOLS` 同一组，两处必须对齐（改一处忘另一处 = 开关半失效）。
+    'top10': ('select_materials',),
 }
 
 

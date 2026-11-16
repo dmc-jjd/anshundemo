@@ -148,13 +148,19 @@ def _table(rows):
         body.append('<w:tr>'+''.join('<w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/></w:tcPr>'+_p(v)+'</w:tc>' for v in row)+'</w:tr>')
     return '<w:tbl><w:tblPr><w:tblBorders><w:bottom w:val="single" w:sz="4"/></w:tblBorders></w:tblPr>'+''.join(body)+'</w:tbl>'
 
-def export_docx(draft:dict,facts:dict,template:dict|None,mode:str,issues:list[dict],local_store=None,overrides:dict|None=None)->bytes:
+def export_docx(draft:dict,facts:dict,template:dict|None,mode:str,issues:list[dict],local_store=None,overrides:dict|None=None,features:dict|None=None)->bytes:
     """导出 Word。
 
     `overrides` 是终稿人工审核页保存的槽位覆盖：键为占位符 id（如 `B17_RED_01`），
     优先级**高于**计算结果。`overrides=None`（默认）时输出与引入该参数前逐字节相同。
     说明：结构化模板分支（`draft['structured_template_ref']`）不消费该参数——它的槽位
     来源是 `draft['slot_values']`，覆盖语义由终稿页自身承担。
+
+    `features` 是本任务**生效**的四个处理开关（模板级 AND 客户包级，建任务时由
+    `workflow.task_feature_snapshot` 落盘、`workflow.effective_features` 读出）。
+    模板是在开关还开着时确认的，之后（或客户包级）关掉的段落必须在渲染前剪掉，
+    否则题注/表头照出（B7-2）。全开时 `omit_disabled_sections` 原样返回同一对象，
+    输出与不传该参数逐字节相同；`features=None`（历史调用方/普通模板）不剪枝。
     """
     if mode=='final' and issues: raise ValueError('unresolved_blockers')
     if draft.get('structured_template_ref'):
@@ -163,6 +169,9 @@ def export_docx(draft:dict,facts:dict,template:dict|None,mode:str,issues:list[di
         from .config import DATA
         active_store=local_store or Store(DATA)
         version=load_confirmed_template(active_store,draft['structured_template_ref'])
+        if features is not None:
+            from .api_views.template import omit_disabled_sections
+            version=omit_disabled_sections(version,features)
         charts={}
         for name,ref in draft.get('chart_refs',{}).items():
             if ref not in draft.get('evidence_refs',[]):raise ValueError('unauthorized_chart_ref')

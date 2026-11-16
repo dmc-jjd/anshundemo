@@ -105,6 +105,31 @@ def load_confirmed_template(store,ref:str)->dict:
         raise ValueError('structured_template_missing')
     return template
 
+#: 模板级「跑不跑」开关；未声明或脏值一律当 True（老模板行为一字不变）。
+FEATURE_SWITCHES=('dedup','classification','first_warning','top10')
+
+def template_feature_switches(state,store)->dict:
+    """本任务的四个处理开关（core 侧唯一读法：只读任务里已经落盘的值）。
+
+    `metadata['template_rules']['features']` 由宿主在**建报告任务时**算好写入：宿主把
+    「模板级 AND 客户包级」的生效结果落进任务（`app.workflow.task_feature_snapshot`），
+    所以这里读到的是生效值，不是模板级原值——客户包级开关只有宿主看得见，core 不读包配置。
+    同一份值也是宿主 `_template_features` 的任务级快照（快照对已建任务不可变）。
+    只在该键缺失（老任务/老版本）时回读一次已确认模板：那是模板级原值，不含包级约束。
+    任何读取失败都按「全开」处理，不静默关掉客户流程。
+    """
+    metadata=getattr(state,'metadata',None)
+    rules=metadata.get('template_rules') if isinstance(metadata,dict) else None
+    if not isinstance(rules,dict) or 'features' not in rules:
+        ref=getattr(state,'template_ref',None)
+        rules={}
+        if ref:
+            try:rules=load_confirmed_template(store,ref).get('rules') or {}
+            except (KeyError,ValueError):rules={}
+    raw=rules.get('features') if isinstance(rules,dict) else None
+    raw=raw if isinstance(raw,dict) else {}
+    return {name:raw.get(name) is not False for name in FEATURE_SWITCHES}
+
 def apply_top10_rule(template:dict)->dict:
     result=copy.deepcopy(template)
     for block in result['blocks']:
@@ -136,6 +161,43 @@ def revise_candidate(template:dict,changes:dict)->dict:
     result['id']='structured-'+hashlib.sha256(json.dumps(result,sort_keys=True,ensure_ascii=False).encode()).hexdigest()[:20]
     return result
 
+def _render_omissions(template,body,original,W):
+    """渲染期直接删段/删字：`omitted_sections` 点名的块不再需要派生版式副本。
+
+    `render_structured_docx` 是从**版式源文件**增量改写的：模板里没有的块，版式里那一段
+    会原样留在成稿里。所以「整段不生成」要么落到版式本身（旧做法：生成派生副本），要么
+    在渲染期按模板记录把这些块删掉（现做法，版式保持原始文件）。
+
+    只对带 `render_trim` 标记的模板生效：历史上生成的确认版本把该段删在派生版式里，
+    其 `omitted_sections.blocks` 是**原始版式**的下标、与派生版式偏移不一致，
+    对它们重复删会删错段——没有标记时保持旧路径一字不动。
+    """
+    omitted=template.get('omitted_sections') or {}
+    if not omitted.get('render_trim'):return
+    dropped=set()
+    for value in omitted.get('blocks') or []:
+        try:index=int(value)
+        except (TypeError,ValueError):continue
+        if 0<=index<len(original):dropped.add(index)
+    for index in sorted(dropped):body.remove(original[index])
+    for key,ranges in (omitted.get('paragraph_edits') or {}).items():
+        try:index=int(key)
+        except (TypeError,ValueError):continue
+        if index in dropped or not (0<=index<len(original)):continue
+        spans=[]
+        for item in ranges or []:
+            try:start,end=int(item[0]),int(item[1])
+            except (TypeError,ValueError,IndexError):continue
+            if end>start>=0:spans.append((start,end))
+        if not spans:continue
+        # 与派生版式里「物理删字」等价：按字符区间把被删的字从各 run 里摘掉（保留格式）。
+        cursor=0
+        for node in original[index].iter(W+'t'):
+            text=node.text or ''
+            node.text=''.join(char for position,char in enumerate(text)
+                              if not any(cursor+position>=start and cursor+position<end for start,end in spans))
+            cursor+=len(text)
+
 def render_structured_docx(template:dict,values:dict,allowed_refs:set[str],require_complete=False,charts:dict|None=None)->bytes:
     from lxml import etree as ET
     validate_values(template,values,allowed_refs,require_complete=require_complete)
@@ -149,6 +211,7 @@ def render_structured_docx(template:dict,values:dict,allowed_refs:set[str],requi
     with zipfile.ZipFile(path) as zin:
         root=ET.fromstring(zin.read('word/document.xml'));body=root.find(W+'body')
         original=list(body)
+        _render_omissions(template,body,original,W)
         charts=charts or {};chart_files={}
         rel_path='word/_rels/document.xml.rels'
         rels=ET.fromstring(zin.read(rel_path)) if rel_path in zin.namelist() else ET.Element('{http://schemas.openxmlformats.org/package/2006/relationships}Relationships')

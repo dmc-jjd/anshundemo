@@ -24,7 +24,11 @@ def approval_gate(store, state, req, *, validate_draft, export_docx):
     if any(problem.severity=='blocking' for problem in problems):return (409,'draft_validation_failed'),None
     if any(item['blocking'] and item['status']!='resolved' for item in state.review_items):return (409,'unresolved_blockers'),None
     if draft.get('structured_template_ref'):
-        try:export_docx(draft,store.get_artifact(state.fact_ref),None,'final',[],local_store=store)
+        # 终审导出必须按本任务**生效**开关剪枝，否则关掉的段落在 require_complete=True 下
+        # 会以「缺值」把审批卡死（模板是开关还开着时确认的）。
+        from ..workflow import effective_features
+        try:export_docx(draft,store.get_artifact(state.fact_ref),None,'final',[],local_store=store,
+                        features=effective_features(store,state))
         except (ValueError,KeyError) as exc:return (409,'report_incomplete:'+str(exc)),None
     if not review_ready(state,draft['content_hash']):return (409,'writing_review_required'),None
     state.metadata['approval_hash']=req.draft_hash;state.phase='approved';store.put_task(state,state.revision)

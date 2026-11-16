@@ -38,6 +38,9 @@ def display_name(state, templates_by_id):
         ]
         return ' · '.join(text for text in segments if text) or '报告任务'
     if state.kind == 'template':
+        # 用户填过的模板名是它真正的名字；没填过才退回旧的机器拼接口径。
+        template_name = str(metadata.get('template_name') or '').strip()
+        if template_name: return template_name
         count = len(state.input_refs or []) or len(metadata.get('paths') or [])
         segments = ['模板比对', f'{count} 份报告' if count else '', str(state.created_at or '')[:10]]
         return ' · '.join(text for text in segments if text)

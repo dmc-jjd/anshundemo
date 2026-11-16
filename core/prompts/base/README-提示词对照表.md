@@ -2,7 +2,7 @@
 
 # 提示词对照表
 
-本目录是**基座默认提示词**（29 个）。客户包 `packages/<客户>/prompts/agent/` 里放同名文件即可覆盖。
+本目录是**基座默认提示词**（34 个）。客户包 `packages/<客户>/prompts/agent/` 里放同名文件即可覆盖。
 
 查找顺序：**客户包 → 本目录 → 报错 `prompt_missing:<key>`**。每个 key 的实际来源可用 `core.prompts.registry.provenance()` 查。
 
@@ -103,7 +103,7 @@
 
 | 提示词 | 来源 | 做什么 | 调用点 |
 |---|---|---|---|
-| `hotspot_collector.collect` | 基座 | 从检索结果里挑 **20 条**要闻：按影响力+热度排序、归入类别、每条带原文链接 | `hotspot.py:456` |
+| `hotspot_collector.collect` | 基座 | 从检索结果里挑 **30 条**要闻：按影响力+热度排序、归入类别、每条带原文链接 | `hotspot.py:456` |
 
 ## 系统级（2，不属于业务阶段）
 
@@ -130,9 +130,9 @@
 
 **34 个全部由基座提供**，客户包 `prompts/agent/` 目录为空。
 
-新客户接入时**一个提示词都不用写**——只需准备数据：`template.json`（词表/区县/列映射/去重参数）+ `manifest.yaml`（开关与图表清单）。
+新客户接入时**基座这 34 条必须全部存在**（缺任一条，结构化写作入口会直接报错，因为 `prompt_fingerprint` 会无条件读其中的 `writer.*` 与 `historical_researcher.*`）。客户包自身**可以零覆盖**——全部继承基座即可跑通。
 
-若某客户确实需要改口吻，在 `packages/<客户>/prompts/agent/` 放同名文件即可覆盖，`provenance()` 会显示为 `package`。
+要不要写客户包覆盖，按 `接入新客户.md` 的**需求集推导**判断，不要默认零覆盖：先由 `manifest.agents` 与 `manifest.features` 算出这个客户实际会调用哪些键，再逐条判断「沿用基座 / 需要改写」。改写时在 `packages/<客户>/prompts/agent/` 放同名文件，`provenance()` 会显示为 `package`。
 
 > **S10-F 泛化勘误**：最后 4 个曾判为「客户专属」的提示词，其客户内容全部是**举例**——`安顺` → `本地区`、`贵州` → `省域`、`黄果树` → `示例地名`、`交通管理` → `示例类目`。指令语义未变，基座因此彻底客户无关。反证：`writer.analysis` / `writer.general` 的指纹逐字符未变。
 

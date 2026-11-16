@@ -8,10 +8,14 @@ from __future__ import annotations
 from .agent import get_prompt
 from collections import Counter,defaultdict
 from typing import Literal,Annotated
-import asyncio,copy,hashlib,json,re
+import asyncio,copy,hashlib,json,logging,re
 from pydantic import BaseModel,Field,ValidationError
 from .model_client import invoke_agent
+from .structured_template import template_feature_switches
 from .tool_executor import RunContext
+
+#: 防御性诊断只走日志：未知组号是数据契约异常，退化行为是「少判几对」，不是崩掉整条流程。
+_LOGGER=logging.getLogger(__name__)
 
 class MergeAnswer(BaseModel):
     id:str
@@ -80,6 +84,8 @@ def negative_ranking(groups,records,limit=10):
 async def analyse_events(deps,task_id):
     from .tool import CLUSTER_RULES
     store=deps.store;state=store.get_task(task_id)
+    # 模板级开关：TOP10 关掉时该阶段整段不跑（不调模型、不产梗概）；开着时逐字不变。
+    features=template_feature_switches(state,store)
     local=store.get_artifact(state.result_refs['group_events'])
     records=store.get_artifact(local['source_records_ref'])['records'];by_id={r['id']:r for r in records}
     source_key=state.result_refs['group_events']
@@ -138,6 +144,12 @@ async def analyse_events(deps,task_id):
     while remaining and merge_failures<3:
         batch=[];deferred=[];used_sources=set();used_targets=set()
         for pair in remaining:
+            if pair['source_group'] not in parent or pair['target_group'] not in parent:
+                # 未知组号只可能是上游引用失效（例如归并轮重编号后未重映射）。跳过并留日志：
+                # 宁可少判这对，也不让整条研判链因为一次查表失败而停在 analyzing。
+                _LOGGER.warning('skipped borderline pair %s: unknown group reference %s/%s',
+                                pair.get('id'),pair.get('source_group'),pair.get('target_group'))
+                continue
             source,target=root(pair['source_group']),root(pair['target_group'])
             if source==target:continue
             key=f'{pair["id"]}:{source}:{target}'
@@ -171,52 +183,54 @@ async def analyse_events(deps,task_id):
         checkpoint['merge_snapshot']=copy.deepcopy({'groups':groups,'parent':parent,'remaining':[],'ambiguities':ambiguities})
     final_groups=[g for key,g in groups.items() if root(key)==key]
     # A title/lexical retrieval miss must not leave duplicate events in the published TOP10.
-    checkpoint.setdefault('top10_consolidations',{})
-    for iteration in range(3):
-        if top10_failures>=3:break
-        pool=negative_ranking(final_groups,records,30)
-        if len(pool)<2:break
-        signature=hashlib.sha256(json.dumps([(r['id'],r['fingerprint']) for r in pool]).encode()).hexdigest()
-        answer=checkpoint['top10_consolidations'].get(signature)
-        if answer is None:
-            validation_error=None;last_response=None
-            record_groups={rid:group['id'] for group in final_groups for rid in group['member_ids']}
-            cannot_merge=[(record_groups[a],record_groups[b]) for a,b in local.get('human_distinct_pairs',[]) if a in record_groups and b in record_groups]
-            for attempt in range(2):
-                try:
-                    payload={'instruction':get_prompt('event_judge.top10'),
-                        'allowed_ids':[r['id'] for r in pool],
-                        'human_confirmed_distinct_pairs':cannot_merge,
-                        'events':[{'id':r['id'],'count':r['negative_warning_count'],'evidence':evidence(r['negative_ids'],2)} for r in pool]}
-                    if validation_error:payload.update(previous_response=last_response,validation_error=validation_error,instruction=payload['instruction']+get_prompt('event_judge.repair'))
-                    response=await invoke_agent('event_judge',payload,Consolidation,ctx)
-                    last_response=response.model_dump()
-                    checkpoint.setdefault('top10_review_attempts',[]).append({'signature':signature,'response':last_response})
-                    validate_consolidation(response,payload['allowed_ids'],cannot_merge)
-                    order={row['id']:index for index,row in enumerate(pool)}
-                    answer={**last_response,'groups':[{**group,'representative':min(group['group_ids'],key=lambda key:order[key])} for group in last_response['groups']]}
-                    checkpoint['top10_consolidations'][signature]=answer
-                    persist('top10_deduplication',len(checkpoint['top10_consolidations']));break
-                except Exception as exc:
-                    validation_error=str(exc) if isinstance(exc,ValueError) else type(exc).__name__
-                    checkpoint.setdefault('top10_validation_errors',[]).append({'signature':signature,'error':validation_error})
-                    persist('top10_validation_retry',attempt+1)
+    # 模板关掉 TOP10 时这一阶段整段不跑（不调模型、不产去重记录）；开着时逐字节不变。
+    if features['top10']:
+        checkpoint.setdefault('top10_consolidations',{})
+        for iteration in range(3):
+            if top10_failures>=3:break
+            pool=negative_ranking(final_groups,records,30)
+            if len(pool)<2:break
+            signature=hashlib.sha256(json.dumps([(r['id'],r['fingerprint']) for r in pool]).encode()).hexdigest()
+            answer=checkpoint['top10_consolidations'].get(signature)
             if answer is None:
-                failures.append({'stage':'top10_deduplication','error':validation_error});top10_failures+=1;break
-        merged=0
-        for partition in answer['groups']:
-            target=root(partition['representative'])
-            for gid in partition['group_ids']:
-                source=root(gid)
-                if source!=target:groups[target]['member_ids'].extend(groups[source]['member_ids']);parent[source]=target;merged+=1
-        for index,pair in enumerate(answer.get('uncertain_pairs',[])):
-            source,target=root(pair['source_group']),root(pair['target_group'])
-            if source!=target:
-                ambiguities.append({'id':f'top10-{signature[:12]}-{index}','source_id':groups[source]['representative_id'],
-                    'target_id':groups[target]['representative_id'],'source_evidence':evidence([groups[source]['representative_id']]),
-                    'target_evidence':evidence([groups[target]['representative_id']]),'reason':pair['reason']})
-        final_groups=[g for key,g in groups.items() if root(key)==key]
-        if not merged:break
+                validation_error=None;last_response=None
+                record_groups={rid:group['id'] for group in final_groups for rid in group['member_ids']}
+                cannot_merge=[(record_groups[a],record_groups[b]) for a,b in local.get('human_distinct_pairs',[]) if a in record_groups and b in record_groups]
+                for attempt in range(2):
+                    try:
+                        payload={'instruction':get_prompt('event_judge.top10'),
+                            'allowed_ids':[r['id'] for r in pool],
+                            'human_confirmed_distinct_pairs':cannot_merge,
+                            'events':[{'id':r['id'],'count':r['negative_warning_count'],'evidence':evidence(r['negative_ids'],2)} for r in pool]}
+                        if validation_error:payload.update(previous_response=last_response,validation_error=validation_error,instruction=payload['instruction']+get_prompt('event_judge.repair'))
+                        response=await invoke_agent('event_judge',payload,Consolidation,ctx)
+                        last_response=response.model_dump()
+                        checkpoint.setdefault('top10_review_attempts',[]).append({'signature':signature,'response':last_response})
+                        validate_consolidation(response,payload['allowed_ids'],cannot_merge)
+                        order={row['id']:index for index,row in enumerate(pool)}
+                        answer={**last_response,'groups':[{**group,'representative':min(group['group_ids'],key=lambda key:order[key])} for group in last_response['groups']]}
+                        checkpoint['top10_consolidations'][signature]=answer
+                        persist('top10_deduplication',len(checkpoint['top10_consolidations']));break
+                    except Exception as exc:
+                        validation_error=str(exc) if isinstance(exc,ValueError) else type(exc).__name__
+                        checkpoint.setdefault('top10_validation_errors',[]).append({'signature':signature,'error':validation_error})
+                        persist('top10_validation_retry',attempt+1)
+                if answer is None:
+                    failures.append({'stage':'top10_deduplication','error':validation_error});top10_failures+=1;break
+            merged=0
+            for partition in answer['groups']:
+                target=root(partition['representative'])
+                for gid in partition['group_ids']:
+                    source=root(gid)
+                    if source!=target:groups[target]['member_ids'].extend(groups[source]['member_ids']);parent[source]=target;merged+=1
+            for index,pair in enumerate(answer.get('uncertain_pairs',[])):
+                source,target=root(pair['source_group']),root(pair['target_group'])
+                if source!=target:
+                    ambiguities.append({'id':f'top10-{signature[:12]}-{index}','source_id':groups[source]['representative_id'],
+                        'target_id':groups[target]['representative_id'],'source_evidence':evidence([groups[source]['representative_id']]),
+                        'target_evidence':evidence([groups[target]['representative_id']]),'reason':pair['reason']})
+            final_groups=[g for key,g in groups.items() if root(key)==key]
+            if not merged:break
     final_positions={rid:g['id'] for g in final_groups for rid in g['member_ids']}
     human_distinct={frozenset((final_positions[a],final_positions[b])) for a,b in local.get('human_distinct_pairs',[]) if a in final_positions and b in final_positions}
     ambiguities=list({(case['source_id'],case['target_id']):case for case in ambiguities
@@ -292,28 +306,33 @@ async def analyse_events(deps,task_id):
             classification_issues.append({'event_id':gid,'member_ids':group['member_ids'],'reason':answer['reason']})
         else:category='模型尚未处理';class_reasons[gid]='等待模型完成分类，不属于人工待办'
         themes[category].extend(group['member_ids'])
-    ranking=negative_ranking(final_groups,records)
-    for offset in range(0,len(ranking),5):
-        if summary_failures>=3:break
-        batch=[item for item in ranking[offset:offset+5] if item['fingerprint'] not in checkpoint['briefs']]
-        if not batch:continue
-        try:
-            answers=await ask('event_summarizer',{'instruction':get_prompt('event_summarizer.summary'),
-                'events':[{'id':item['fingerprint'],'evidence':evidence(item['negative_ids'],4)} for item in batch]},BriefBatch,[item['fingerprint'] for item in batch])
-            for answer in answers:
-                item=next(x for x in batch if x['fingerprint']==answer.id)
-                if answer.status=='complete':
-                    source=' '.join(by_id[rid]['title']+' '+by_id[rid].get('summary','') for rid in item['negative_ids'])
-                    if not answer.summary.strip() or not answer.source_refs or not set(answer.source_refs)<=set(item['negative_ids']):raise ValueError('invalid_brief_sources')
-                    if any(n not in source for n in re.findall(r'\d+(?:\.\d+)?',answer.summary)):raise ValueError('unsupported_number_in_brief')
-            checkpoint['briefs'].update({a.id:a.model_dump() for a in answers});persist('top10_summaries',len(checkpoint['briefs']))
-        except Exception as exc:failures.append({'stage':'top10_summaries','error':type(exc).__name__});summary_failures+=1
-    top10=[]
-    for rank,item in enumerate(ranking,1):
-        brief=checkpoint['briefs'].get(item['fingerprint'])
-        top10.append({**item,'rank':rank,'summary':brief['summary'] if brief and brief['status']=='complete' else '',
-                      'status':brief['status'] if brief else 'pending_model',
-                      'source_refs':brief['source_refs'] if brief else [],'reason':(brief.get('reason') or (brief['summary'] if brief['status']=='uncertain' else '')) if brief else '模型尚未生成有效梗概'})
+    # TOP10 关掉：不排榜、不调模型写梗概，`top10` 保持空表（模板里也没有这张表）。
+    # 开着时这一段逐字节不变。
+    ranking=negative_ranking(final_groups,records) if features['top10'] else []
+    if features['top10']:
+        for offset in range(0,len(ranking),5):
+            if summary_failures>=3:break
+            batch=[item for item in ranking[offset:offset+5] if item['fingerprint'] not in checkpoint['briefs']]
+            if not batch:continue
+            try:
+                answers=await ask('event_summarizer',{'instruction':get_prompt('event_summarizer.summary'),
+                    'events':[{'id':item['fingerprint'],'evidence':evidence(item['negative_ids'],4)} for item in batch]},BriefBatch,[item['fingerprint'] for item in batch])
+                for answer in answers:
+                    item=next(x for x in batch if x['fingerprint']==answer.id)
+                    if answer.status=='complete':
+                        source=' '.join(by_id[rid]['title']+' '+by_id[rid].get('summary','') for rid in item['negative_ids'])
+                        if not answer.summary.strip() or not answer.source_refs or not set(answer.source_refs)<=set(item['negative_ids']):raise ValueError('invalid_brief_sources')
+                        if any(n not in source for n in re.findall(r'\d+(?:\.\d+)?',answer.summary)):raise ValueError('unsupported_number_in_brief')
+                checkpoint['briefs'].update({a.id:a.model_dump() for a in answers});persist('top10_summaries',len(checkpoint['briefs']))
+            except Exception as exc:failures.append({'stage':'top10_summaries','error':type(exc).__name__});summary_failures+=1
+        top10=[]
+        for rank,item in enumerate(ranking,1):
+            brief=checkpoint['briefs'].get(item['fingerprint'])
+            top10.append({**item,'rank':rank,'summary':brief['summary'] if brief and brief['status']=='complete' else '',
+                          'status':brief['status'] if brief else 'pending_model',
+                          'source_refs':brief['source_refs'] if brief else [],'reason':(brief.get('reason') or (brief['summary'] if brief['status']=='uncertain' else '')) if brief else '模型尚未生成有效梗概'})
+    else:
+        top10=[]
     pending_model=bool(failures or '模型尚未处理' in themes or any(x['status']=='pending_model' for x in top10))
     result={'groups':final_groups,'all_record_ids':local['all_record_ids'],'source_key':source_key,
         'merge_ambiguities':ambiguities,'classification_issues':classification_issues,'classification_reasons':class_reasons,

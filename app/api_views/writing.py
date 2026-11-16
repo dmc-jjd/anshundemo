@@ -1,15 +1,29 @@
 import hashlib,re
 
+DRAFT_SCHEMA_OUTDATED_DETAIL='draft_schema_outdated: 该草稿由旧版本生成，缺少内容指纹，请重新生成草稿后再审核'
+
+
+def draft_content_hash(store, state, draft):
+    """草稿内容指纹（乐观并发基线）。旧结构草稿缺 content_hash 时返回 None 并留 draft_schema_outdated 审计事件：并发校验被跳过，但不许静默。"""
+    value=draft.get('content_hash')
+    if value is not None:return value
+    ref=state.draft_ref
+    if not any(e.get('type')=='draft_schema_outdated' and e.get('artifact')==ref for e in store.events(state.id)):
+        store.append_event(state.id,{'type':'draft_schema_outdated','artifact':ref,'missing':['content_hash'],
+            'reason':'legacy_draft_without_content_fingerprint'})
+    return None
+
 
 def assemble_review_view(store, state):
     """写作评审视图的组装（纯读）。draft_ref 缺失属于 HTTP 语义，判断留在路由函数里。"""
     from ..reviewers import active_issues,review_ready
     from ..writing_review import excerpt_locations
     draft=store.get_artifact(state.draft_ref)
+    content_hash=draft_content_hash(store,state,draft)
     detection=store.get_artifact(state.metadata['style_detection_ref']) if state.metadata.get('style_detection_ref') else None
     run=state.metadata.get('writing_review_run',{})
     report=state.metadata.get('review_report',{})
-    review_hashes={draft['content_hash'],report.get('model_reviewed_hash')}|{r.get('draft_hash') for r in report.get('reviewers',{}).values()}
+    review_hashes={content_hash,report.get('model_reviewed_hash')}|{r.get('draft_hash') for r in report.get('reviewers',{}).values()}
     order=list(run.get('review_item_order',[])) or [i['id'] for i in state.review_items if i.get('kind')=='writing_review' and i.get('status')!='superseded' and i.get('draft_hash') in review_hashes]
     for issue in active_issues(state):
         if issue['id'] not in order:order.append(issue['id'])
@@ -24,9 +38,10 @@ def assemble_review_view(store, state):
         if event['type']=='writer_review_repair':
             patch=store.get_artifact(event['ref'])
             if patch['before_hash'] in hashes or patch['after_hash'] in hashes:repairs.append({'ref':event['ref'],**patch})
-    return {'draft_hash':draft['content_hash'],'report':state.metadata.get('review_report'),
+    return {'draft_hash':content_hash,'draft_schema_outdated':content_hash is None,
+        'detail':None if content_hash else DRAFT_SCHEMA_OUTDATED_DETAIL,'report':state.metadata.get('review_report'),
         'run':run,'issues':issues,'resolved_issues':resolved_issues,'style_history':history,'repairs':repairs,
-        'style':detection,'ready':review_ready(state,draft['content_hash']),
+        'style':detection,'ready':bool(content_hash) and review_ready(state,content_hash),
         'graph_nodes':[e for e in store.events(state.id) if e['type']=='graph_node'][-48:]}
 
 
@@ -45,7 +60,8 @@ def apply_slot_values(store, state, req):
         if not isinstance(value,str):return (422,'invalid_slot_value:'+slot_id),None
         if not value.strip() or re.search(r'\{\{|\}\}',value): return (422,'invalid_slot_value:'+slot_id),None
     draft=store.get_artifact(state.draft_ref)
-    previous_hash=draft['content_hash']
+    previous_hash=draft_content_hash(store,state,draft)
+    if previous_hash is None:return (409,DRAFT_SCHEMA_OUTDATED_DETAIL),None
     if req.expected_hash and req.expected_hash!=previous_hash:return (409,'stale_draft_hash'),None
     for slot_id,value in req.values.items():
         draft['slot_values'][slot_id]={'value':value.strip(),'source_refs':['human_edit']}

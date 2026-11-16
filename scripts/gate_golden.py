@@ -49,7 +49,7 @@ from app.tool import (  # noqa: E402
 )
 from app.tool_executor import RunContext  # noqa: E402
 
-EXPECTED = "37151eee8ba080bd5d225a0809ff132af579f17dc6966f06a3b3188136570b48"
+EXPECTED = "74fde3c97d43ecdee77659db44aaf09ee59f71a2e6a9dd7b1dfb90bb372e9931"
 EXPECTED_COUNTS = (28789, 3914, 1675)
 
 

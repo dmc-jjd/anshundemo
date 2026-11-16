@@ -9,8 +9,11 @@
   body{display:flex;flex-direction:column;overflow:hidden}
   .ed-bar{flex:0 0 auto;display:flex;align-items:center;gap:6px;flex-wrap:wrap;
           padding:10px var(--pad-x);background:var(--bg);border-bottom:1px solid var(--line)}
-  .ed-bar .sep{width:1px;height:18px;background:var(--line);margin:0 4px}
-  .ed-btn{height:28px;min-width:28px;padding:0 9px;border-radius:var(--radius-sm);
+  .ed-bar .sep{width:1px;height:18px;background:var(--line);margin:0 3px}
+  /* style.css 的全局 button{min-height:32px} 会把这里的 height:28px 顶到 32px
+     （工具栏单行 52px）。这里把 28px 还原成实际生效值：点击区 28×28，
+     正好是「不缩到 28px 以下」的下限，单行回到 48px。 */
+  .ed-btn{height:28px;min-height:28px;min-width:28px;padding:0 7px;border-radius:var(--radius-sm);
           border:1px solid var(--line);background:var(--card);color:var(--ink);
           font-family:var(--font);font-size:12.5px;cursor:pointer;display:inline-flex;
           align-items:center;justify-content:center;gap:5px;white-space:nowrap}
@@ -34,13 +37,72 @@
   /* 壳里 --page-max 是 100%，纸张默认贴着左边缘；这里只把 #ceContainer 的内容居中，
      不动壳的 token（style.css 不归本页管）。 */
   #ceContainer{display:flex;flex-direction:column;align-items:center}
+
+  /* 左栏「历史生成报告」：固定 240px，右边是原来的工具栏 + 纸张（纸张在剩余空间居中）。
+     工具栏 / 纸张自身的规则一个字没改，这里只负责把它们放进右侧那一列。 */
+  .ed-shell{flex:1 1 auto;min-height:0;display:flex}
+  .ed-aside{flex:0 0 240px;min-height:0;overflow-y:auto;overflow-x:hidden;
+            box-sizing:border-box;padding:0 8px 10px;
+            background:var(--card);border-right:1px solid var(--line)}
+  .ed-body{flex:1 1 auto;min-width:0;min-height:0;display:flex;flex-direction:column}
+  .ed-aside-title{font-size:11px;color:var(--faint);letter-spacing:.04em;
+                  padding:12px 2px 6px}
+  .ed-reports{display:flex;flex-direction:column;gap:2px}
+  .ed-rep{position:relative;box-sizing:border-box;height:46px;padding:0 10px;border-radius:8px;
+          display:flex;flex-direction:column;justify-content:center;cursor:pointer}
+  .ed-rep:hover{background:var(--field)}
+  .ed-rep.on{background:var(--field);box-shadow:inset 2px 0 0 var(--brand)}
+  .ed-rep-name{font-size:12.5px;line-height:16px;color:var(--ink);padding-right:18px;
+               white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ed-rep-meta{display:flex;gap:8px;font-size:11px;line-height:14px;color:var(--muted)}
+  .ed-rep-meta .st{color:var(--faint)}
+  .ed-rep-more{position:absolute;top:0;right:4px;width:20px;height:46px;padding:0;
+               border:0;border-radius:6px;background:none;color:var(--faint);
+               font-family:var(--font);font-size:14px;line-height:1;cursor:pointer}
+  .ed-rep-more:hover{background:var(--field);color:var(--ink)}
+  .ed-rep-menu{position:absolute;top:38px;right:4px;z-index:5;display:none;gap:4px;
+               padding:4px;border:1px solid var(--line);border-radius:var(--radius-sm);
+               background:var(--card);box-shadow:0 4px 14px rgba(20,20,19,.10)}
+  .ed-rep.menu .ed-rep-menu{display:flex}
+  .ed-rep-menu button{height:24px;padding:0 8px;border:1px solid var(--line);border-radius:6px;
+                      background:var(--card);color:var(--ink);font-family:var(--font);
+                      font-size:12px;cursor:pointer}
+  .ed-rep-menu button:hover{background:var(--field)}
+  .ed-rep-menu .del{color:var(--brand-tx);border-color:var(--brand)}
+  .ed-rep-menu .del:hover{background:var(--brand-bg)}
+  .ed-empty{font-size:13px;color:var(--faint);text-align:center;padding:28px 0}
+
+  /* ── 工具栏「更多」菜单 ────────────────────────────────────────
+     左栏 240px 之后右栏只剩 ~1200px，.ed-bar 的 flex-wrap 会把工具栏折成
+     两行、把「保存到系统」挤下去。低频的 6 个命令收进最右侧「更多」，
+     剩下的 17 个 + 更多回到一行；工具栏自身规则（.ed-btn 尺寸/按下态）不动。 */
+  .ed-bar{position:relative}
+  .ed-more-btn .ed-caret{flex:0 0 16px;width:16px;height:16px;transition:transform .16s ease}
+  .ed-more-btn[aria-expanded="true"]{background:var(--field)}
+  .ed-more-btn[aria-expanded="true"] .ed-caret{transform:rotate(180deg)}
+  .ed-more{position:absolute;top:100%;right:var(--pad-x);z-index:30;display:none;
+           box-sizing:border-box;width:168px;padding:4px 0;overflow:hidden;
+           background:var(--card);border:1px solid var(--line);border-radius:10px;
+           box-shadow:var(--shadow),0 4px 14px rgba(20,20,19,.10)}
+  .ed-bar.more-open .ed-more{display:block}
+  .ed-mi{display:flex;align-items:center;gap:6px;box-sizing:border-box;width:100%;
+         height:34px;padding:0 10px;border:0;background:none;color:var(--ink);
+         font-family:var(--font);font-size:13px;line-height:1;text-align:left;
+         white-space:nowrap;cursor:pointer}
+  .ed-mi .ic{flex:0 0 16px;width:16px;height:16px;color:var(--muted)}
+  .ed-mi:hover{background:var(--field)}
+  /* 菜单项按下态：与工具栏同一套 .on 契约（rangeStyleChange 驱动）。 */
+  .ed-mi.on{background:var(--brand-bg);color:var(--brand-tx);font-weight:600}
+  .ed-mi.on:hover{background:var(--brand-bg)}
+  .ed-mi.on .ic{color:var(--brand-tx)}
+  .ed-msep{height:1px;background:var(--line);margin:4px 0}
 </style>
 </head>
 <body>
 
 <header class="topbar">
   <div class="crumb">
-    <svg class="mark" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><g stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M12 3.2v17.6M3.2 12h17.6M5.6 5.6l12.8 12.8M18.4 5.6L5.6 18.4"/></g></svg>
+    <img class="mark kn-mark" src="data:image/png;base64,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" width="93" height="60" alt="" aria-hidden="true" draggable="false">
     <b>康奈 · 洞研智台</b><span class="sep">/</span><span class="here">终稿编辑</span>
   </div>
   <div class="topmeta">
@@ -59,6 +121,13 @@
     <button class="stage" type="button" data-state="current"><span class="idx">05</span><span class="nm">报告撰写</span><span class="dot" aria-hidden="true"></span></button>
   </div>
 </nav>
+
+<div class="ed-shell">
+<aside class="ed-aside" aria-label="历史生成报告">
+  <div class="ed-aside-title">历史生成报告</div>
+  <div class="ed-reports" id="edReports"></div>
+</aside>
+<div class="ed-body">
 
 <div class="ed-bar">
   <button class="ed-btn" data-cmd="executeUndo" title="撤销">撤销</button>
@@ -81,16 +150,27 @@
   <button class="ed-btn" id="edTitleH2" data-title="second" title="标题二" aria-pressed="false">H2</button>
   <button class="ed-btn" id="edTitleP" data-title="p" title="正文" aria-pressed="false">正文</button>
   <span class="sep"></span>
-  <button class="ed-btn" id="edListUl" data-list="ul" title="无序列表" aria-pressed="false">• 列表</button>
-  <button class="ed-btn" id="edListOl" data-list="ol" title="有序列表" aria-pressed="false">1. 列表</button>
-  <button class="ed-btn" data-table="1" title="插入 3×3 表格">插表格</button>
-  <span class="sep"></span>
-  <button class="ed-btn" id="edLoadTpl" title="载入模板 docx">载入模板</button>
-  <button class="ed-btn" id="edLoadDoc" title="载入已生成报告 docx">载入报告</button>
   <span class="ed-spacer"></span>
-  <button class="ed-btn" data-cmd="executePrint" title="打印">打印</button>
   <button class="ed-btn primary" id="edSave" title="把当前稿件存回系统">保存到系统</button>
   <button class="ed-btn" id="edExport" title="导出 docx 到本地">导出 docx</button>
+  <button class="ed-btn ed-more-btn" id="edMoreBtn" type="button" title="更多"
+          aria-haspopup="menu" aria-expanded="false" aria-controls="edMorePanel">更多<svg class="ed-caret" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4.2 6.3 8 10.1l3.8-3.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+  <div class="ed-more" id="edMorePanel" role="menu" aria-labelledby="edMoreBtn">
+    <button class="ed-mi" type="button" role="menuitem" id="edListUl" data-list="ul"
+            title="无序列表" aria-label="无序列表" aria-pressed="false"><svg class="ic" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="2.8" cy="4" r="1.2" fill="currentColor"/><circle cx="2.8" cy="8" r="1.2" fill="currentColor"/><circle cx="2.8" cy="12" r="1.2" fill="currentColor"/><path d="M6.6 4h6.8M6.6 8h6.8M6.6 12h6.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg><span>列表</span></button>
+    <button class="ed-mi" type="button" role="menuitem" id="edListOl" data-list="ol"
+            title="有序列表" aria-label="有序列表" aria-pressed="false"><svg class="ic" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><text x="0.4" y="5.9" font-size="7" font-weight="700" fill="currentColor">1.</text><path d="M7.8 4h5.8M2.4 8h11.2M2.4 12h11.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg><span>列表</span></button>
+    <button class="ed-mi" type="button" role="menuitem" data-table="1"
+            title="插入 3×3 表格"><svg class="ic" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2.2" y="3.2" width="11.6" height="9.6" rx="1.6" stroke="currentColor" stroke-width="1.3"/><path d="M2.2 6.6h11.6M2.2 9.6h11.6M6.1 3.2v9.6M9.9 3.2v9.6" stroke="currentColor" stroke-width="1.1"/></svg><span>插表格</span></button>
+    <div class="ed-msep" aria-hidden="true"></div>
+    <button class="ed-mi" type="button" role="menuitem" id="edLoadTpl"
+            title="载入模板 docx"><svg class="ic" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2.6v7.2M5.2 7.1 8 9.9l2.8-2.8M3.4 12.6h9.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span>载入模板</span></button>
+    <button class="ed-mi" type="button" role="menuitem" id="edLoadDoc"
+            title="载入已生成报告 docx"><svg class="ic" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2.6v7.2M5.2 7.1 8 9.9l2.8-2.8M3.4 12.6h9.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span>载入报告</span></button>
+    <div class="ed-msep" aria-hidden="true"></div>
+    <button class="ed-mi" type="button" role="menuitem" data-cmd="executePrint"
+            title="打印"><svg class="ic" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4.4 6.1V2.9h7.2v3.2" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><rect x="2.3" y="6.1" width="11.4" height="5.2" rx="1.4" stroke="currentColor" stroke-width="1.3"/><rect x="4.4" y="9.2" width="7.2" height="3.9" rx=".8" fill="var(--card)" stroke="currentColor" stroke-width="1.3"/></svg><span>打印</span></button>
+  </div>
 </div>
 
 <div class="ed-main">
@@ -98,7 +178,10 @@
   <div class="ed-stage"><div id="ceContainer"></div></div>
 </div>
 
+</div>
+</div>
+
 <script src="/static/vendor/canvas-editor.js?v=20261116b"></script>
-<script src="/static/final-editor.js?v=20261116-pressed"></script>
+<script src="/static/final-editor.js?v=20261116-reports"></script>
 </body>
 </html>
