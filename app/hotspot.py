@@ -1,23 +1,25 @@
-"""首页「今日热点话题」：联网采集最近 3 天中国要闻 20 条。
+"""首页「今日热点话题」：联网采集最近 3 天国内外热点 30 条。
 
 采集形状（B2：固定查询 → 两级过滤 → 单次结构化）：
 
-    ① 按类别逐条查（`CATEGORY_QUERIES`，7 条，`after:YYYY-MM-DD` 锁定窗口）
-       —— 换口径只改这里；实测「通用要闻查询」会被报纸索引页、研报、晨会纪要污染，
-       而「按类别逐条查」返回的内容对路（105 条返回 / 80 条达标）。
+    ① 按类别逐条查（`queries()`：**客户包** `template.json` 的 `vocabulary.cluster_terms`
+       每个 label 一条 + 一条涉华国际，故 12+1=13 条；`after:YYYY-MM-DD` 锁定窗口）
+       —— 实测「通用要闻查询」会被报纸索引页、研报、晨会纪要污染，而「按类别逐条查」
+       返回的内容对路（105 条返回 / 80 条达标）。
        站点约束**只用负向 `-site:` 黑名单**（`EXCLUDE_SITES`）：实测 `site:` 白名单会把真实
        治安/民生热点滤成政策通稿（治安达标 0 条、经济查询直接被 128 字符上限拒）。`query`
        超过 128 字符报 `search_query_too_long`，不静默截断。
     ② 两级过滤：结果级（坏标题 / rerank_score<1.5 / 排除站点 / 日期不在窗口）+ 事件级（URL 去重后
        按标题 Jaccard≥0.6 合并同一事件的多来源变体，保留 `rerank_score*2+authority` 更高的一条）。
-       某类别达标不足 3 条时用更宽的查询（`BROADER_QUERIES`）重试一次，仍不足则记
-       `category_shortage` 继续，不阻断整体。
+       某类别达标不足 3 条只记 `category_shortage` 留痕（**不追加查询**：查询数固定
+       13 条，成本可预测），不阻断整体。涉华国际那条不预标注类别，由模型归入最贴近一类。
        候选集排序口径：`rerank_score*2+authority` 降序为主，`date` 新的优先做 tie-break
        （该顺序就是喂给模型的「候选序号」，模型在此基础上做最终挑选与分类微调）。
     ③ 候选集按客观权重粗排后喂模型（上限 `MAX_SEARCH_RESULTS`），一次 `invoke_agent`（**不带 tools**）：
-       模型只在候选集里挑 20 条、做最后排序与分类微调。
-    ④ 硬校验：恰好 20 条 / 7 类枚举 / http(s) / **每条 url 必须命中候选集 URL 集合** /
-       去重后不足 20 条即 `hotspot_items_incomplete`。
+       模型只在候选集里挑 30 条、做最后排序与分类微调。
+    ④ 硬校验：恰好 30 条（`rank` 必须 1..30 连续）/ **类别必须是 `categories()` 返回值之一**
+       （`hotspot_category_invalid`）/ http(s) / **每条 url 必须命中候选集 URL 集合** /
+       去重后不足 30 条即 `hotspot_items_incomplete`。
 
 「不编造」落在三处，都可机械验证：
 1. **搜索凭据先于一切**：`collect()` 第一件事是 `search_endpoint()`；未配置直接抛
@@ -30,9 +32,18 @@
 3. **提示词层**：角色边界写明只能引用给定 LINK；窗口由 `after:` 查询语法与 date 复核双重约束，
    不靠模型自己判断「最近三天」。
 
-成本口径（实测）：7 条查询 + 1 次生成 ≈ **¥0.035**（Search 计费 ¥5/1000 次成功请求，只对
+成本口径（实测）：13 条查询 ≈ **¥0.065**（Search 计费 ¥5/1000 次成功请求，只对
 `results` 非空的计费）+ 一次生成的 token 费。搜索次数与 billable 由 `web.request()` 自动记进
 `web_usage` 事件，不需要额外埋点。
+
+类别来源（集合：客户包优先 + 基座默认兜底；顺序：恒为基座规范序）：`categories()` 读客户包
+`template.json` 的 `vocabulary.cluster_terms` 键拿**集合**，再按 `DEFAULT_CATEGORIES`（基座
+通用 12 类，**它才是展示顺序的唯一事实源**）排；客户包独有的类别（不在规范序里）按词表顺序
+附在末尾；客户包没声明时直接用 `DEFAULT_CATEGORIES`。**基座提示词不写类别名**——
+`scripts/gate_prompt_neutral.py` 把 `cluster_terms` 的键当禁词，写进
+`core/prompts/base/agent/*.md` 直接 FAIL；类别只活在 `app/hotspot.py` 与 payload 里。换客户时
+类别集合自动跟着该客户的词表走，展示顺序不随该包书写顺序漂移。提示词只说「以 payload
+`categories` 为准」。
 
 字段分工（官方响应字段）：喂模型用 `title` + `summary`（长摘要 600—800 字，截断到 220 字控 token）；
 前端展示用 `title` + `snippet`（短摘要，由 GET 返回体带出）；`url` 原样用（白名单集合）；
@@ -48,7 +59,6 @@ import os
 import tempfile
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Literal, get_args
 
 from core import historical_web as web
 from pydantic import BaseModel, HttpUrl, ValidationError
@@ -57,29 +67,52 @@ from .config import MODEL_NAME, search_endpoint
 from .model_client import invoke_agent
 from .tool_executor import RunContext
 
-# 类别枚举只有一个家：`CATEGORIES` 由类型注解推导，不写第二份字面量。
-Category = Literal['社会民生', '治安', '文化旅游', '执政形象', '医疗卫生', '经济', '国际']
-CATEGORIES = get_args(Category)
 
-# 固定查询集：**换口径只改这里**（多/少一条查询就多/少一轮搜索，web_usage 事件与成本随之变化）。
-# `{since}` = today-3 天的 ISO 日期，用搜索语法 `after:` 锁窗口，比让模型判断「最近三天」可靠。
-CATEGORY_QUERIES = {
-    '社会民生': '民生 新闻 事件 after:{since}',
-    '治安': '案件 公安 通报 after:{since}',
-    '文化旅游': '文旅 景区 新闻 after:{since}',
-    '执政形象': '干部 被查 通报 作风 after:{since}',
-    '医疗卫生': '医院 医疗 药品 新闻 after:{since}',
-    '经济': '经济 政策 发布 产业 after:{since}',
-    '国际': '国际 涉华 影响中国 after:{since}',
-}
-# 某类别达标不足时改用更宽的查询重试一次（实测「经济」「国际」长期偏少）。
-BROADER_QUERIES = {
-    '经济': '经济 消费 就业 产业 政策',
-    '国际': '国际 外交 涉华 全球',
-}
-CATEGORY_MIN = 3             # 达标条数低于此值即视为该类别偏少
+#: 基座默认类别口径（舆情通用 12 类）。**只放在 app 层**：`scripts/gate_prompt_neutral.py`
+#: 只扫 `core/prompts/base/**/*.md`，这里不触发门禁；提示词仍只说「以 payload categories 为准」。
+#: 顺序 = 用户口径的展示顺序，且是**唯一的展示顺序事实源**：客户包只决定「有哪些类别」
+#: 与「包独有的类别」（附末尾），不决定次序。
+DEFAULT_CATEGORIES = (
+    '社会民生', '环境保护', '城市管理', '文化旅游',
+    '社会治安', '交通管理', '执政形象', '安全生产',
+    '教育管理', '医疗卫生', '市场监管', '自然灾害',
+)
+
+
+def categories() -> tuple[str, ...]:
+    """类别：**集合**取客户包 `vocabulary.cluster_terms` 的键，**顺序**恒按 `DEFAULT_CATEGORIES`。
+
+    集合的事实源在客户包（换客户自动跟随，包独有的类别不会被丢）；顺序的事实源在基座规范序，
+    否则 TAB 第一项会随该包 `cluster_terms` 的书写顺序乱跳（anshun 包键序以「交通管理」开头，
+    用户口径要求以「社会民生」开头）。做法：客户包类别先按规范序排，规范序外的按词表顺序附在
+    末尾；包只声明 8 类就只出这 8 类。客户包没声明（或没配置包）时直接用 `DEFAULT_CATEGORIES`。
+    只许函数内调用（模块级求值会在 `vocabulary.configure()` 之前炸，与 `core/tools` 同一纪律）。
+    """
+    from core.tools import vocabulary
+
+    try:
+        labels = tuple(vocabulary.cluster_terms())
+    except (KeyError, RuntimeError):  # 包内没写 cluster_terms / 还没 configure
+        labels = ()
+    if not labels:
+        return DEFAULT_CATEGORIES
+    known = set(labels)
+    ordered = tuple(c for c in DEFAULT_CATEGORIES if c in known)
+    extra = tuple(c for c in labels if c not in DEFAULT_CATEGORIES)
+    return ordered + extra
+
+
+# 每个类别一条查询的基础串：`{label} 热点 新闻`；`after:`/`-site:` 由 `build_query()` 拼。
+CATEGORY_QUERY_SUFFIX = '热点 新闻'
+# 额外一条「涉华国际」：用户口径是「国内外……相关」，故国际新闻也采，但不预标注类别，
+# 由模型按事件性质归入客户包 12 类中最贴近的一类（`category=None` 在候选集里显示为「待归类」）。
+INTL_QUERY = '涉华 国际 热点 新闻'
+INTL_CATEGORY = None
+UNLABELLED = '待归类'         # 候选集里未预标注类别的行标签（不是类别值，不进闸门）
+
+CATEGORY_MIN = 3             # 达标条数低于此值即视为该类别偏少（只记 shortage，不追加查询）
 RESULTS_PER_QUERY = 20       # 官方 count 上限 50；20 条/类实测足够
-MAX_SEARCH_RESULTS = 80      # 喂给模型的候选上限（控 token）
+MAX_SEARCH_RESULTS = 120     # 喂给模型的候选上限（30 条成品要 13 类各出 2~3 条，80 不够）
 RERANK_FLOOR = 1.5           # rerank_score ≥1.5 为优质，低于此值丢弃
 TITLE_JACCARD = 0.6          # 标题相似度 ≥0.6 视为同一事件（繁简/节目名/多来源变体）
 SUMMARY_FEED_CHARS = 220     # 喂模型的摘要截断长度
@@ -90,7 +123,7 @@ EXCLUDE_SITES = ('big5.cctv.com',)
 BAD_TITLE_MARKERS = ('第A1版', 'A1版', '晨会纪要', '周报', '今日头版', '安全验证',
                      '新聞聯播', '午夜新闻', '朝闻天下', '新闻直播间')
 
-ITEM_COUNT = 20
+ITEM_COUNT = 30
 WINDOW_DAYS = 3
 KIND = 'hotspot_digest'
 OWNER_TASK = 'hotspot-homepage'
@@ -101,7 +134,9 @@ class HotspotItem(BaseModel):
     rank: int
     title: str
     summary: str
-    category: Category
+    # 类别是**运行时**集合（客户包词表），不能写成静态枚举：静态化等于在基座里写死客户词。
+    # 合法性由 `validate_digest()` 用 `categories()` 判定，错误码 `hotspot_category_invalid`。
+    category: str
     url: HttpUrl | str
     source: str = ''
 
@@ -134,8 +169,15 @@ class HotspotUrlNotFromSearch(HotspotError):
     status = 502
 
 
+class HotspotCategoryInvalid(HotspotError):
+    """类别闸门：模型给的类别不在客户包词表（`categories()`）里。"""
+
+    code = 'hotspot_category_invalid'
+    status = 502
+
+
 class HotspotItemsIncomplete(HotspotError):
-    """去重后不足 20 条（同一链接被重复使用也算不足）。"""
+    """去重后不足 30 条（同一链接被重复使用也算不足）。"""
 
     code = 'hotspot_items_incomplete'
     status = 502
@@ -235,7 +277,7 @@ def _same_event(left: set[str], right: set[str]) -> bool:
     return bool(union) and len(left & right) / union >= TITLE_JACCARD
 
 
-def _candidate(row: dict, category: str, window: dict) -> dict | None:
+def _candidate(row: dict, category: str | None, window: dict) -> dict | None:
     """结果级过滤：坏标题 / 低分 / 非 http(s) / 排除站点 / 日期明确在窗口外 → None。"""
     title = str(row.get('title') or '').strip()
     url = str(row.get('url') or '').strip()
@@ -265,6 +307,20 @@ def build_query(base: str, since: str) -> str:
         raise HotspotSearchQueryTooLong(
             f'search_query_too_long:{len(query)}>{SEARCH_QUERY_MAX}')
     return query
+
+
+def queries(since: str) -> list[tuple[str | None, str]]:
+    """完整查询计划：`[(类别, 查询串)]` = 客户包每个类别一条 + 一条涉华国际（类别 None）。
+
+    查询数 = `len(categories()) + 1`（当前客户 12 + 1 = 13），每条都由类别 label 生成，
+    故 `len(query) <= 128` 由 `build_query()` 对每条断言（超长抛
+    `search_query_too_long`，不静默截断）。
+    """
+    plan: list[tuple[str | None, str]] = [
+        (label, build_query(f'{label} {CATEGORY_QUERY_SUFFIX}', since)) for label in categories()
+    ]
+    plan.append((INTL_CATEGORY, build_query(INTL_QUERY, since)))
+    return plan
 
 
 def _query(context, query: str, failures: list[dict]) -> list[dict]:
@@ -298,21 +354,21 @@ def _accept_title(pool: dict, tokens: dict, entry: dict) -> None:
 
 
 def gather(context, window: dict) -> tuple[list[dict], dict, dict, list[dict]]:
-    """① 按类别查 ② 两级过滤 + 事件级去重；返回 (候选, 链接白名单, 类别短缺, 查询失败)。"""
+    """① 按类别查（客户包 12 类 + 涉华国际 = 13 条）② 两级过滤 + 事件级去重。
+
+    返回 (候选, 链接白名单, 类别短缺, 查询失败)。类别短缺只记真实类别（国际那条不预标注类别，
+    不参与 shortage）。
+    """
     since = window['from']
     pool: dict[str, dict] = {}
     tokens: dict[str, set[str]] = {}
     shortage: dict[str, int] = {}
     failures: list[dict] = []
-    for category, template in CATEGORY_QUERIES.items():
+    for category, query in queries(since):
         accepted = [entry for entry in (_candidate(row, category, window)
-                                        for row in _query(context, build_query(template.split(' after:')[0], since), failures))
+                                        for row in _query(context, query, failures))
                     if entry]
-        if len(accepted) < CATEGORY_MIN and category in BROADER_QUERIES:
-            accepted += [entry for entry in (_candidate(row, category, window)
-                                             for row in _query(context, build_query(BROADER_QUERIES[category], since), failures))
-                         if entry]
-        if len(accepted) < CATEGORY_MIN:
+        if category is not None and len(accepted) < CATEGORY_MIN:
             shortage[category] = len(accepted)
         for entry in accepted:
             _accept_title(pool, tokens, entry)
@@ -330,15 +386,23 @@ def gather(context, window: dict) -> tuple[list[dict], dict, dict, list[dict]]:
 
 
 def validate_digest(payload) -> list[dict]:
-    """结构闸门：恰好 20 条 / 7 类枚举 / http(s) / 标题摘要非空。不合格抛 `hotspot_schema_invalid`。"""
+    """结构闸门：恰好 30 条（`rank` 1..30 连续）/ 类别 ∈ `categories()` / http(s) / 标题摘要非空。
+
+    类别不合格抛 `hotspot_category_invalid`（独立错误码，前端与重试话术可区分「类别错」与
+    「结构错」）；其余不合格抛 `hotspot_schema_invalid`。
+    """
     try:
         digest = HotspotDigest.model_validate(payload)
     except ValidationError as exc:
         raise HotspotSchemaInvalid('hotspot_schema_invalid:' + str(exc).splitlines()[0][:200]) from exc
+    allowed = set(categories())
     problems: list[str] = []
+    bad_categories: list[str] = []
     if len(digest.items) != ITEM_COUNT:
         problems.append(f'items={len(digest.items)}')
-    items = []
+    # rank 必须 1..30 连续：跳号会让前端序号出现空洞（30 条也可能是 1..29 + 31）。
+    if sorted(item.rank for item in digest.items) != list(range(1, ITEM_COUNT + 1)):
+        problems.append('rank_not_contiguous')
     for position, item in enumerate(digest.items, 1):
         url = str(item.url)
         if not url.startswith(('http://', 'https://')):
@@ -347,14 +411,17 @@ def validate_digest(payload) -> list[dict]:
             problems.append(f'rank{item.rank}:title')
         if not item.summary.strip():
             problems.append(f'rank{item.rank}:summary')
-        if item.category not in CATEGORIES:
-            problems.append(f'rank{item.rank}:category={item.category}')
-        items.append({'rank': item.rank if item.rank else position, 'title': item.title.strip(),
-                      'summary': item.summary.strip(), 'category': item.category,
-                      'url': url, 'source': (item.source or '').strip()})
+        if item.category not in allowed:
+            bad_categories.append(f'rank{item.rank}:category={item.category}')
+    # 类别闸门优先报：模型最常犯的就是把国际新闻记成词表外的自造类别。
+    if bad_categories:
+        raise HotspotCategoryInvalid('hotspot_category_invalid:' + ','.join(bad_categories[:8]))
     if problems:
         raise HotspotSchemaInvalid('hotspot_schema_invalid:' + ','.join(problems[:8]))
-    return items
+    return [{'rank': item.rank if item.rank else position, 'title': item.title.strip(),
+             'summary': item.summary.strip(), 'category': item.category,
+             'url': str(item.url), 'source': (item.source or '').strip()}
+            for position, item in enumerate(digest.items, 1)]
 
 
 def validate_urls(items: list[dict], allowed: dict) -> list[dict]:
@@ -377,9 +444,9 @@ def validate_urls(items: list[dict], allowed: dict) -> list[dict]:
 
 
 def validate_complete(items: list[dict]) -> None:
-    """去重后必须满 20 条（同一链接重复使用 = 凑数）。"""
+    """去重后必须满 30 条（同一链接重复使用 = 凑数）。"""
     if len({_url_key(item['url']) for item in items}) < ITEM_COUNT:
-        raise HotspotItemsIncomplete('hotspot_items_incomplete:distinct_urls<20')
+        raise HotspotItemsIncomplete('hotspot_items_incomplete:distinct_urls<30')
 
 
 def _index_path(store) -> Path:
@@ -418,14 +485,19 @@ def latest(store) -> dict | None:
 
 
 def view(store, today: date | None = None) -> dict:
-    """`GET /api/hotspot`：只读缓存。无缓存时给空态 + 窗口，绝不触发采集。"""
+    """`GET /api/hotspot`：只读缓存。无缓存时给空态 + 窗口 + 类别，绝不触发采集。
+
+    `categories` 恒有值（来自客户包词表）：前端 TAB 行由它生成，不写死类别名。
+    """
     cached = latest(store)
     if cached is not None:
         return {'available': True, 'window': cached['window'],
                 'collected_at': cached['collected_at'], 'items': cached['items'],
                 'model': cached.get('model', ''), 'ref': cached['ref'],
+                'categories': list(categories()),
                 'search_configured': cached.get('search_configured', True)}
-    return {'available': False, 'window': window_for(today or date.today()), 'items': []}
+    return {'available': False, 'window': window_for(today or date.today()), 'items': [],
+            'categories': list(categories())}
 
 
 def ensure_task(store):
@@ -442,11 +514,16 @@ def ensure_task(store):
 
 
 def _result_lines(candidates: list[dict]) -> list[str]:
-    """候选集的紧凑格式（每条一行，控 token）：`[n] 类别 | 标题 | 摘要 | LINK: url`。"""
+    """候选集的紧凑格式（每条一行，控 token）：`[n] 类别 | 标题 | 摘要 | LINK: url`。
+
+    涉华国际那条没有预标注类别，行首写 `待归类`（不是类别值，模型必须归入 payload
+    `categories` 中的一类）。
+    """
     lines = []
     for index, row in enumerate(candidates, 1):
         summary = row['summary'].replace('\n', ' ')[:SUMMARY_FEED_CHARS]
-        lines.append(f"[{index}] {row['category']} | {row['title']} | {summary} | LINK: {row['url']}")
+        label = row.get('category') or UNLABELLED
+        lines.append(f"[{index}] {label} | {row['title']} | {summary} | LINK: {row['url']}")
     return lines
 
 
@@ -455,11 +532,12 @@ def _payload(today: date, window: dict, lines: list[str], errors: list[str]) -> 
 
     payload = {'instruction': get_prompt('hotspot_collector.collect'),
                'today': today.isoformat(), 'window': window, 'item_count': ITEM_COUNT,
-               'categories': list(CATEGORIES), 'must_search_online': True,
+               'categories': list(categories()), 'must_search_online': True,
                'search_result_count': len(lines), 'search_results': lines,
-               'notes': ('候选集已按 rerank_score×2+authority 粗排，类别由查询来源预标注（可微调但倾向保留）。'
-                         '只从 search_results 里挑 20 条；每条 url 必须原样照抄某一条的 LINK，'
-                         '不许新增、改写、拼接链接；不输出分析与评论，只输出 JSON。')}
+               'notes': ('候选集已按 rerank_score×2+authority 粗排；逐类别查询的结果已预标注类别'
+                         '（可微调但倾向保留），行首 `待归类` 的条目必须归入 payload `categories`'
+                         ' 中最贴近的一类。只从 search_results 里挑 30 条；每条 url 必须原样照抄'
+                         '某一条的 LINK，不许新增、改写、拼接链接；不输出分析与评论，只输出 JSON。')}
     if errors:
         payload['correction_errors'] = errors
     return payload
@@ -489,7 +567,7 @@ async def collect(store, *, model_adapter=None, today: date | None = None,
         raise HotspotSearchFailed('hotspot_search_failed:no_results')
     lines = _result_lines(candidates)
 
-    # 3) 单次结构化调用（不带 tools）+ 4) 三道闸门；只有 URL 编造 / 结构不合格 / 不足 20 条才重试 1 次
+    # 3) 单次结构化调用（不带 tools）+ 4) 三道闸门；只有 URL 编造 / 结构不合格 / 不足 30 条才重试 1 次
     errors: list[str] = []
     rejected: HotspotError | None = None
     for _attempt in range(2):
@@ -514,10 +592,17 @@ async def collect(store, *, model_adapter=None, today: date | None = None,
             errors = ['你引用了不在候选集里的链接（编造的链接一律退回）。只能原样照抄给定 LINK：'
                       + str(exc)[:200]]
             continue
+        except HotspotCategoryInvalid as exc:
+            rejected = exc
+            errors = ['类别必须取 payload categories 中的某一个值（候选行首的类别可微调，'
+                      '但不得自造类别；`待归类` 的条目按事件性质归入最贴近的一类）：'
+                      + str(exc)[:200]]
+            continue
         except HotspotError as exc:
             rejected = exc
             errors = [f'上一次输出不合格：{str(exc)[:200]}'
-                      '（条数=20、7 类枚举、链接格式、20 个互不相同的候选链接都会被退回）']
+                      '（条数=30、rank 必须 1..30 连续、类别 ∈ payload categories、链接格式、'
+                      '30 个互不相同的候选链接都会被退回）']
             continue
         data = {'window': window, 'collected_at': collected_at, 'items': items,
                 'model': MODEL_NAME, 'search_configured': True,
@@ -526,10 +611,10 @@ async def collect(store, *, model_adapter=None, today: date | None = None,
         _write_index(store, ref, data)
         store.append_event(OWNER_TASK, {'type': 'hotspot_digest_collected', 'ref': ref,
                                         'item_count': len(items), 'window': window,
-                                        'search_queries': len(CATEGORY_QUERIES),
+                                        'search_queries': len(categories()) + 1,
                                         'search_failures': failures,
                                         'category_shortage': shortage,
                                         'model': MODEL_NAME, 'search_configured': True,
                                         'url_whitelist_size': len(allowed)})
-        return {**data, 'ref': ref, 'available': True}
+        return {**data, 'ref': ref, 'available': True, 'categories': list(categories())}
     raise rejected or HotspotSchemaInvalid('hotspot_schema_invalid:retry_exhausted')

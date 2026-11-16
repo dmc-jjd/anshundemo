@@ -1,21 +1,31 @@
 """Local report metadata suggestions; never asks a model to invent metadata."""
-import re
+import logging,re
 from datetime import datetime,timezone,timedelta,date
 from pathlib import Path
-from .ooxml import read_docx
+from .template_compare import parse_report_document
+
+LOG=logging.getLogger(__name__)
+
+def _source_blocks(source):
+    """源报告的 blocks；读不了就留一条带文件名与异常类型的警告，绝不静默吞掉。"""
+    try:
+        return parse_report_document(source['path'])['blocks']
+    except (KeyError,ValueError,OSError) as exc:
+        # UnreadableDocument 是 ValueError 子类：`.doc` 走 `read_docx` 时正落在这里被吞掉，
+        # 于是期号推断无声少一份证据。派发点认格式后这条只该在真坏文件上出现。
+        LOG.warning('report_parameters: 源报告读取失败，已跳过 %s (%s: %s)',
+                    Path(source.get('path') or '').name,type(exc).__name__,exc)
+        return []
 
 def suggestions(template,report_month):
     target=date.fromisoformat(report_month+'-01')
     samples=[]
     for source in template.get('source_reports',[]):
-        try:
-            blocks=read_docx(Path(source['path']))['blocks']
-            text='\n'.join(b.get('text','') for b in blocks[:12])
-            issue=re.search(r'(20\d{2})\s*年\s*第\s*(\d+)\s*期',text)
-            month=re.search(r'(20\d{2})\s*年\s*(\d{1,2})\s*月\s*网络舆情分析报告',text)
-            if issue and month and issue[1]==month[1]:
-                samples.append({'year':int(month[1]),'month':int(month[2]),'issue_number':int(issue[2])})
-        except (KeyError,ValueError,OSError):continue
+        text='\n'.join(b.get('text','') for b in _source_blocks(source)[:12])
+        issue=re.search(r'(20\d{2})\s*年\s*第\s*(\d+)\s*期',text)
+        month=re.search(r'(20\d{2})\s*年\s*(\d{1,2})\s*月\s*网络舆情分析报告',text)
+        if issue and month and issue[1]==month[1]:
+            samples.append({'year':int(month[1]),'month':int(month[2]),'issue_number':int(issue[2])})
     same=sorted({(x['month'],x['issue_number']) for x in samples if x['year']==target.year})
     exact=[issue for month,issue in same if month==target.month]
     issue=exact[0] if len(set(exact))==1 else None

@@ -1,5 +1,5 @@
 from __future__ import annotations
-import asyncio,hashlib,uuid
+import asyncio,hashlib,uuid,zipfile
 from datetime import date
 from pathlib import Path
 from core import paths
@@ -16,7 +16,7 @@ from .report_validation import validate_draft
 from .api_views.approval import approval_gate
 from .api_views.data_review import apply_event_settings
 from .api_views.task_resume import resume_plan,display_name
-from .api_views.template import apply_definition_patch,confirm_candidate
+from .api_views.template import apply_definition_patch,confirm_candidate,definition_with_charts
 from .template_draft_api import router as manual_definition_router
 from .template_advice_api import router as template_advice_router
 from .final_document_api import router as final_document_router
@@ -62,15 +62,16 @@ def workflow_graphs():
 @app.post('/api/files')
 async def upload(file:UploadFile=File(...)):
     name=Path(file.filename or '').name
-    if name!=file.filename or not name.lower().endswith(('.docx','.xlsx')): raise HTTPException(400,'invalid_filename_or_type')
+    if name!=file.filename or not name.lower().endswith(('.doc','.docx','.xlsx')): raise HTTPException(400,'invalid_filename_or_type')
     content=await file.read()
     if len(content)>100_000_000: raise HTTPException(413,'file_too_large')
     sha=hashlib.sha256(content).hexdigest(); fid=f'file-{sha[:20]}'
     dest=UPLOADS/f'{fid}{Path(name).suffix.lower()}'
     if not dest.exists(): dest.write_bytes(content)
-    import zipfile
-    readable=zipfile.is_zipfile(dest)
-    return {'id':fid,'sha256':sha,'name':name,'readable':readable,'path':str(dest),'reason':None if readable else 'not_unencrypted_ooxml'}
+    from core.tools.doc97 import is_legacy_doc
+    readable=is_legacy_doc(dest) or zipfile.is_zipfile(dest)  # .doc 不是 ZIP，但完全可读
+    reason=None if readable else ('legacy_doc_unreadable' if dest.suffix.lower()=='.doc' else 'not_unencrypted_ooxml')
+    return {'id':fid,'sha256':sha,'name':name,'readable':readable,'path':str(dest),'reason':reason}
 
 @app.get('/api/templates')
 def templates():
@@ -117,7 +118,7 @@ def _resolve_files(ids:list[str]):
 async def template_task(req:TaskCreate,background_tasks:BackgroundTasks,idempotency_key:str|None=Header(None)):
     paths=_resolve_files(req.file_ids)
     if len(paths)<2: raise HTTPException(422,'at_least_two_uploaded_reports_required')
-    if any(not path.lower().endswith('.docx') for path in paths):raise HTTPException(422,'docx_reports_required')
+    if any(not path.lower().endswith(('.doc','.docx')) for path in paths):raise HTTPException(422,'docx_reports_required')
     if len({hashlib.sha256(Path(path).read_bytes()).hexdigest() for path in paths})!=len(paths):
         raise HTTPException(422,'duplicate_reports')
     task_id=uuid.uuid4().hex
@@ -498,8 +499,8 @@ def template_definition(task_id:str):
     if not ref: raise HTTPException(404,'structured_template_missing')
     from .structured_template import apply_top10_rule
     definition=store.get_artifact(ref)
-    from .chart_spec import definitions
-    definition['charts']=definitions(definition)
+    error,definition=definition_with_charts(definition)
+    if error:raise HTTPException(*error)
     if definition.get('status')=='candidate_requires_review':definition=apply_top10_rule(definition)
     questions=[dict(x,details=dict(x['details'])) for x in state.review_items if x['kind']=='template_business_question']
     if questions and state.metadata.get('template_input_ref'):
@@ -514,9 +515,9 @@ def template_definition(task_id:str):
 
 @app.get('/api/templates/{task_id}/sources')
 def template_sources(task_id:str):
-    from .ooxml import read_docx
+    from .template_compare import parse_report_document  # 唯一派发点；别在这个端点再写格式分支
     definition=template_definition(task_id)['definition']
-    return [{'name':Path(source['path']).name,'blocks':read_docx(Path(source['path']))['blocks']} for source in definition['source_reports']]
+    return [{'name':Path(source['path']).name,'blocks':parse_report_document(source['path'])['blocks']} for source in definition['source_reports']]
 
 @app.get('/api/templates/{task_id}/charts/{name}/source')
 def template_chart_source(task_id:str,name:str,source_index:int=0):
@@ -526,7 +527,7 @@ def template_chart_source(task_id:str,name:str,source_index:int=0):
         if source_index<0:raise ValueError('invalid_source_index')
         data,mime=source_image(definition,name,source_index)
         return Response(data,media_type=mime)
-    except (ValueError,KeyError,IndexError,StopIteration):raise HTTPException(404,'source_chart_unavailable')
+    except (ValueError,KeyError,IndexError,StopIteration,zipfile.BadZipFile):raise HTTPException(404,'source_chart_unavailable')  # 坏 docx/改名非 ZIP 同义：不可预览
 
 class TemplateChartVersion(BaseModel):
     expected_revision:int

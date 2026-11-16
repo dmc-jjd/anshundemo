@@ -14,7 +14,10 @@ LONG_TIMEOUT_ROLES = frozenset({
     'template_analyst', 'writer', 'writer_data_planner', 'historical_researcher',
     'format_reviewer', 'content_reviewer',
     'event_judge', 'event_classifier', 'event_summarizer', 'data_processor',
+    'hotspot_collector',
 })
+# `hotspot_collector` 必须留在长预算里：13 条查询 ≈30s 之后还要一次性喂 89 条候选做结构化
+# 输出（实测 45s × 3 次重试全超时、总 144.4s；抬到 180s 后 elapsed 64.6s 成功出 30 条）。
 
 
 def classify_model_error(exc) -> str:
@@ -84,7 +87,7 @@ async def invoke_agent(role_id:str,payload:dict,response_model:type[BaseModel],c
         if not url.endswith('/chat/completions'):
             url+='/chat/completions'
         req=urllib.request.Request(url,body,{'Authorization':'Bearer '+MODEL_KEY,'Content-Type':'application/json'})
-        with urllib.request.urlopen(req,timeout=180 if role_id in LONG_TIMEOUT_ROLES else 45) as res: return json.load(res)
+        with urllib.request.urlopen(req,timeout=request_timeout(role_id)) as res: return json.load(res)
     raw=None
     try:
         for turn in range(7):
@@ -129,3 +132,7 @@ async def invoke_agent(role_id:str,payload:dict,response_model:type[BaseModel],c
             'finish_reason':(raw['choices'][0].get('finish_reason') if isinstance(raw,dict) and isinstance(raw.get('choices'),list) and raw['choices'] and isinstance(raw['choices'][0],dict) else None)})
         raise
 
+
+def request_timeout(role_id:str)->int:
+    """角色请求超时秒数：`LONG_TIMEOUT_ROLES` 内 180s（长文本/结构化输出），其余 45s。"""
+    return 180 if role_id in LONG_TIMEOUT_ROLES else 45

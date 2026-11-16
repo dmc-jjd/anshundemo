@@ -32,3 +32,7 @@ jieba==0.42.1
 # HTTP 客户端与表单（TestClient / 文件上传）
 httpx==0.28.1
 python-multipart==0.0.32
+
+# 仅 `.doc`（Word 97-2003）解析用，零依赖，MIT（纯 Python wheel，无需 ghc/soffice）。
+# 未安装时 `core/tools/doc97.py` 抛 `doc_parser_not_installed`，`.docx` 链路不受影响。
+dochan==1.21.0

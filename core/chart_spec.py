@@ -11,6 +11,9 @@ ChartStyles=_spec.ChartStyles
 def definitions(template):
     return _spec.definitions(template,DATA)
 
+def layout_available(template):
+    return _spec.layout_available(template,DATA)
+
 def styles_for(template,overrides=None):
     return _spec.styles_for(template,overrides,data_root=DATA)
 
@@ -20,4 +23,4 @@ def with_styles(template,styles):
 def source_image(template,kind,source_index=0):
     return _spec.source_image(template,kind,source_index,data_root=DATA)
 
-__all__=['KINDS','DEFAULTS','TITLES','STYLE_NAMES','ChartStyles','definitions','styles_for','with_styles','source_image']
+__all__=['KINDS','DEFAULTS','TITLES','STYLE_NAMES','ChartStyles','definitions','layout_available','styles_for','with_styles','source_image']

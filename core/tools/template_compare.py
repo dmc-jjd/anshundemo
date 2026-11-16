@@ -2,12 +2,27 @@ from __future__ import annotations
 from difflib import SequenceMatcher
 import hashlib,re
 from pathlib import Path
-from core.tools.ooxml import read_docx
+from core.tools.ooxml import UnreadableDocument,read_docx
+from core.tools.doc97 import _has_ole2_header,is_legacy_doc,read_doc
 
 NUMBER_RE=re.compile(r'\d+(?:\.\d+)?%?')
 
+#: 反向伪装（真的是 `.doc`、名字却是 `.docx`）的补救文案：要能指导用户怎么改。
+LEGACY_DOC_RENAMED_HINT=('unreadable_document: 该文件实际是 Word 97-2003 (.doc) 格式，'
+                         '请把扩展名改回 .doc 后重新上传')
+
 def parse_report_document(path:str)->dict:
-    doc=read_docx(Path(path)); doc['sha256']=hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    # 唯一的格式派发点：`.doc` 与 `.docx` 在字节层不同，读取器各管一种。
+    # documents.py 的 tool 复用本函数，别在下游再判一次扩展名。
+    target=Path(path)
+    try:
+        doc=read_doc(target) if is_legacy_doc(target) else read_docx(target)
+    except UnreadableDocument:
+        # 反过来伪装的：真 `.doc` 被手动改名成 `.docx`（很常见的操作）。不补救的话用户只会
+        # 收到「不是未加密的 OOXML ZIP」——看不出该怎么修。读 8 字节魔数的判定几乎零成本。
+        if not is_legacy_doc(target) and _has_ole2_header(target):raise UnreadableDocument(LEGACY_DOC_RENAMED_HINT) from None
+        raise
+    doc['sha256']=hashlib.sha256(target.read_bytes()).hexdigest()
     return doc
 
 def compare_reports(documents:list[dict])->dict:

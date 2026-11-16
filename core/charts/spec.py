@@ -8,6 +8,7 @@ from pydantic import BaseModel,ConfigDict
 from lxml import etree as ET
 
 from core.charts import registry
+from core.tools.doc97 import is_legacy_doc
 
 STYLE_NAMES={'pie':'饼图','line':'折线图','bar':'纵向柱状图','barh':'横向条形图'}
 STYLE_BASIS_TEMPLATE='用户确认的月报图形规则，可在模板审核时更换'
@@ -23,12 +24,40 @@ class ChartStyles(BaseModel):
     theme:Literal['pie','bar','barh']='bar'
     locality:Literal['pie','bar','barh']='barh'
 
-def definitions(template,data_root:Path):
-    if template.get('charts'):return template['charts']
+def _layout_path(template,data_root:Path)->Path:
+    """版式源文件：优先工件里的路径，找不到才回落到当前项目的 uploads（换项目后仍能解析）。"""
     path=Path(template['layout_source'])
     if not path.exists() and (data_root/'uploads'/path.name).exists():path=data_root/'uploads'/path.name
+    return path
+
+def layout_available(template,data_root:Path)->bool:
+    """基准报告能否给出版式图信息：只有可读的 OOXML ZIP 能。
+
+    `.doc` 的图形是 OLE2 里的 EMF 对象、坏 ZIP 没有 `word/document.xml`——两者都给不出
+    「图形数量」，故一律按版式不可用处理。这是给调用方的显式判据，不是异常探测。
+    `charts` 已就绪的旧工件可能没有 `layout_source`：那种情况同样没有版式可用，不抛错。
+    """
+    if not template.get('layout_source'):return False
+    path=_layout_path(template,data_root)
+    return not is_legacy_doc(path) and zipfile.is_zipfile(path)
+
+def _drawings(path:Path):
+    """版式 docx 里的 `<w:drawing>` 列表；`drawing_index` 的语义就是「模板里的第 N 个图形」。
+
+    `.doc` 走不了 zipfile：整个 definition 的主体（块/字段/图表实例）都不依赖版式，
+    只有**图形数量**依赖它，所以这里按「版式不可用」降级为空，而不是让 `BadZipFile`
+    冒到路由层变成 500。坏 ZIP 则显式报 `template_layout_unavailable`——它是真错误，
+    不能被静默当成 0 张图。
+    """
+    if is_legacy_doc(path):return []
+    if not zipfile.is_zipfile(path):
+        raise ValueError(f'template_layout_unavailable: 模板的基准报告不是可读的 .docx（OOXML ZIP）：{path.name}')
     with zipfile.ZipFile(path) as z:
-        drawings=ET.fromstring(z.read('word/document.xml')).xpath('//*[local-name()="drawing"]')
+        return ET.fromstring(z.read('word/document.xml')).xpath('//*[local-name()="drawing"]')
+
+def definitions(template,data_root:Path):
+    if template.get('charts'):return template['charts']
+    drawings=_drawings(_layout_path(template,data_root))
     # 逐键显式赋值：键集必须仍是这 7 个（用 **item 会把 draft_title 等带进模板工件，改其哈希）
     return [{'id':item['id'],'drawing_index':i+1,'title':item['title'],'style':item['style'],
              'style_basis':STYLE_BASIS_TEMPLATE,'scope':item['scope'],'unit':item['unit']}
@@ -52,6 +81,9 @@ def source_image(template,kind,source_index=0,*,data_root:Path):
     if kind not in kinds:raise ValueError('unknown_chart')
     source=template['source_reports'][source_index];path=Path(source['path'])
     if not path.exists() and (data_root/'uploads'/path.name).exists():path=data_root/'uploads'/path.name
+    # `.doc` 的图形是 OLE2 里的 EMF 对象，不是 ZIP 内的 media 条目——本函数不做 OLE2 图片提取，
+    # 提前按「不可预览」拒绝，而不是让 zipfile 抛 BadZipFile 变成 500。
+    if is_legacy_doc(path):raise ValueError('source_chart_unavailable')
     if hashlib.sha256(path.read_bytes()).hexdigest()!=source['sha256']:raise ValueError('template_source_changed')
     with zipfile.ZipFile(path) as z:
         drawings=ET.fromstring(z.read('word/document.xml')).xpath('//*[local-name()="drawing"]')

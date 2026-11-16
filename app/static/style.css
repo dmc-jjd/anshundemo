@@ -286,6 +286,11 @@ select{cursor:pointer}
 .hotspot-acts{display:flex;align-items:center;gap:12px;margin:0;flex:0 0 auto}
 .hotspot-acts .btn{height:30px;min-height:30px;padding:0 14px}
 .hotspot-panel .card-h .hint{font-variant-numeric:tabular-nums}
+/* 热点类别 TAB：单行横向滚动，不换行撑高卡片（类别数由接口给，可能多于 12）；
+   当前 TAB 的 scrollIntoView 在 hotspot.js，属行为，不放这里。 */
+#hotspotTabs{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-ms-overflow-style:none;margin:0 0 6px;padding:0 0 8px}
+#hotspotTabs::-webkit-scrollbar{display:none}
+#hotspotTabs .hotspot-tab{flex:0 0 auto;white-space:nowrap}
 .hotspot-error{margin:0 0 10px;color:var(--red);font-size:13px;line-height:1.5;word-break:break-all}
 .hotspot-list{list-style:none;margin:0;padding:0;flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain}
 .hotspot-item{padding:11px 0;border-bottom:1px solid var(--line-soft)}

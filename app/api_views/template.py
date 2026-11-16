@@ -2,6 +2,24 @@ import hashlib
 from pathlib import Path
 
 
+def definition_with_charts(definition):
+    """模板定义 + 图表实例列表；返回 (error, definition)，error=(status,detail) 由路由转 HTTP。
+
+    `.doc`（Word 97-2003）基准报告没有 OOXML 版式：`definitions` 的图表清单本身来自客户包
+    registry，只有「图形数量」取决于版式，所以这里降级为空并标记 `layout_available=False`，
+    让模板确认页照常加载块/字段。坏 ZIP 是另一回事——它是真错误，按 422 交回可指导文案。
+    行为判据只在 `.doc` 上多一个键：`.docx` 的返回体逐字不变。
+    """
+    from ..chart_spec import definitions, layout_available
+    try:
+        definition['charts'] = definitions(definition)
+    except ValueError as exc:
+        return (422, str(exc)), definition
+    if not layout_available(definition):
+        definition['layout_available'] = False
+    return None, definition
+
+
 def apply_definition_patch(store, state, req):
     """模板定义补丁。返回 (error, result)：error=(status,detail) 由路由函数转成 HTTP 错误。"""
     from ..structured_template import revise_candidate
