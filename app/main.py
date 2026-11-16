@@ -22,6 +22,7 @@ from .template_advice_api import router as template_advice_router
 from .final_document_api import router as final_document_router
 from .hotspot_api import router as hotspot_router
 from .editor_api import router as editor_router
+from .chat_api import router as chat_router
 from .api_views.writing import apply_slot_values,assemble_review_view
 
 store=Store(); deps=Dependencies(store)
@@ -38,6 +39,7 @@ app.include_router(final_document_router)
 # 首页两个新模块（今日热点话题 / 社媒热榜占位），同样刻意不进 OpenAPI：
 # 见 app/hotspot_api.py 与 app/hotspot.py。
 app.include_router(hotspot_router);app.include_router(editor_router)  # 终稿 canvas-editor 的 docx 存取（见 app/editor_api.py），同样刻意不进 OpenAPI
+app.include_router(chat_router)  # D 方案临时对话通道（思考流/搜索流/流式回答），同样不进 OpenAPI：见 app/chat_api.py
 app.mount('/static',StaticFiles(directory=Path(__file__).parent/'static'),name='static')
 UPLOADS=DATA/'uploads'; UPLOADS.mkdir(exist_ok=True)
 
