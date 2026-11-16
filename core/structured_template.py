@@ -203,8 +203,9 @@ def render_structured_docx(template:dict,values:dict,allowed_refs:set[str],requi
     validate_values(template,values,allowed_refs,require_complete=require_complete)
     path=Path(template['layout_source'])
     if not path.exists():
-        from .config import DATA
-        if (DATA/'uploads'/path.name).exists():path=DATA/'uploads'/path.name
+        from . import paths
+        current=paths.data_root()/'uploads'/path.name
+        if current.exists():path=current
     if hashlib.sha256(path.read_bytes()).hexdigest()!=template['source_reports'][0]['sha256']:
         raise ValueError('template_layout_source_changed')
     W='{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'

@@ -101,6 +101,9 @@ class FactSnapshot(BaseModel):
 
 class TaskState(BaseModel):
     id: str
+    #: 任务归属的客户包；`''` = 旧任务（M2 之前落盘）→ 读时按部署默认包处理。
+    #: **只进任务状态，绝不进 artifact payload**（否则 G-GRAPH 的 4 个分量会变）。
+    package: str = ''
     kind: Literal['template','report']
     phase: str
     revision: int = 0

@@ -2,8 +2,11 @@
 
 唯一的改动是**根目录的惰性化**（`docs/team/任务分解-S8.md` §3-2）：
 `def __init__(self, root: Path = DATA)` 的默认值在**类定义期**求值——搬进 core 后 import 期就要
-`DATA`，而基座不能读宿主 `config`。改为 `root=None` + 函数内 `data_root()`
-（宿主 `__init__` 注入的同一个值）。
+`DATA`，而基座不能读宿主 `config`。改为 `root=None` + 函数内 `data_root()`。
+
+M2 起默认根是**当前包的包数据根**（`data/packages/<包>/`）：`Store()` 不再等于「部署唯一根」，
+`Store(package='demo_b')` 或不传根时按上下文包解析；`root=` 显式给根的旧口径一字未变
+（测试/脚本的 `Store(tmp_path)` 仍完全独立）。
 
 `self.db = root/'demo.sqlite3'` 与 `self.files = root/'artifacts'` 的路径口径一字未变——
 这是 G-GOLDEN 的判据，不是可选项。
@@ -19,8 +22,11 @@ from .schemas import HumanDecision, TaskState, now
 
 class ConflictError(Exception): pass
 class Store:
-    def __init__(self, root=None):
-        root = Path(root) if root else data_root()
+    def __init__(self, root=None, package=None):
+        #: 这个 Store 属于哪个客户包（`None`/'' = 调用方显式给根，如测试/脚本；不明归属）。
+        #: 只用于「共享价目表放哪」这类**非产物**判定，绝不进 artifact payload。
+        self.package = str(package) if package else None
+        root = Path(root) if root else data_root(self.package)
         self.root = Path(root); self.root.mkdir(parents=True, exist_ok=True)
         self.files = self.root/'artifacts'; self.files.mkdir(exist_ok=True)
         self.db = self.root/'demo.sqlite3'

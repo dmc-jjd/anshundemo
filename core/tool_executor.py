@@ -80,7 +80,7 @@ def _reject(context,call,reason):
     context.store.append_event(context.task_id,{'type':'tool_policy_rejected','tool':call.tool_name,'phase':context.phase,'reason':reason})
     return ToolResult(status='error',error_code=reason)
 
-def _run_in_process(name,arguments,root,task_id,conn,package_dir=None):
+def _run_in_process(name,arguments,root,task_id,conn,package_dir=None,data_base=None):
     """子进程入口：**显式配置客户包**，不依赖 import 副作用。
 
     为什么必须显式（S8 迁移前置）：
@@ -90,13 +90,15 @@ def _run_in_process(name,arguments,root,task_id,conn,package_dir=None):
     `package_not_configured`，表现为**每次工具调用都超时、工件全空，而门禁哈希仍稳定**
     （S6 F5 陷阱的镜像）。
 
-    所以这里显式传 `package_dir`，让子进程自己把四个注册表配好，不赌 import 顺序。
+    所以这里显式传 `package_dir` + `data_base`：子进程自己把注册表与**数据基根**配好。
+    `data_base` 是部署级 `data/`（不是某个包的数据根）——包根由包名派生，M2 起不再
+    `package_dir.parent.parent/'data'`（那会把 B 的工件写进 A 的共享 data）。
     """
     from .storage import Store
     try:
         if package_dir is not None:
-            _configure_package(Path(package_dir))
-        ctx=RunContext(Store(root),task_id)
+            _configure_package(Path(package_dir),data_base)
+        ctx=RunContext(Store(root),task_id,package=(Path(package_dir).name if package_dir else None))
         result=_tool_handler(name)(arguments,ctx)
         conn.send(('ok',result.model_dump()))
     except Exception as e:
@@ -104,13 +106,18 @@ def _run_in_process(name,arguments,root,task_id,conn,package_dir=None):
     finally: conn.close()
 
 
-def _configure_package(package_dir):
+def _configure_package(package_dir, data_base=None):
     """按客户包路径配置四个注册表（幂等）。子进程里调用，不依赖 app 的 import 副作用。
 
     第五件：`configure_tokenizer(package_dir)`——客户词典注入的来源目录必须由子进程
     自己知道。jieba 的词表是**进程内**状态，父进程注过不等于子进程注过；而每组工具调用
     都是一个新子进程，所以这一步挂在这里而不是宿主 import 期。
-    该调用只声明目录，不加载词典（加载推迟到首次 `tokenize()`），见 `core.text`。
+    该调用只声明目录，不加载词典（加载推迟到首次 `tokenize()`），见 `core.text`；
+    M2 起「默认包进 FREQ、其余走覆盖层」由 `core.text` 判定——于是**工具子进程与父进程
+    对同一个包走同一套口径**（M1 的「首个声明者赢」会让 B 的父子进程切出两套 token）。
+
+    数据根：`data_base`（部署级 `data/`）优先；缺省按「包目录的上一级 = 仓库/部署根、
+    其下 `data/`」推导。**不再**用 `package_dir.parent.parent` 反推数据根后直接当包根用。
     """
     from core.manifest import load_manifest
     from core.paths import configure_data_root
@@ -121,19 +128,26 @@ def _configure_package(package_dir):
     from core.prompts import registry as prompt_registry
 
     manifest = load_manifest(package_dir)
-    root = Path(package_dir).resolve().parent.parent
+    if data_base is not None:
+        root = Path(data_base)
+    else:
+        root = Path(package_dir).resolve().parents[1] / str(getattr(manifest, "data_root", "data"))
+    # 技能资产根跟**代码部署根**走（`packages/` 的上一级），不跟数据根走：数据根可以被
+    # REPORT_DEMO_DATA 指到仓库外的盘，而技能资产是随代码发布的（旧实现用 package_dir 的
+    # 上两级，正是这个语义；改成 data 根会让外部数据盘上的部署找不到 skills/）。
+    from core.packages import registry as package_registry
+    skill_registry.configure(package_dir, package_registry.packages_root().parent / "skills")
     vocabulary.configure(package_dir)
     configure_tokenizer(package_dir)
     chart_registry.configure(package_dir)
-    skill_registry.configure(package_dir, root / "skills")
     prompt_registry.configure(package_dir)
-    configure_data_root(root / manifest.data_root if hasattr(manifest, "data_root") else root / "data")
+    configure_data_root(root)
     return manifest
 
 
-def _bounded_run(name,arguments,root,task_id,timeout,package_dir=None):
+def _bounded_run(name,arguments,root,task_id,timeout,package_dir=None,data_base=None):
     parent,child=multiprocessing.Pipe(duplex=False)
-    proc=multiprocessing.get_context('spawn').Process(target=_run_in_process,args=(name,arguments,root,task_id,child,package_dir))
+    proc=multiprocessing.get_context('spawn').Process(target=_run_in_process,args=(name,arguments,root,task_id,child,package_dir,data_base))
     proc.start(); child.close()
     ready=parent.poll(timeout)
     if not ready:
@@ -149,9 +163,12 @@ def _bounded_run(name,arguments,root,task_id,timeout,package_dir=None):
 
 async def execute_tool(call:ToolCall,context:RunContext)->ToolResult:
     start=time.monotonic(); state=context.store.get_task(context.task_id)
+    #: 本次执行属于哪个包：显式 `RunContext.package` → 任务自带的 `TaskState.package` →
+    #: 当前上下文（ContextVar）。M2 起 TaskState 带包，后台任务即使没继承 context 也不串包。
+    package=context.package or (getattr(state,'package','') or None)
     specs={x.name:x for x in _tool_specs()}
     if call.tool_name not in specs: return ToolResult(status='error',error_code='unknown_tool')
-    policy=context.policy or _default_policy(context.package)
+    policy=context.policy or _default_policy(package)
     if call.tool_name not in set(policy.allow)|set(policy.phases.get(context.phase,frozenset())):
         declared=set(policy.allow)|{x for tools in policy.phases.values() for x in tools}
         return _reject(context,call,REJECT_PHASE_NOT_ALLOWED if call.tool_name in declared else REJECT_TOOL_NOT_ALLOWED)
@@ -190,8 +207,13 @@ async def execute_tool(call:ToolCall,context:RunContext)->ToolResult:
     context.store.append_event(context.task_id,{'type':'tool_start','tool':call.tool_name,'reason':call.reason,'arguments':call.arguments,'call_id':call.call_id})
     try:
         timeout=hints.TIMEOUT_S.get(call.tool_name,context.timeout)
-        # 子进程拿「这次任务所属包的目录」——不再固定当前上下文的包（M1：显式包优先）
-        result=await asyncio.to_thread(_bounded_run,call.tool_name,call.arguments,context.store.root,context.task_id,timeout,str(paths.package_dir(context.package)))
+        # 子进程拿「这次任务所属包的目录」+「部署级数据基根」——不再固定当前上下文的包，
+        # 也不再让子进程自己猜数据根（M1 的 parent.parent 会让 B 的工件写进共享 data）。
+        root_for=getattr(context.store,'root_for',None)
+        root=root_for(context.task_id) if callable(root_for) else context.store.root
+        base=getattr(context.store,'data_base',None)
+        base=base() if callable(base) else base
+        result=await asyncio.to_thread(_bounded_run,call.tool_name,call.arguments,root,context.task_id,timeout,str(paths.package_dir(package)),base)
     except Exception as e: result=ToolResult(status='error',error_code=type(e).__name__,warnings=[str(e)])
     result.elapsed_ms=int((time.monotonic()-start)*1000)
     state=context.store.get_task(context.task_id)

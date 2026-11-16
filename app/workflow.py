@@ -306,7 +306,30 @@ def build_writing_graph(dependencies:Dependencies,review_only=False,agents=None)
     return compile_graph(spec,actions=dict(nodes),edges=edges,state_schema=GraphState,
                          node_wrapper=lambda name,action:_graph_node(dependencies,name,action,'writing')).compile()
 
+def _task_package(store,task_id):
+    """任务所属包（`TaskState.package`）；旧任务为空 → 当前上下文/默认包。"""
+    try: return getattr(store.get_task(task_id),'package','') or None
+    except Exception: return None
+
+async def _in_task_package(dependencies:Dependencies,task_id:str,body):
+    """后台图运行在**任务所属包**的 ContextVar 里（M2：同进程 A/B 不串包）。
+
+    为什么必须包住整个图而不只是工具调用：`_enabled_agents` / `_package_feature_switches`
+    / `paths.package_dir()` 都在图构建期或节点内按「当前包」解析；不包的话 B 任务会用 A 的
+    角色清单、开关与提示词——现场表现是「任务跑完了，产物却是另一个客户的」。
+    """
+    package=_task_package(dependencies.store,task_id)
+    if not package: return await body()
+    from core.packages import context as package_context
+    token=package_context.bind(package)
+    try: return await body()
+    finally: package_context.unbind(token)
+
 async def run_writing_graph(dependencies:Dependencies,task_id:str,review_only=False,agents=None):
+    return await _in_task_package(dependencies,task_id,
+        lambda:_run_writing_graph(dependencies,task_id,review_only,agents))
+
+async def _run_writing_graph(dependencies:Dependencies,task_id:str,review_only=False,agents=None):
     enabled=_enabled_agents(agents)
     _record_agent_scope(dependencies.store,task_id,'writing',enabled)
     graph=build_writing_graph(dependencies,review_only) if agents is None else build_writing_graph(dependencies,review_only,enabled)
@@ -339,6 +362,10 @@ def build_template_graph(dependencies:Dependencies,agents=None):
                          edges=edges,state_schema=GraphState).compile()
 
 async def run_report_graph(dependencies:Dependencies,task_id:str,agents=None):
+    return await _in_task_package(dependencies,task_id,
+        lambda:_run_report_graph(dependencies,task_id,agents))
+
+async def _run_report_graph(dependencies:Dependencies,task_id:str,agents=None):
     enabled=_enabled_agents(agents)
     _record_agent_scope(dependencies.store,task_id,'report',enabled)
     graph=build_report_graph(dependencies) if agents is None else build_report_graph(dependencies,enabled)
@@ -346,6 +373,10 @@ async def run_report_graph(dependencies:Dependencies,task_id:str,agents=None):
     except TaskPaused:return dependencies.store.get_task(task_id)
 
 async def run_template_graph(dependencies:Dependencies,task_id:str,agents=None):
+    return await _in_task_package(dependencies,task_id,
+        lambda:_run_template_graph(dependencies,task_id,agents))
+
+async def _run_template_graph(dependencies:Dependencies,task_id:str,agents=None):
     enabled=_enabled_agents(agents)
     _record_agent_scope(dependencies.store,task_id,'template',enabled)
     graph=build_template_graph(dependencies) if agents is None else build_template_graph(dependencies,enabled)

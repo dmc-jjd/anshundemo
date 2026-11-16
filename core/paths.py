@@ -1,33 +1,41 @@
 """三个「按包解析」的路径出口：数据根 / 包目录 / 客户模板目录。
 
 三不变量（与 `core/packages/` 同一套，硬约束）：
-    ① 模块级「包派生常量」必须为零——本模块只持**部署级**配置（数据根、模板根），
+    ① 模块级「包派生常量」必须为零——本模块只持**部署级**配置（数据基根、模板根），
        三个取值函数一律函数内解析当前包，绝不在 import 期求值；
     ② `configure_*()` 只许启动期 / 子进程初始化期调用，绝不许请求期切包；
     ③ `package` 不许进 artifact payload（M1 边界；进产物 = G-GRAPH 变）。
 
-取值口径（S 系列里程碑一直在用的三条错误语义，逐字保留）：
-    - 未配置数据根      → `data_root_not_configured`
-    - 未配置模板目录    → `template_dir_not_configured`
-    - 已配置但目录不存在 → `template_dir_missing:<包名>`（不静默回落到别的包）
-    - 包目录不存在      → `package_not_found:<包名>`（`core.packages.registry.PackageError`）
+M2 的数据根分家（`data/packages/<包>/`，部署级价目表在 `data/shared/`）：
+    基根（部署级）          `configure_data_root()` 注入，来自 `REPORT_DEMO_DATA`，缺省 `<repo>/data`
+    包数据根（包派生）      `<基根>/packages/<包名>` = `demo.sqlite3` / `artifacts/` / `uploads/` / `hotspot/`
+    共享数据根（部署级）    `<基根>/shared/`，例如 `token-pricing.json`（不按包分）
 
-与 `core/packages/` 的分工：
-    包目录/模板目录**由包名解析**（`packages/<pkg>`、`templates/<pkg>`），唯一事实源是
-    `core.packages.context` 的 ContextVar；本模块只做「这台机器上根目录在哪」这一层部署配置。
-    数据根在 M1 **仍未按包隔离**（迁移脚本与 Store 改归属 M2），`data_root()` 因此保持
-    「部署级单根」，只是把单槽换成「ContextVar 覆盖 + 进程默认值」，为 M2 留出接缝。
+**未迁移旧数据根的回落（一次，且带 warning；绝不静默）**
+    代码先合入、真实 `data/` 尚未迁移时，`<基根>/packages/<默认包>/` 不存在、而
+    `<基根>/demo.sqlite3` 还在——这正是「旧单根布局」。此时默认包按旧根解析并
+    `logging.warning` 一次；迁移完成后新目录存在，自动走新布局。非默认包**永远不回落**
+    （否则 B 会读到 A 的数据，那才是真正的串包）。
+
+取值口径（S 系列里程碑一直在用的三条错误语义，逐字保留）：
+    - 未配置数据基根      → `data_root_not_configured`
+    - 未配置模板目录      → `template_dir_not_configured`
+    - 已配置但目录不存在  → `template_dir_missing:<包名>`（不静默回落到别的包）
+    - 包目录不存在        → `package_not_found:<包名>`（`core.packages.registry.PackageError`）
 """
 
 from __future__ import annotations
 
+import logging
 from contextvars import ContextVar
 from pathlib import Path
 
 from core.packages import context as _context
 from core.packages import registry as _registry
 
-#: 部署级数据根（不是包派生值）：由宿主包在启动期配置一次。
+_LOG = logging.getLogger(__name__)
+
+#: 部署级数据基根（不是包派生值）：由宿主包在启动期配置一次。
 #: 每个工具子进程也会自己配置一次（`_configure_package`）——那是在**新进程的主线程**里，
 #: 所以下面这个 ContextVar 覆盖对它有效；而线程池里的工作线程拿不到主线程设的 ContextVar，
 #: 于是必须保留进程级默认值（`_data_root_default`）作为回落。
@@ -37,22 +45,69 @@ _data_root_var: ContextVar[Path | None] = ContextVar('omd_data_root', default=No
 #: 显式模板目录覆盖（legacy 注入面）。缺省 `None` = 按包名解析到 `templates/<包名>`。
 _template_dir_var: ContextVar[Path | None] = ContextVar('omd_template_dir', default=None)
 
+#: 旧单根回落的 warning 只打一次（进程级）；`data/packages/<包>/` 一出现就再也不会回落。
+_legacy_root_warned = False
+
 
 def configure_data_root(path) -> None:
-    """配置**部署级**数据根（M1 仍是单根；M2 才按包分家）。"""
+    """配置**部署级数据基根**（`data/` 的父级布局，不是某个包的数据根）。
+
+    子进程传进来的也是基根（`<repo>/data`），不是包的数据根——包根由包名派生。
+    """
     global _data_root_default
     _data_root_default = Path(path)
     _data_root_var.set(_data_root_default)
 
 
-def data_root(package: str | None = None) -> Path:
-    """数据根。`package` 参数在 M1 **不改变返回值**（数据根迁移属 M2），保留是为 M2 的调用面。"""
+def _configured_base() -> Path:
     override = _data_root_var.get()
     if override is not None:
         return override
     if _data_root_default is None:
         raise RuntimeError('data_root_not_configured')
     return _data_root_default
+
+
+def data_root_base() -> Path:
+    """部署级数据基根（`data/`）：共享价目表、迁移脚本都以它为准。"""
+    return _configured_base()
+
+
+def resolve_data_root(base, package=None) -> Path:
+    """纯函数：`<基根>/packages/<包>`；默认包在旧单根布局下回落 `<基根>`（带一次 warning）。
+
+    为什么单独抽成纯函数：宿主 `config.py` 的 `DATA` 是 import 期常量，必须与运行期
+    `data_root()` 用**同一段判定**，否则「迁移前重启」时两处会指向不同的根（一个旧、一个新，
+    现场表现是任务列表空但文件都在）。判定只看目录事实，不缓存结果。
+    """
+    global _legacy_root_warned
+    base = Path(base)
+    name = str(package) if package else _context.current_package()
+    candidate = base / 'packages' / name
+    if candidate.is_dir():
+        return candidate
+    if name == _context.default_package() and (base / 'demo.sqlite3').is_file():
+        if not _legacy_root_warned:
+            _legacy_root_warned = True
+            _LOG.warning(
+                'legacy_data_root_in_use: %s 仍是旧单根布局（没有 packages/%s/）；'
+                '按默认包回落旧根，迁移后自动切到 data/packages/%s/',
+                base, name, name)
+        return base
+    return candidate
+
+
+def data_root(package: str | None = None) -> Path:
+    """**包数据根**：`<基根>/packages/<包名>`；`package=None` = 当前上下文的包。
+
+    默认包在未迁移布局下回落旧根（见 `resolve_data_root`，一次 warning）；非默认包不回落。
+    """
+    return resolve_data_root(_configured_base(), package)
+
+
+def shared_data_root() -> Path:
+    """部署级共享数据根（`<基根>/shared/`）：价目表等**不按包分**的数据。"""
+    return _configured_base() / 'shared'
 
 
 def configure_package_dir(path) -> None:

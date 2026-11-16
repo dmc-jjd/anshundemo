@@ -3,6 +3,7 @@ import asyncio,hashlib,uuid,zipfile
 from datetime import date
 from pathlib import Path
 from core import paths
+from core.package_store import PackageStores
 from fastapi import FastAPI,Request,UploadFile,File,HTTPException,BackgroundTasks,Header
 from fastapi.responses import HTMLResponse,FileResponse,Response,JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -27,10 +28,14 @@ from .final_document_api import router as final_document_router
 from .hotspot_api import router as hotspot_router
 from .editor_api import router as editor_router
 from .chat_api import router as chat_router
+from .packages_api import (artifact_file, files_for, idempotent, resolve_files,
+                           resolve_package, router as packages_router, uploads_for)
 from .api_views.writing import apply_slot_values,assemble_review_view,draft_content_hash,DRAFT_SCHEMA_OUTDATED_DETAIL
 
-store=Store(); deps=Dependencies(store)
+store=PackageStores(); deps=Dependencies(store)
 app=FastAPI(title='安顺月报工作台 Demo')
+# 客户包注册表（GET /api/packages）：刻意不进 OpenAPI（与 hotspot/editor 同一约定）。
+app.include_router(packages_router)
 # 手动定义草稿的三个接口（选区→选择题→占位符/字段 JSON），刻意不进 OpenAPI：
 # 见 app/template_draft_api.py 与 docs/模板字段手动定义设计.md。
 app.include_router(manual_definition_router)
@@ -46,8 +51,7 @@ app.include_router(final_document_router)
 app.include_router(hotspot_router);app.include_router(editor_router)  # 终稿 canvas-editor 的 docx 存取（见 app/editor_api.py），同样刻意不进 OpenAPI
 app.include_router(chat_router)  # D 方案临时对话通道（思考流/搜索流/流式回答），同样不进 OpenAPI：见 app/chat_api.py
 app.mount('/static',StaticFiles(directory=Path(__file__).parent/'static'),name='static')
-UPLOADS=DATA/'uploads'; UPLOADS.mkdir(exist_ok=True)
-
+UPLOADS=DATA/'uploads'; UPLOADS.mkdir(parents=True,exist_ok=True)
 def get_task(task_id):
     try: return store.get_task(task_id)
     except KeyError: raise HTTPException(404,'task_not_found')
@@ -68,15 +72,16 @@ def workflow_graphs():
     return result
 
 @app.post('/api/files')
-async def upload(file:UploadFile=File(...)):
+async def upload(request:Request,file:UploadFile=File(...)):
     name=Path(file.filename or '').name
     if name!=file.filename or not name.lower().endswith(('.doc','.docx','.xlsx')): raise HTTPException(400,'invalid_filename_or_type')
     content=await file.read()
     if len(content)>100_000_000: raise HTTPException(413,'file_too_large')
     sha=hashlib.sha256(content).hexdigest(); fid=f'file-{sha[:20]}'
-    dest=UPLOADS/f'{fid}{Path(name).suffix.lower()}'
+    folder=uploads_for(store,resolve_package(_requested_package(request)),UPLOADS); folder.mkdir(parents=True,exist_ok=True)
+    dest=folder/f'{fid}{Path(name).suffix.lower()}'
     if not dest.exists(): dest.write_bytes(content)
-    remember_upload_name(UPLOADS,fid,name)
+    remember_upload_name(folder,fid,name)
     from core.tools.doc97 import is_legacy_doc
     readable=is_legacy_doc(dest) or zipfile.is_zipfile(dest)  # .doc 不是 ZIP，但完全可读
     reason=None if readable else ('legacy_doc_unreadable' if dest.suffix.lower()=='.doc' else 'not_unencrypted_ooxml')
@@ -114,34 +119,30 @@ class TaskCreate(BaseModel):
     event_threshold:float|None=Field(default=None,gt=0,le=1)
     issue_number:int|None=Field(default=None,ge=1)
     publication_date:date|None=None
-
-def _resolve_files(ids:list[str]):
-    out=[]
-    for fid in ids:
-        paths=list(UPLOADS.glob(fid+'.*'))
-        if not paths: raise HTTPException(404,f'file_not_found: {fid}')
-        out.append(str(paths[0]))
-    return out
+def _requested_package(request:Request)->str:  # 目标客户包（空=默认包）；头/查询参数，不进 OpenAPI
+    return request.headers.get('X-Report-Package') or request.query_params.get('package','')
+def _resolve_files(ids:list[str],package:str=''):
+    target=resolve_package(package); return resolve_files(store,ids,target,UPLOADS),target
 
 @app.post('/api/template-tasks')
 async def template_task(req:TaskCreate,request:Request,background_tasks:BackgroundTasks,idempotency_key:str|None=Header(None)):
-    paths=_resolve_files(req.file_ids)
+    paths,package=_resolve_files(req.file_ids,_requested_package(request))
     if len(paths)<2: raise HTTPException(422,'at_least_two_uploaded_reports_required')
     if any(not path.lower().endswith(('.doc','.docx')) for path in paths):raise HTTPException(422,'docx_reports_required')
     if len({hashlib.sha256(Path(path).read_bytes()).hexdigest() for path in paths})!=len(paths):
         raise HTTPException(422,'duplicate_reports')
     task_id=uuid.uuid4().hex
     if idempotency_key:
-        existing=store.idempotent('template:'+idempotency_key,task_id)
+        existing=idempotent(store,'template:'+idempotency_key,task_id,package)
         if existing!=task_id: return store.get_task(existing)
-    template_name=resolve_template_name(UPLOADS,req.file_ids,await template_name_from_request(request))
-    state=TaskState(id=task_id,kind='template',phase='queued',input_refs=req.file_ids,metadata={'paths':paths,'template_name':template_name})
+    template_name=resolve_template_name(uploads_for(store,package,UPLOADS),req.file_ids,await template_name_from_request(request))
+    state=TaskState(id=task_id,package=package,kind='template',phase='queued',input_refs=req.file_ids,metadata={'paths':paths,'template_name':template_name})
     store.put_task(state); background_tasks.add_task(run_template_graph,deps,task_id)
     return state
 
 @app.post('/api/report-tasks')
-async def report_task(req:TaskCreate,background_tasks:BackgroundTasks,idempotency_key:str|None=Header(None)):
-    paths=_resolve_files(req.file_ids)
+async def report_task(req:TaskCreate,request:Request,background_tasks:BackgroundTasks,idempotency_key:str|None=Header(None)):
+    paths,package=_resolve_files(req.file_ids,_requested_package(request))
     if len(paths)!=1 or not paths[0].lower().endswith('.xlsx'): raise HTTPException(422,'one_xlsx_required')
     rules={}
     if req.template_ref!='anshun-monthly-colored':
@@ -150,9 +151,9 @@ async def report_task(req:TaskCreate,background_tasks:BackgroundTasks,idempotenc
         except (KeyError,ValueError): raise HTTPException(409,'confirmed_two_report_template_required')
     task_id=uuid.uuid4().hex
     if idempotency_key:
-        existing=store.idempotent('report:'+idempotency_key,task_id)
+        existing=idempotent(store,'report:'+idempotency_key,task_id,package)
         if existing!=task_id: return store.get_task(existing)
-    state=TaskState(id=task_id,kind='report',phase='queued',template_ref=req.template_ref,input_refs=req.file_ids,metadata={'input_path':paths[0],'report_month':req.report_month,'report_issue':req.issue_number,'report_date':req.publication_date,'sheet_index':req.sheet_index,'mode':req.mode,'event_scope':'negative_or_warning','event_scope_confirmed':True,'event_scope_applies_to':'first_section_four_categories_districts_top10','event_scope_authority':'user_confirmed_2026_11_06','template_rules':task_feature_snapshot(rules),'event_threshold':req.event_threshold or rules.get('event_threshold',.65)})
+    state=TaskState(id=task_id,package=package,kind='report',phase='queued',template_ref=req.template_ref,input_refs=req.file_ids,metadata={'input_path':paths[0],'report_month':req.report_month,'report_issue':req.issue_number,'report_date':req.publication_date,'sheet_index':req.sheet_index,'mode':req.mode,'event_scope':'negative_or_warning','event_scope_confirmed':True,'event_scope_applies_to':'first_section_four_categories_districts_top10','event_scope_authority':'user_confirmed_2026_11_06','template_rules':task_feature_snapshot(rules),'event_threshold':req.event_threshold or rules.get('event_threshold',.65)})
     parameters={key:value for key,value in req.model_dump(mode='json').items() if key in ('issue_number','publication_date') and value is not None}
     if parameters:
         state.metadata['report_parameters']=parameters
@@ -597,7 +598,7 @@ def export(task_id:str,req:ExportRequest):
     data=export_docx(draft,store.get_artifact(draft['fact_ref']),None,req.mode,issues,local_store=store,
                      overrides=state.metadata.get('final_overrides') or None,features=effective_features(store,state))
     ref=store.put_artifact(task_id,'export_meta',{'mode':req.mode,'fact_ref':draft['fact_ref'],'draft_hash':content_hash,'sha256':hashlib.sha256(data).hexdigest()})
-    path=DATA/'artifacts'/f'{ref}.docx'; path.write_bytes(data)
+    path=files_for(store,task_id)/f'{ref}.docx'; path.write_bytes(data)
     return {'artifact_id':ref,'download_url':f'/api/artifacts/{ref}/download','sha256':hashlib.sha256(data).hexdigest()}
 
 @app.get('/api/artifacts/{artifact_id}')
@@ -614,6 +615,6 @@ def chart_image(artifact_id:str):
 @app.get('/api/artifacts/{artifact_id}/download')
 def download(artifact_id:str):
     store.get_artifact(artifact_id)
-    path=DATA/'artifacts'/f'{artifact_id}.docx'
+    path=artifact_file(store,artifact_id,'.docx')
     if not path.exists(): raise HTTPException(404,'download_not_found')
     return FileResponse(path,media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',filename='安顺月报结构演示稿.docx')

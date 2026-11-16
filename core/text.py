@@ -238,10 +238,13 @@ _JIEBA = None
 def configure_tokenizer(package_dir=None) -> None:
     """声明客户包目录（幂等，不加载词典）；由 `_configure_package()` 在子进程初始化时调用。
 
-    **M1 起的语义（与旧版不同，别照旧注释理解）**：
-      - 首次声明（jieba 还没初始化）= 决定「哪个包进共享 FREQ」：它的词表在首次 `tokenize()`
-        时 `add_word` 注入（默认包 / 工具子进程各自属于这种情况）；
-      - 之后声明别的包 = **只登记覆盖层**，不 `add_word`。
+    **M2 起的语义（按「部署默认包」而不是「首个声明者」定归属，别照旧注释理解）**：
+      - 部署默认包（`REPORT_PACKAGE`，缺省 `anshun_monthly`）= **唯一**进共享 FREQ 的包：
+        它的词表在首次 `tokenize()` 时 `add_word` 注入；
+      - 任何非默认包 = **只登记覆盖层**，不 `add_word`。
+    于是**父进程与工具子进程对同一个包走同一套机制**（M1 的「首个声明者赢」会让 B 的
+    工具子进程 add_word B、父进程走 A+覆盖层，同一句文本切出两套 token：实测
+    `['平坝','区','社区','卫生']` vs `['平坝区','社区卫生']`——M2 必须消灭这个分叉）。
 
     为什么不并集注入（实测数据，2026-11-16）：
       先把 A 的词注入、再 `add_word` 注入 B 包 13 个词后，A 包真实语料 **245/28789 条记录的
@@ -249,18 +252,35 @@ def configure_tokenizer(package_dir=None) -> None:
       `cc27ce37…`。根因是 `add_word` 会改**全局** `FREQ`（已有词的词频、`FREQ.total`、以及
       新词的 DAG 前缀可达性），与「A 的文本里不含 B 的词」无关，调 freq 也绕不开。
       → 所以：**新增包对既有包必须零影响**；覆盖层是正解，不是过渡方案，别"优化"回并集注入。
+
+    为什么这个改动不动 A 的分词：A 是本部署的默认包，M1 时期父进程与 A 的工具子进程本就
+    由它 `add_word`（各自进程里的首个声明者恰好都是 A）；现在只是把「首个声明者」换成
+    「部署默认包」，A 的注入词、顺序、时机都不变（G-GOLDEN 逐字节为证）。
     """
     if package_dir is None:
         return
     global _TOKENIZER_PACKAGE_DIR
     directory = Path(package_dir)
-    if not _TOKENIZER_READY:
-        # 首次声明：记为「待注入的那个包」；真正注入推迟到首次 tokenize（见下）。
+    if _is_default_package_dir(directory):
+        # 默认包：唯一 FREQ 注入者；真正注入推迟到首次 tokenize（见 `_ensure_tokenizer`）。
         _TOKENIZER_PACKAGE_DIR = directory
         return
-    if _TOKENIZER_INJECTED_DIR is not None and _same_dir(directory, _TOKENIZER_INJECTED_DIR):
-        return
     _register_overlay(directory)
+
+
+def _is_default_package_dir(directory: Path) -> bool:
+    """这个目录是不是「部署默认包」？默认包 → 进 FREQ；其余 → 覆盖层。
+
+    解析不出默认包目录时（测试里的临时 `REPORT_PACKAGES_ROOT` 不含默认包）退化为
+    M1 的「首个声明者进 FREQ」语义——那是旧行为，不是错误，别在这里抛。
+    """
+    try:
+        from core import paths
+        from core.packages.context import default_package
+
+        return _same_dir(Path(directory), paths.package_dir(default_package()))
+    except Exception:
+        return True
 
 
 def _same_dir(left: Path, right: Path) -> bool:
@@ -271,12 +291,18 @@ def _same_dir(left: Path, right: Path) -> bool:
 
 
 def _dictionary_source_dir() -> Path | None:
-    """词典来源目录：显式注入的包目录 → 宿主配置的包目录 → `None`（只用通用词典）。"""
+    """词典来源目录：显式声明的默认包目录 → 部署默认包目录 → `None`（只用通用词典）。
+
+    为什么兜底是「部署默认包」而不是「当前上下文包」（M2）：FREQ 的注入者必须与请求
+    无关，否则同一个进程里谁先分词谁就改全局基线（A 的 28789 条记录会随请求顺序漂移）。
+    """
     if _TOKENIZER_PACKAGE_DIR is not None:
         return _TOKENIZER_PACKAGE_DIR
     try:
         from core import paths
-        return paths.package_dir()
+        from core.packages.context import default_package
+
+        return paths.package_dir(default_package())
     except Exception:
         return None
 

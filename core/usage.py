@@ -12,8 +12,22 @@ PRICES={
  'deepseek-v4-pro':{'off_peak':{'cached_input':.15,'input':4.5,'output':13.5},'peak':{'cached_input':.30,'input':9,'output':27}}}
 ALIASES={'deepseek-v4-flash':'deepseek-flash','deepseek-v4-flash-vision-exp':'deepseek-flash','DeepSeek-V4.1-Flash-1017':'deepseek-flash','DeepSeek-V4-Pro-0813':'deepseek-v4-pro'}
 
+def _pricing_path(store):
+    """价目表是**部署级**数据（M2：`data/shared/token-pricing.json`，不按包分）。
+
+    判定看 store 是否声明了包归属：按包路由的 store（`PackageStores` / `Store(package=...)`）
+    写共享根；显式给根的 `Store(tmp_path)`（测试/脚本）仍落在自己的根下——旧口径零改动。
+    """
+    if getattr(store,'package',None):
+        from .paths import shared_data_root
+        try:
+            return shared_data_root()/'token-pricing.json'
+        except RuntimeError:   # 未配置数据基根的裸进程：退回 store 自己的根
+            pass
+    return store.root/'token-pricing.json'
+
 def configuration(store):
-    path=store.root/'token-pricing.json'
+    path=_pricing_path(store)
     config=json.loads(path.read_text(encoding='utf-8')) if path.exists() else {'mode':'auto','currency':'CNY','source':SOURCE,'version':PRICE_VERSION,'models':copy.deepcopy(PRICES),'historical_model':None}
     config.setdefault('web_per_1000',{'search':5.,'fetch':5.})
     return config
@@ -43,7 +57,8 @@ def save_configuration(store,config):
     if data['historical_model'] and data['historical_model'] not in data['models']:raise ValueError('historical_pricing_model_missing')
     import math
     if set(data['web_per_1000'])!={'search','fetch'} or any(not math.isfinite(v) or not 0<=v<=100000 for v in data['web_per_1000'].values()):raise ValueError('invalid_web_pricing')
-    path=store.root/'token-pricing.json';tmp=path.with_suffix('.tmp')
+    path=_pricing_path(store);tmp=path.with_suffix('.tmp')
+    path.parent.mkdir(parents=True,exist_ok=True)
     tmp.write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding='utf-8');tmp.replace(path)
     return data
 

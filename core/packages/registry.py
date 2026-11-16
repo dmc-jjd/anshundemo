@@ -316,12 +316,38 @@ def invalidate(package: str | None = None) -> None:
 def bootstrap() -> tuple[str, ...]:
     """启动期引导：**只做发现**（scandir，100 包 0.11 ms），不解析任何包内文件。
 
-    宿主 `app/__init__.py` 的入口接线留给下一个里程碑（M3 起 `GET /api/packages` 需要它）；
-    本函数存在是为了让「启动只 scandir」这条策略有一个可调用、可测量、可测试的落点，
-    而不是藏在某段 import 副作用里。默认包的 fail-fast 仍由四个注册表的 `configure()` 负责
+    宿主 `app/__init__.py` 在 import 期调它一次（M2 起）——`GET /api/packages` 与按需加载
+    都建立在同一份「目录名清单」上。默认包的 fail-fast 仍由四个注册表的 `configure()` 负责
     （**单包**，不是 N 包全量 configure——后者实测 7.69 s）。
     """
     return discover()
+
+
+def catalog() -> tuple[dict, ...]:
+    """客户包注册表：`GET /api/packages` 的唯一数据面（发现 + 按需加载 + 健康判定）。
+
+    **坏包仍在列表里，但 `usable=False` 且 `error` 说明原因**——不静默剔除、不回落默认包：
+    前者会让运维看不见坏包，后者会让「建任务」假装成功。
+
+    加载策略：逐包 `load()`（指纹缓存命中只付一次扫描）+ 解析 manifest/template/提示词
+    bundle。启动期**不调用**本函数（100 包全量 configure = 7.69 s）；它只在注册表端点
+    被请求时执行，结果对象进 LRU，改包内文件即因指纹失效。
+    """
+    entries: list[dict] = []
+    for name in discover():
+        entry = {'package': name, 'name': '', 'report_type': '', 'version': '',
+                 'usable': False, 'status': 'unavailable', 'error': None}
+        try:
+            loaded = load(name)
+            manifest = loaded.manifest
+            loaded.template
+            loaded.prompt_bundle       # prompts/index.yaml + roles + 角色校验
+            entry.update(name=manifest.report_type, report_type=manifest.report_type,
+                         version=manifest.version, usable=True, status='ok')
+        except Exception as exc:       # noqa: BLE001  注册表要能描述任何坏包
+            entry['error'] = f'{type(exc).__name__}: {exc}'
+        entries.append(entry)
+    return tuple(entries)
 
 
 def cache_info():
