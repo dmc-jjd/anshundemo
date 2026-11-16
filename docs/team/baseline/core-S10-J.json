@@ -1,6 +1,6 @@
 {
   "core_files": 98,
-  "core_hash": "f23aa25c4660d03f846b84ea0c64927f545a48872c89f443cd0839a875579c4f",
+  "core_hash": "22aca1509fa4f2d9c1ba70b3c2894bbd9843120c6dc483c7efec8e731a15df5e",
   "core_files_detail": {
     "core/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "core/agent.py": "7e56e5f9b45fa3f30e258accb81b2779a23fe21abcc57a382344d576dc45ea99",
@@ -29,7 +29,7 @@
     "core/packages/__init__.py": "46eb1db3f1eeab901c216519c7e4d14bb9fd1061d6af31713e9ddd167b593ddf",
     "core/packages/context.py": "aaaedf9545abd4cb4fc944bd990b4576623ebd6e1bebe5ce149bc68a4d4794b8",
     "core/packages/registry.py": "b8c7a1d1b2d6c4a8294a6456e0e06c56d287ccc15b8887efc738ddf5b6a4a5ac",
-    "core/paths.py": "0efa94d96fc51b6b5b8565ea8d77f587f54b21b131ee29fe87c8e615dc2996df",
+    "core/paths.py": "7e0d15686ea0e72c3fbc631862d07010cf35616dd66de6125eb5511d86d08c4b",
     "core/ports.py": "02f247c495a5d3ba4b7c02befc80196c87b38e05912c8bcb742b4e3be6dca3ab",
     "core/prompts/__init__.py": "01dfb36fe34d5ade60323342511c1d73896733e11aac7e544aa3db613e5cf64a",
     "core/prompts/base/README-提示词对照表.md": "3a463534525cff690babcbff5a2e5dd131cc9546ad5d43d686f877d76020f8e6",
@@ -175,5 +175,5 @@
     "app/writing_review.py": "c11a4cccaf78e032298f9e0b8d0ed9d47626020b78a49b87b87c1f62cf09f47d"
   },
   "python": "3.13.18",
-  "recorded_at": "2026-11-16T19:49:21+08:00"
+  "recorded_at": "2026-11-16T20:17:32+08:00"
 }

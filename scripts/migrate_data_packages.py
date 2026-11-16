@@ -9,10 +9,16 @@
 
 设计要点（真实执行时按这些点验收）：
     * **默认 dry-run**：不加 `--apply` 只打印计划（文件数/字节/聚合 sha），不碰盘；
+    * **搬前预检（失败即拒绝，不留半成品）**：db 被别的进程占用（Windows 上 `os.replace`
+      会 `WinError 32`）或源里有 `-wal`/`-journal` → 明确拒绝并提示「先停服务」，此时
+      **一个目录都不建**：空的目标目录正是旧回落判据误判「已迁移」的原因；
     * **幂等**：`.migration-state.json` 记录每一项的 files/bytes/sha/status；第二次跑
-      「源里没东西了」→ 打印 already_migrated 并退出 0，**零写入**；
+      「源里没东西了 + 目标根 db 与文件数都对得上」→ 打印 already_migrated 并退出 0，**零写入**；
+      只有 state 说 done、目标根却是空目录/文件数不符 → 不算已迁移，照常重跑（已搬的按 sha 跳过）；
     * **逐项原子落盘**：每一项搬完立刻原子写 state（tmp+os.replace）；中途失败可重跑，
       已搬的文件按 sha 相等识别为「已搬」并跳过，不会半搬；
+    * **失败清理**：任何异常路径都把自己本次创建、且仍为空的目录删掉，state 记
+      `status: failed` + `error`；**绝不留空目录**（只删空目录，里面还有数据就原样留着）；
     * **不丢数据**：搬前算 `(相对路径 → sha256)` 聚合，搬后重算并逐项比对；DB 的
       tasks/artifacts/events 行数也前后比对；不一致 → 退出码 1（state 保留，便于排查）；
     * **artifacts.path 幂等改写**：旧行存绝对路径，搬到新根后按前缀 UPDATE（0 行 = 已改过）；
@@ -186,9 +192,45 @@ def rewrite_db_paths(db: Path, old_root, new_root) -> int:
     return changed
 
 
-def move_file(src: Path, dst: Path) -> str:
+def _mkdir_tracked(directory: Path, created: list[Path]) -> None:
+    """按需逐级建目录，并把**本次运行新建**的目录记进 `created`（失败时只回收这些）。
+
+    为什么不在执行前预建目标根：迁移可能第一步就失败（db 被占用），预建目录会留下空的
+    `packages/<包>/`；旧回落判据看目录存在，于是下次启动读空包根、0 条任务。
+    """
+    missing: list[Path] = []
+    current = directory
+    while not current.exists():
+        missing.append(current)
+        if current.parent == current:
+            break
+        current = current.parent
+    for path in reversed(missing):
+        try:
+            path.mkdir()
+        except FileExistsError:
+            continue
+        created.append(path)
+
+
+def _cleanup_created(created: list[Path]) -> list[str]:
+    """删掉本次运行创建、且**仍为空**的目录（自底向上）；返回删掉的路径。
+
+    只删空目录：`rmdir` 对非空目录抛 OSError，那里的东西是数据不是残渣，原样留着给人看。
+    """
+    removed: list[str] = []
+    for directory in sorted(created, key=lambda path: -len(path.parts)):
+        try:
+            directory.rmdir()
+        except OSError:
+            continue
+        removed.append(str(directory))
+    return removed
+
+
+def move_file(src: Path, dst: Path, created: list[Path] | None = None) -> str:
     """搬一个文件；目标已存在且内容相同 → 视为已搬（重跑/续搬），返回 'skipped'。"""
-    dst.parent.mkdir(parents=True, exist_ok=True)
+    _mkdir_tracked(dst.parent, created if created is not None else [])
     if dst.exists():
         if sha256_file(dst) != sha256_file(src):
             raise RuntimeError(f'migration_conflict: {src} 与 {dst} 内容不同，拒绝合并')
@@ -198,16 +240,17 @@ def move_file(src: Path, dst: Path) -> str:
     return 'moved'
 
 
-def move_tree(src: Path, dst: Path) -> dict:
+def move_tree(src: Path, dst: Path, created: list[Path] | None = None) -> dict:
     """逐文件搬 + 清空旧目录；返回 {'moved': n, 'skipped': n}。"""
     counts = {'moved': 0, 'skipped': 0}
+    tracker = created if created is not None else []
     if src.is_file():
-        counts[move_file(src, dst)] += 1
+        counts[move_file(src, dst, tracker)] += 1
         return counts
     root = src
     for path in files_under(root):
         relative = path.relative_to(root)
-        counts[move_file(path, dst / relative)] += 1
+        counts[move_file(path, dst / relative, tracker)] += 1
     # 自底向上删空目录（非空目录说明还有别的东西，留着让执行人看见）
     for directory in sorted((p for p in root.rglob('*') if p.is_dir()), key=lambda p: -len(p.parts)):
         try:
@@ -266,11 +309,61 @@ def describe(source: Path, package: str, rows: list[dict]) -> dict:
             'bytes': sum(item['bytes'] for item in rows)}
 
 
-def apply_forward(source: Path, package: str, rows: list[dict], state_path: Path) -> dict:
+def preflight(source: Path) -> None:
+    """搬任何东西之前的预检：失败即拒绝，且**一个目录都不建**。
+
+    Windows 上 `os.replace` 搬一个正被 sqlite 打开的库会 `PermissionError: [WinError 32]`。
+    探测用 `os.replace` 本身（改名 → 立刻改回），**不是** `open('r+b')`：sqlite 以
+    `FILE_SHARE_READ|FILE_SHARE_WRITE` 打开库，服务占着时 `open('r+b')` 照样成功（实测），
+    只有「改名/删除」这一步才会撞上共享冲突。改名-改回成对出现，不改文件内容。
+    """
     for suffix in ('-wal', '-journal'):
         if (source / f'{DB_NAME}{suffix}').exists():
             raise RuntimeError(f'source_db_active_writer: 发现 {DB_NAME}{suffix}；'
                                '先停写库进程（uvicorn）再 --apply，避免搬一个正在写的库')
+    database = source / DB_NAME
+    if not database.is_file():
+        return
+    probe = database.with_name(f'.{database.name}.probe')
+    if probe.exists():
+        raise SystemExit(
+            f'migration_aborted: 发现上次探测残留 {probe.name} 而 {DB_NAME} 情况不确定，'
+            '先人工确认库文件再去掉残留')
+    try:
+        os.replace(database, probe)
+    except OSError as exc:
+        raise SystemExit(
+            f'migration_aborted: {DB_NAME} 正被其它进程占用（先停止服务再迁移）：{exc}') from exc
+    try:
+        os.replace(probe, database)
+    except OSError as exc:
+        raise SystemExit(
+            f'migration_aborted: 探测后无法把 {DB_NAME} 改回原名'
+            f'（内容暂存于 {probe}，先人工改名回来）：{exc}') from exc
+
+
+def apply_forward(source: Path, package: str, rows: list[dict], state_path: Path) -> dict:
+    """预检 + 失败兜底：拒绝时不留半成品；任何异常都删掉本次建的空目录并记 `failed`。"""
+    created: list[Path] = []
+    try:
+        preflight(source)
+        return _apply_forward(source, package, rows, state_path, created)
+    except BaseException as exc:
+        removed = _cleanup_created(created)
+        state = read_json(state_path) or {
+            'version': 1, 'source': str(source), 'package': package, 'items': {}}
+        state.update(version=1, source=str(source), package=package,
+                     target=str(source / 'packages' / package),
+                     shared=str(source / 'shared'),
+                     status='failed', error=str(exc) or exc.__class__.__name__,
+                     failed_at=stamp(), updated_at=stamp(),
+                     cleanup_removed_dirs=removed)
+        write_json(state_path, state)
+        raise
+
+
+def _apply_forward(source: Path, package: str, rows: list[dict], state_path: Path,
+                   created: list[Path]) -> dict:
     state = read_json(state_path) or {
         'version': 1, 'source': str(source), 'package': package,
         'target': str(source / 'packages' / package), 'shared': str(source / 'shared'),
@@ -301,7 +394,7 @@ def apply_forward(source: Path, package: str, rows: list[dict], state_path: Path
         if item['name'] == DB_NAME and item['src'].exists():
             item['db_before'] = db_counts(item['src'])
             item['db_ids'] = db_ids(item['src'])
-        counts = move_tree(item['src'], item['dst'])
+        counts = move_tree(item['src'], item['dst'], created)
         rewrites = 0
         if item['name'] == DB_NAME and item['dst'].exists():
             rewrites = rewrite_db_paths(item['dst'], str(source), str(item['dst'].parent))
@@ -419,6 +512,29 @@ def apply_rollback(source: Path, state_path: Path, package: str) -> dict:
     return state
 
 
+def already_migrated(source: Path, package: str, state: dict, rows: list[dict]) -> bool:
+    """「真的已迁移」= state 说 done **且** 目标根对得上（非空 db + 文件数一致）。
+
+    只看 state 会把「上次迁移失败留下的空目录 + 旧 done 台账」当成完成；只看目录存在更糟
+    （空目录 = 有效包根 → 应用读空库）。两条都对齐才算；否则照常重跑（已搬的按 sha 跳过，
+    幂等）。`rows` 非空 = 旧根还有东西没搬，同样不算完成。
+    """
+    if state.get('status') != 'done' or rows or source_leftovers(source):
+        return False
+    target = source / 'packages' / package
+    database = target / DB_NAME
+    try:
+        if not (database.is_file() and database.stat().st_size > 0):
+            return False
+    except OSError:
+        return False
+    expected = sum(int(entry.get('files') or 0)
+                   for entry in state.get('items', {}).values()
+                   if entry.get('group') == 'package' and entry.get('status') == 'moved')
+    actual = digest_of(target)['files'] if target.is_dir() else 0
+    return expected > 0 and actual == expected
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description='旧单根 data/ → data/packages/<包>/ 迁移（默认 dry-run）')
     parser.add_argument('--source', default=None, help='旧数据根（默认：REPORT_DEMO_DATA 或 <repo>/data）')
@@ -459,7 +575,7 @@ def main(argv=None) -> int:
         return 0
 
     state = read_json(state_path) or {}
-    if state.get('status') == 'done' and not rows and not source_leftovers(source):
+    if already_migrated(source, package, state, rows):
         payload = {'mode': 'already-migrated', 'source': str(source), 'package': package,
                    'target': state.get('target'), 'verified': state.get('verified'),
                    'db_path_rewrites': state.get('verify', {}).get('db_path_rewrites')}
@@ -475,7 +591,11 @@ def main(argv=None) -> int:
         return 0
 
     print(json.dumps({'mode': 'apply', **description}, ensure_ascii=False, indent=2))
-    state = apply_forward(source, package, rows, state_path)
+    try:
+        state = apply_forward(source, package, rows, state_path)
+    except SystemExit as exc:          # 预检拒绝：state 已记 failed，这里只把话说清楚
+        print(f'[error] {exc}', file=sys.stderr)
+        return 2
     summary = {'mode': 'apply-done', 'status': state['status'], 'verified': state.get('verified'),
                'verify': state.get('verify'), 'target': state['target'],
                'db_path_rewrites': state.get('verify', {}).get('db_path_rewrites'),

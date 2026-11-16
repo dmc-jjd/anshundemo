@@ -12,10 +12,14 @@ M2 的数据根分家（`data/packages/<包>/`，部署级价目表在 `data/sha
     共享数据根（部署级）    `<基根>/shared/`，例如 `token-pricing.json`（不按包分）
 
 **未迁移旧数据根的回落（一次，且带 warning；绝不静默）**
-    代码先合入、真实 `data/` 尚未迁移时，`<基根>/packages/<默认包>/` 不存在、而
-    `<基根>/demo.sqlite3` 还在——这正是「旧单根布局」。此时默认包按旧根解析并
-    `logging.warning` 一次；迁移完成后新目录存在，自动走新布局。非默认包**永远不回落**
-    （否则 B 会读到 A 的数据，那才是真正的串包）。
+    代码先合入、真实 `data/` 尚未迁移时，`<基根>/packages/<默认包>/` 里**没有非空的
+    `demo.sqlite3`**、而 `<基根>/demo.sqlite3` 还在——这正是「旧单根布局」。此时默认包按
+    旧根解析并 `logging.warning` 一次；迁移完成后包里有了库，自动走新布局。非默认包
+    **永远不回落**（否则 B 会读到 A 的数据，那才是真正的串包）。
+
+    判据必须是「包里有没有非空 db」，不能是「包目录在不在」：迁移脚本先建目标目录再搬文件，
+    任何一次失败（哪怕第一步 db 被占用）都会留下空的 `packages/<包>/`；按目录判「已迁移」
+    则应用读空包根 → 0 条任务，用户视角就是「数据全没了」。
 
 取值口径（S 系列里程碑一直在用的三条错误语义，逐字保留）：
     - 未配置数据基根      → `data_root_not_configured`
@@ -45,7 +49,11 @@ _data_root_var: ContextVar[Path | None] = ContextVar('omd_data_root', default=No
 #: 显式模板目录覆盖（legacy 注入面）。缺省 `None` = 按包名解析到 `templates/<包名>`。
 _template_dir_var: ContextVar[Path | None] = ContextVar('omd_template_dir', default=None)
 
-#: 旧单根回落的 warning 只打一次（进程级）；`data/packages/<包>/` 一出现就再也不会回落。
+#: 包数据根的有效性判据：目录里必须有**非空**的 `demo.sqlite3`。0 字节的库是坏数据，
+#: 不算「已迁移」；空目录（迁移失败残留）更不算。
+_PACKAGE_DB = 'demo.sqlite3'
+
+#: 旧单根回落的 warning 只打一次（进程级）；包里一出现非空 db 就再也不会回落。
 _legacy_root_warned = False
 
 
@@ -73,26 +81,38 @@ def data_root_base() -> Path:
     return _configured_base()
 
 
+def _package_root_ready(directory: Path) -> bool:
+    """有效包根 = 里面有一个**非空** `demo.sqlite3`（`is_file()` 只看存在，0 字节不算）。"""
+    database = directory / _PACKAGE_DB
+    try:
+        return database.is_file() and database.stat().st_size > 0
+    except OSError:
+        return False
+
+
 def resolve_data_root(base, package=None) -> Path:
     """纯函数：`<基根>/packages/<包>`；默认包在旧单根布局下回落 `<基根>`（带一次 warning）。
 
     为什么单独抽成纯函数：宿主 `config.py` 的 `DATA` 是 import 期常量，必须与运行期
     `data_root()` 用**同一段判定**，否则「迁移前重启」时两处会指向不同的根（一个旧、一个新，
-    现场表现是任务列表空但文件都在）。判定只看目录事实，不缓存结果。
+    现场表现是任务列表空但文件都在）。判定只看盘上事实，不缓存结果。
+
+    为什么判据是 db 而不是目录：迁移脚本先建目录再搬文件，失败残留就是空目录；只认目录会
+    把「迁移失败」误判成「已迁移」，应用随即读空包根（0 条任务 = 用户视角的数据全丢）。
     """
     global _legacy_root_warned
     base = Path(base)
     name = str(package) if package else _context.current_package()
     candidate = base / 'packages' / name
-    if candidate.is_dir():
+    if _package_root_ready(candidate):
         return candidate
-    if name == _context.default_package() and (base / 'demo.sqlite3').is_file():
+    if name == _context.default_package() and (base / _PACKAGE_DB).is_file():
         if not _legacy_root_warned:
             _legacy_root_warned = True
             _LOG.warning(
-                'legacy_data_root_in_use: %s 仍是旧单根布局（没有 packages/%s/）；'
-                '按默认包回落旧根，迁移后自动切到 data/packages/%s/',
-                base, name, name)
+                'legacy_data_root_in_use: %s 没有 %s，按默认包回落旧根 %s'
+                '（迁移未完成或失败残留）',
+                candidate, _PACKAGE_DB, base)
         return base
     return candidate
 

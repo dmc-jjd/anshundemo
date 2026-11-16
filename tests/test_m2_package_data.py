@@ -62,15 +62,47 @@ def test_data_root_is_per_package(base: Path) -> None:
 
 def test_unmigrated_root_falls_back_once_with_warning(base: Path, monkeypatch, caplog) -> None:
     """旧单根布局：默认包回落旧根并 warning；非默认包永不回落（否则 B 读到 A 的数据）。"""
-    (base / 'demo.sqlite3').write_bytes(b'')
+    (base / 'demo.sqlite3').write_bytes(b'SQLite format 3\x00legacy')
     monkeypatch.setattr(paths, '_legacy_root_warned', False)
     with caplog.at_level('WARNING', logger='core.paths'):
         assert paths.data_root(A) == base
         assert any('legacy_data_root_in_use' in record.getMessage() for record in caplog.records)
         assert paths.data_root(B) == base / 'packages' / B
-    # 新根一旦出现，自动走新布局（不再回落）
+    # 包里一旦有了非空 db，自动走新布局（不再回落）
     (base / 'packages' / A).mkdir(parents=True)
+    (base / 'packages' / A / 'demo.sqlite3').write_bytes(b'SQLite format 3\x00migrated')
     assert paths.data_root(A) == base / 'packages' / A
+
+
+def test_empty_package_dir_is_not_a_migrated_root(base: Path, monkeypatch, caplog) -> None:
+    """★ 迁移失败残留的空 `packages/<包>/` 必须回落旧根（否则应用读空包根 = 0 条任务）。"""
+    (base / 'demo.sqlite3').write_bytes(b'SQLite format 3\x00legacy')
+    (base / 'packages' / A).mkdir(parents=True)                 # 只有空目录，没有 db
+    monkeypatch.setattr(paths, '_legacy_root_warned', False)
+    with caplog.at_level('WARNING', logger='core.paths'):
+        assert paths.data_root(A) == base
+        assert paths.data_root(A) == base                       # 再问一次仍回落
+    messages = [record.getMessage() for record in caplog.records
+                if 'legacy_data_root_in_use' in record.getMessage()]
+    assert len(messages) == 1                                   # 恰一次，不刷屏
+    assert 'demo.sqlite3' in messages[0] and str(base) in messages[0]
+    assert '迁移未完成或失败残留' in messages[0]
+
+
+def test_zero_byte_package_db_is_not_migrated(base: Path, monkeypatch) -> None:
+    """0 字节的库是坏数据，不算「已迁移」——仍回落旧根（判据是存在且 size>0）。"""
+    (base / 'demo.sqlite3').write_bytes(b'SQLite format 3\x00legacy')
+    (base / 'packages' / A).mkdir(parents=True)
+    (base / 'packages' / A / 'demo.sqlite3').write_bytes(b'')
+    monkeypatch.setattr(paths, '_legacy_root_warned', False)
+    assert paths.data_root(A) == base
+
+
+def test_non_default_package_never_falls_back_even_with_empty_dir(base: Path) -> None:
+    """非默认包永不回落（M2 串包语义不变：空目录返回空包根，绝不串到默认包的旧根）。"""
+    (base / 'demo.sqlite3').write_bytes(b'SQLite format 3\x00legacy')
+    (base / 'packages' / B).mkdir(parents=True)
+    assert paths.data_root(B) == base / 'packages' / B
 
 
 # --------------------------------------------------------------------------- #
@@ -239,3 +271,105 @@ def test_package_never_enters_artifact_payload(tmp_path: Path) -> None:
     assert payload == {'value': 1}
     assert 'package' not in payload
     assert set(TaskState.model_fields) >= {'package'}          # 只进任务状态
+
+
+# --------------------------------------------------------------------------- #
+# ⑤ 迁移脚本：失败不留空目录 / failed 台账 / 不轻信过期 done
+#    为什么必须机械钉住：脚本先建目录再搬文件，失败残留的空 `packages/<包>/` 会把
+#    「迁移失败」伪装成「已迁移」，应用随即读空库（用户视角：数据全没了）。
+# --------------------------------------------------------------------------- #
+def _load_migrator():
+    import importlib.util
+
+    path = REPO / 'scripts' / 'migrate_data_packages.py'
+    spec = importlib.util.spec_from_file_location('migrate_data_packages_under_test', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _seed_legacy_root(root: Path) -> None:
+    """造一份最小旧单根数据：真 sqlite 库（含 artifacts 行）+ artifacts/ + uploads/。"""
+    import sqlite3
+
+    root.mkdir(parents=True, exist_ok=True)
+    (root / 'artifacts').mkdir()
+    (root / 'artifacts' / 'a1.json').write_bytes(b'{"value":1}\n')
+    (root / 'uploads').mkdir()
+    (root / 'uploads' / 'u1.bin').write_bytes(b'upload-bytes')
+    conn = sqlite3.connect(str(root / 'demo.sqlite3'))
+    try:
+        conn.execute('CREATE TABLE tasks (id TEXT PRIMARY KEY)')
+        conn.execute('CREATE TABLE artifacts (id TEXT PRIMARY KEY, path TEXT)')
+        conn.execute('CREATE TABLE events (id INTEGER PRIMARY KEY)')
+        conn.execute("INSERT INTO tasks (id) VALUES ('t1')")
+        conn.execute("INSERT INTO artifacts (id, path) VALUES ('a1', ?)",
+                     (str(root / 'artifacts' / 'a1.json'),))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_migrate_failure_removes_own_empty_dirs_and_records_failed(tmp_path, monkeypatch) -> None:
+    """搬到目标根时失败（WinError 32 同型 PermissionError）→ 不留空目录 + status failed。
+
+    preflight 自己的「改名→改回」探测不拦（那个动作必须成功），只拦**搬进 `packages/`** 的
+    那一次 `os.replace`：这正是老 bug 的现场——目录已建、文件没搬成。
+    """
+    module = _load_migrator()
+    root = tmp_path / 'data'
+    _seed_legacy_root(root)
+    state_path = root / module.STATE_NAME
+    rows = module.plan(root, A)
+    before = sorted(path.name for path in root.iterdir())
+
+    real_replace = module.os.replace
+
+    def picky_replace(src, dst):
+        target = Path(str(dst))
+        if 'packages' in target.parts and target.name == module.DB_NAME:
+            raise PermissionError(32, 'The process cannot access the file '
+                                      'because it is being used by another process')
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(module.os, 'replace', picky_replace)
+    with pytest.raises(PermissionError):
+        module.apply_forward(root, A, rows, state_path)
+    monkeypatch.undo()
+
+    assert not (root / 'packages').exists()                    # ★ 失败绝不留空目录
+    assert sorted(path.name for path in root.iterdir()) == sorted([*before, module.STATE_NAME])
+    assert (root / 'demo.sqlite3').is_file() and (root / 'uploads' / 'u1.bin').is_file()
+    recorded = json.loads(state_path.read_text(encoding='utf-8'))
+    assert recorded['status'] == 'failed'
+    assert '32' in recorded['error'] or 'PermissionError' in recorded['error']
+    assert any(str(part).endswith('packages') for part in recorded['cleanup_removed_dirs'])
+
+
+def test_migrate_refuses_before_creating_anything_when_wal_present(tmp_path) -> None:
+    """预检发现 -wal 残留 → 拒绝；一个目录都不建，但台账要记 failed。"""
+    module = _load_migrator()
+    root = tmp_path / 'data'
+    _seed_legacy_root(root)
+    (root / f'{module.DB_NAME}-wal').write_bytes(b'')
+    state_path = root / module.STATE_NAME
+    rows = module.plan(root, A)
+
+    with pytest.raises(RuntimeError, match='source_db_active_writer'):
+        module.apply_forward(root, A, rows, state_path)
+    assert not (root / 'packages').exists()
+    recorded = json.loads(state_path.read_text(encoding='utf-8'))
+    assert recorded['status'] == 'failed'
+    assert 'source_db_active_writer' in recorded['error']
+
+
+def test_migrate_already_migrated_requires_target_db_and_file_count(tmp_path) -> None:
+    """state 说 done 但目标根是空目录/文件数不符 → 不算已迁移（否则把失败残留当完成）。"""
+    module = _load_migrator()
+    root = tmp_path / 'data'
+    (root / 'packages' / A).mkdir(parents=True)                # 只有空目录
+    state = {'status': 'done',
+             'items': {module.DB_NAME: {'status': 'moved', 'group': 'package', 'files': 1}}}
+    assert module.already_migrated(root, A, state, []) is False
+    (root / 'packages' / A / module.DB_NAME).write_bytes(b'SQLite format 3\x00')  # 有库无文件
+    assert module.already_migrated(root, A, state, []) is True
