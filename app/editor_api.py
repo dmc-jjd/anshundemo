@@ -116,7 +116,9 @@ def read_final_docx(task_id: str):
     store, state = _context(task_id)
     current = _payload(store, state)
     if current is None:
-        raise HTTPException(404, 'final_docx_not_found')
+        # 这是**正常状态**（任务只有生成稿、没在编辑页保存过），不是路由/路径错误：
+        # detail 带上可读说明，前端据此回退到 `metadata.draft_ref` 的产物下载。
+        raise HTTPException(404, 'final_docx_not_found: 该任务尚未保存编辑版报告，请先在编辑页保存，或改用草稿导出。')
     return Response(_docx_path(store, task_id, current['ref']).read_bytes(), media_type=DOCX_MEDIA,
                     headers={'Content-Disposition':
                              f'attachment; filename="{task_id}-final.docx"'})

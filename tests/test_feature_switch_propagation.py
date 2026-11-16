@@ -12,6 +12,8 @@
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 import app.workflow as workflow
@@ -73,8 +75,23 @@ def test_old_task_without_snapshot_still_ands_package(tmp_path, monkeypatch):
 
 
 def _confirmed_template(store):
-    from core.config import DATA
-    candidate = Store(DATA).get_artifact(CANDIDATE)
+    """从真实数据根取固定的候选模板，复制成一个「已确认」版本。
+
+    数据根必须用按包解析的那个（`app.config.DATA` → `data/packages/<包>/`）：
+    迁移之后真实产物已经搬进包根，旧单根常量 `core.config.DATA` 指向的
+    `data/` 只剩 packages/ 目录。两种布局都试一次，避免测试依赖迁移是否已执行。
+    """
+    from app.config import DATA as package_root
+    candidates = [Store(package_root),
+                  Store(Path(__file__).parent.parent / 'data')]
+    for candidate_store in candidates:
+        try:
+            candidate = candidate_store.get_artifact(CANDIDATE)
+            break
+        except KeyError:
+            continue
+    else:
+        raise KeyError(f'fixture_missing: {CANDIDATE}（已查按包根与旧单根）')
     return store.put_artifact('t', 'template_version',
                               {**candidate, 'status': 'confirmed_by_human', 'version': 1})
 

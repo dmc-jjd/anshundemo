@@ -496,6 +496,18 @@ async def _analyse_report_events(deps:Dependencies,task_id:str):
             return state
     return store.get_task(task_id)
 
+def _data_review_details(state):
+    """data_review 的产物引用：**只在真有产物时写键**。
+
+    关掉去重/分类后对应的 result_refs 根本不存在。写成 `None` 会让消费侧把
+    「用户主动关掉功能」当成「产物 id 是 None」去取（QA2 B1：KeyError: None → 确认 500）。
+    缺键 = 这段本期不产出；`core.storage.apply_decision` 按缺键跳过该段校验。
+    """
+    details={'metrics_ref':state.result_refs.get('calculate_metrics')}
+    for key,ref in (('event_ref','event_analysis'),('cluster_ref','cluster_event_themes'),('analysis_ref','event_analysis')):
+        if state.result_refs.get(ref):details[key]=state.result_refs[ref]
+    return details
+
 def _await_data_review(deps:Dependencies,task_id:str):
     store=deps.store;state=store.get_task(task_id)
     if state.cancel_requested: state.phase='cancelled'
@@ -510,12 +522,11 @@ def _await_data_review(deps:Dependencies,task_id:str):
             state.phase='failed'
             state.metadata['failure_message']='数据处理未完成，请查看运行动态并重试。'
         elif not any(x['kind']=='data_review' and x['status']=='open' for x in state.review_items):
-            state.review_items.append(_item('data_review','请查看本期统计、自动归并事件与分类结果，修改后确认本期数据。',True,{'metrics_ref':state.result_refs['calculate_metrics'],'event_ref':state.result_refs.get('event_analysis'),'cluster_ref':state.result_refs.get('cluster_event_themes'),'analysis_ref':state.result_refs.get('event_analysis')}))
+            state.review_items.append(_item('data_review','请查看本期统计、自动归并事件与分类结果，修改后确认本期数据。',True,_data_review_details(state)))
         else:
             for item in state.review_items:
                 if item['kind']=='data_review' and item['status']=='open':
-                    item['details']={'metrics_ref':state.result_refs['calculate_metrics'],'event_ref':state.result_refs.get('event_analysis'),
-                                     'cluster_ref':state.result_refs.get('cluster_event_themes'),'analysis_ref':state.result_refs.get('event_analysis')}
+                    item['details']=_data_review_details(state)
         if state.phase!='failed':state.phase='awaiting_review'
     store.put_task(state,state.revision); store.append_event(task_id,{'type':'phase','phase':state.phase})
     return state

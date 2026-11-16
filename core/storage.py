@@ -53,6 +53,10 @@ CREATE TABLE IF NOT EXISTS idempotency(key TEXT PRIMARY KEY, value TEXT);''')
             c.execute('INSERT OR IGNORE INTO artifacts VALUES(?,?,?,?,?,?)',(aid,task_id,kind,str(target),digest,now()))
         return aid
     def get_artifact(self,ref:str)->Any:
+        # 空引用 = 调用方手里没有产物 id（例如关掉去重/分类后 details 里没有 event_ref），
+        # 不是「某个 artifact id 在库里不存在」。给带语义的 ValueError，绝不让 None 进 SQL
+        # 后抛 KeyError(None)（QA2 B1：数据审核确认 500 的根因）。
+        if not ref: raise ValueError('artifact_ref_missing: 该审核项引用的产物不存在（对应功能可能已关闭），请重新打开审核页')
         with self.connect() as c: row=c.execute('SELECT * FROM artifacts WHERE id=?',(ref,)).fetchone()
         if not row: raise KeyError(ref)
         path=self.files/f'{ref}.json'
@@ -127,34 +131,44 @@ CREATE TABLE IF NOT EXISTS idempotency(key TEXT PRIMARY KEY, value TEXT);''')
         if decision.action not in item.get('allowed_actions',['confirm','modify','merge','split','independent','exclude','defer']): raise ValueError('action_not_allowed_for_item')
         if item.get('kind')=='data_review' and decision.action!='defer':
             if state.fact_ref:raise ValueError('frozen_facts')
-            events=self.get_artifact(item['details']['event_ref'])
-            themes=self.get_artifact(item['details']['cluster_ref'])
-            if 'analysis_ref' not in item['details']:raise ValueError('event_analysis_required')
-            if events.get('pending_model'):raise ValueError('model_analysis_pending')
-            groups=decision.payload.get('groups',events['groups'])
-            theme_groups=decision.payload.get('themes',events.get('theme_groups',themes['groups']))
-            expected=set(events['all_record_ids'])
-            group_ids=[g.get('id') for g in groups]
-            if any(not key for key in group_ids) or len(group_ids)!=len(set(group_ids)) or any(g.get('representative_id') not in g['member_ids'] for g in groups):
-                raise ValueError('invalid_event_group_identity')
-            for collection in (groups,theme_groups):
-                if not isinstance(collection,list) or not collection:raise ValueError('review_groups_required')
-                ids=[rid for group in collection for rid in group.get('member_ids',[])]
-                if len(ids)!=len(set(ids)) or set(ids)!=expected:raise ValueError('review_members_must_cover_records_once')
-            if any(not group.get('candidate_theme','').strip() for group in theme_groups):raise ValueError('theme_name_required')
-            if any(group['candidate_theme'] in ('待人工分类','模型尚未处理') and group['member_ids'] for group in theme_groups):raise ValueError('uncertain_classification_unresolved')
-            categories={rid:g['candidate_theme'] for g in theme_groups for rid in g['member_ids']}
-            if any(len({categories[rid] for rid in g['member_ids']})!=1 for g in groups):raise ValueError('event_category_must_be_consistent')
-            assignments={rid:index for index,g in enumerate(groups) for rid in g['member_ids']}
-            merge_decisions=decision.payload.get('merge_decisions',{})
-            for case in events.get('merge_ambiguities',[]):
-                action=merge_decisions.get(case['id'])
-                if action not in ('same','different'):raise ValueError('merge_ambiguity_unresolved')
-                together=assignments[case['source_id']]==assignments[case['target_id']]
-                if together!=(action=='same'):raise ValueError('merge_decision_members_disagree')
+            # 模板开关关掉的段落**没有产物**，这是用户的选择而不是缺件：缺哪段就跳过哪段校验，
+            # 但下面仍写出 confirmed_* 产物（允许空组），冻结/写作因此有一条可走的路。
             from .structured_template import template_feature_switches
             features=template_feature_switches(state,self)
-            if features['top10']:
+            details=item['details']
+            event_ref=details.get('event_ref');cluster_ref=details.get('cluster_ref')
+            events=self.get_artifact(event_ref) if event_ref else None
+            themes=self.get_artifact(cluster_ref) if cluster_ref else None
+            if features['dedup'] and events is None:raise ValueError('event_analysis_missing: 事件归并产物不存在，请按新规则重新处理')
+            if features['classification'] and themes is None:raise ValueError('event_clusters_missing: 自动分类产物不存在，请按新规则重新处理')
+            groups=(decision.payload.get('groups',(events or {}).get('groups',[]))) or []
+            theme_fallback=(events or {}).get('theme_groups') or (themes or {}).get('groups') or []
+            theme_groups=(decision.payload.get('themes',theme_fallback)) or []
+            if events is not None:
+                if 'analysis_ref' not in details:raise ValueError('event_analysis_required')
+                if events.get('pending_model'):raise ValueError('model_analysis_pending')
+                expected=set(events['all_record_ids'])
+                group_ids=[g.get('id') for g in groups]
+                if any(not key for key in group_ids) or len(group_ids)!=len(set(group_ids)) or any(g.get('representative_id') not in g['member_ids'] for g in groups):
+                    raise ValueError('invalid_event_group_identity')
+                # 分类开关关掉（或分类产物缺失）时没有可对照的主题分组：只校验事件成员覆盖。
+                for collection in ((groups,theme_groups) if themes is not None else (groups,)):
+                    if not isinstance(collection,list) or not collection:raise ValueError('review_groups_required')
+                    ids=[rid for group in collection for rid in group.get('member_ids',[])]
+                    if len(ids)!=len(set(ids)) or set(ids)!=expected:raise ValueError('review_members_must_cover_records_once')
+                if themes is not None:
+                    if any(not group.get('candidate_theme','').strip() for group in theme_groups):raise ValueError('theme_name_required')
+                    if any(group['candidate_theme'] in ('待人工分类','模型尚未处理') and group['member_ids'] for group in theme_groups):raise ValueError('uncertain_classification_unresolved')
+                    categories={rid:g['candidate_theme'] for g in theme_groups for rid in g['member_ids']}
+                    if any(len({categories[rid] for rid in g['member_ids']})!=1 for g in groups):raise ValueError('event_category_must_be_consistent')
+                assignments={rid:index for index,g in enumerate(groups) for rid in g['member_ids']}
+                merge_decisions=decision.payload.get('merge_decisions',{})
+                for case in events.get('merge_ambiguities',[]):
+                    action=merge_decisions.get(case['id'])
+                    if action not in ('same','different'):raise ValueError('merge_ambiguity_unresolved')
+                    together=assignments[case['source_id']]==assignments[case['target_id']]
+                    if together!=(action=='same'):raise ValueError('merge_decision_members_disagree')
+            if features['top10'] and events is not None:
                 from .event_analysis import negative_ranking
                 source=self.get_artifact(state.result_refs['filter_records:negative_or_warning'])['records']
                 ranked=negative_ranking(groups,source)
@@ -170,11 +184,11 @@ CREATE TABLE IF NOT EXISTS idempotency(key TEXT PRIMARY KEY, value TEXT);''')
                     top10.append({**row,'rank':rank,'summary':brief['summary'],'source_refs':brief['source_refs'],'status':'complete'})
                 state.metadata['reviewed_top10']=top10
             else:
-                # 模板关掉 TOP10：该段不再产出，也就没有梗概可校验——「没有数据」不是错误。
+                # 模板关掉 TOP10，或没有事件（去重关）：该段不产出，也就没有梗概可校验。
                 # 其余数据审核校验（组成员覆盖、分类一致、关系裁决）照旧逐条执行。
                 state.metadata['reviewed_top10']=[]
-            state.result_refs['confirmed_event_groups']=self.put_artifact(task_id,'confirmed_event_groups',{'groups':groups,'source_ref':item['details']['event_ref'],'decision':decision.model_dump()})
-            state.result_refs['confirmed_theme_groups']=self.put_artifact(task_id,'confirmed_theme_groups',{'groups':theme_groups,'source_ref':item['details']['cluster_ref'],'decision':decision.model_dump()})
+            state.result_refs['confirmed_event_groups']=self.put_artifact(task_id,'confirmed_event_groups',{'groups':groups,'source_ref':event_ref,'decision':decision.model_dump()})
+            state.result_refs['confirmed_theme_groups']=self.put_artifact(task_id,'confirmed_theme_groups',{'groups':theme_groups,'source_ref':cluster_ref,'decision':decision.model_dump()})
         if item.get('kind')=='event_scope' and decision.action!='defer':
             scope=decision.payload.get('scope')
             if scope not in ('all','negative','warning','negative_warning','negative_or_warning'): raise ValueError('event_scope_choice_required')

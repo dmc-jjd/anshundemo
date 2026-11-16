@@ -263,6 +263,7 @@ def confirm_data(task_id:str,req:DataConfirmation):
             action='confirm',payload={'groups':req.groups,'themes':req.themes,'merge_decisions':req.merge_decisions,'briefs':req.briefs},reason='已在数据审核页查看并确认本期统计、事件和分类'))
         return freeze_facts(deps,task_id)
     except (ValueError,ConflictError) as exc:raise HTTPException(409,str(exc))
+    except KeyError:raise HTTPException(409,f'review_item_artifact_missing: {item["id"]} 引用的产物不存在（该功能可能已关闭），请重新打开审核页')
 
 async def generate_draft(task_id,review_only=False):
     try:
