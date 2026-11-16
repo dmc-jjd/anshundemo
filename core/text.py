@@ -27,15 +27,30 @@
 `group_by_representative` 的 `method`），用于回答「这批 token 是哪版规则切出来的」。
 
 多包边界（M1 起，`core/packages/` 同一套三不变量）：
-    ① 模块级「包派生常量」必须为零——这里没有任何词表快照，词表按当前包按需读（覆盖层）或
-       在首次初始化时一次性注入（默认包）；
-    ② `configure_tokenizer()` 只许启动期 / 子进程初始化期调用，绝不许请求期「切包」；
-       `add_word` 没有反向操作，请求期注入 = 永久污染整个进程；
+    ① 模块级「包派生常量」必须为零——这里没有任何词表快照，词表按当前包按需读（覆盖层）；
+    ② 没有请求期「切包」的注入面：分词器不持有「哪个包」这个状态，包只出现在 `tokenize()`
+        的 `package` 参数或当前上下文里；
     ③ `package` 不许进 artifact payload（`TOKENIZER_VERSION` 是规则版本，不是包名）。
-    两种客户词机制（`add_word` 只给默认包；其余走最长匹配覆盖层）及其语义差异见
-    `configure_tokenizer()` / `tokenize()` 两个 docstring；**不要**改回并集注入——
-    实测那会让「加一个客户」变成「改一次全局基线」（默认包 245/28789 条记录分词改变、
-    G-GOLDEN 1675→1674 组）。
+
+**客户词典只有一种机制：最长匹配覆盖层（所有包，包括部署默认包）**
+    M3 起删除了「默认包 `add_word` 进共享 `FREQ`」的分支。理由不是风格，是实测：
+    `add_word` 改的是**全局** `FREQ`（已有词词频、`FREQ.total`、DAG 前缀可达性），
+    与「这段文本里到底有没有该词」无关——所以「默认包」这个位置本身就是一种特殊性：
+    换默认包会让原默认包的分词变、G-GOLDEN 红。
+    → 统一走覆盖层后，任何包的词只在该包的 token 流上合并，新增/切换包对别的包零影响。
+
+    **统一后的 G-GOLDEN 实测（2026-11-16，M3；基线 `74fde3c9…`, counts 28789/3914/1675）**：
+      counts **28789 / 3914 / 1675 → 1677**，哈希 **`74fde3c9…` → `fa67af78…`**。
+      分组差异：**10 个旧事件组（219 条记录）被重组成 12 组，其余 1665 组逐字节不变**。
+      例：大棚火灾事件 `38+19` 条 → `23+30+4`；贵阳银行事件 `104+31+1` 条 → `106+29+4`；
+      李平违纪事件 `19+2+1+2` 条 → `16+4+3`；两条通勤帖与两条便利店帖各拆成单条。
+      根因是覆盖层**只合并、不拆分**（M1 定的语义）：`市场监管`+`局` 无法从
+      `市场`+`监管局` 拼回来，而 `add_word` 会重切这个长 token。作为参照：
+      「完全不加客户词」的裸 jieba 是 **1676**；结论是「1675→1674」那个旧观测来自
+      M1 注释里的「A 词+B 词并集注入」，**不是**统一覆盖层的结果，别拿它当期望值。
+
+    → **不要再引入 `add_word`；不要再让某个包特殊。** 性能不是理由：覆盖层只在该包词表
+    非空且相邻 token 可拼时做一次线性扫描，词典每个包只读一次（登记在 `_OVERLAYS`）。
 """
 
 from __future__ import annotations
@@ -210,99 +225,41 @@ _ASCII_WORD = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._\-]*$')
 #: 纯汉字词。
 _CJK_WORD = re.compile(r'^[\u4e00-\u9fff]+$')
 
-#: 客户词典注入词频。固定值而非 `suggest_freq`：后者会按语料动态算，同一份数据两次跑
-#: 可能得到不同词频，确定性就没了。10 万远高于通用词典里最长词的频度，足以让注入词优先成词。
-_CUSTOM_WORD_FREQ = 100000
-
-#: 客户包目录（由 `configure_tokenizer()` 显式声明）。为什么不现取 `vocabulary`：
-#: 工具子进程里 `vocabulary.configure()` 与 `paths.configure_package_dir()` 都还没跑，
-#: 只有 `_configure_package()` 手里的这个路径是可靠的。
-_TOKENIZER_PACKAGE_DIR: Path | None = None
-
-#: 已进共享 jieba 的**那一个**包：目录 + 包名 + 已注入词集合。
-#: 进 FREQ 的包有且只有一个（首个声明者），否则会全局改分词（见下方「语义差异」）。
-_TOKENIZER_INJECTED_DIR: Path | None = None
-_INJECTED_NAME: str | None = None
-_INJECTED_WORDS: set[str] = set()
-
-#: 非默认包的词表覆盖层：包名 → 按长度倒序的词元组（**不进 FREQ**）。
+#: 客户词表覆盖层：包名 → 按词长倒序的词元组（**不进 jieba 的 `FREQ`**）。
+#: 所有包（含部署默认包）都走这一个机制——见模块 docstring 的「只有一种机制」。
 _OVERLAYS: dict[str, tuple[str, ...]] = {}
 
 #: `current_package` 的函数引用（首次用到才导入，避免 core/text 在 import 期依赖包层）。
 _CURRENT_PACKAGE_FN = None
 
-_TOKENIZER_READY = False
 _JIEBA = None
 
 
-def configure_tokenizer(package_dir=None) -> None:
-    """声明客户包目录（幂等，不加载词典）；由 `_configure_package()` 在子进程初始化时调用。
-
-    **M2 起的语义（按「部署默认包」而不是「首个声明者」定归属，别照旧注释理解）**：
-      - 部署默认包（`REPORT_PACKAGE`，缺省 `anshun_monthly`）= **唯一**进共享 FREQ 的包：
-        它的词表在首次 `tokenize()` 时 `add_word` 注入；
-      - 任何非默认包 = **只登记覆盖层**，不 `add_word`。
-    于是**父进程与工具子进程对同一个包走同一套机制**（M1 的「首个声明者赢」会让 B 的
-    工具子进程 add_word B、父进程走 A+覆盖层，同一句文本切出两套 token：实测
-    `['平坝','区','社区','卫生']` vs `['平坝区','社区卫生']`——M2 必须消灭这个分叉）。
-
-    为什么不并集注入（实测数据，2026-11-16）：
-      先把 A 的词注入、再 `add_word` 注入 B 包 13 个词后，A 包真实语料 **245/28789 条记录的
-      分词结果改变**（0.85%），G-GOLDEN 的 groups 从 1675 变 1674、哈希从 `74fde3c9…` 变
-      `cc27ce37…`。根因是 `add_word` 会改**全局** `FREQ`（已有词的词频、`FREQ.total`、以及
-      新词的 DAG 前缀可达性），与「A 的文本里不含 B 的词」无关，调 freq 也绕不开。
-      → 所以：**新增包对既有包必须零影响**；覆盖层是正解，不是过渡方案，别"优化"回并集注入。
-
-    为什么这个改动不动 A 的分词：A 是本部署的默认包，M1 时期父进程与 A 的工具子进程本就
-    由它 `add_word`（各自进程里的首个声明者恰好都是 A）；现在只是把「首个声明者」换成
-    「部署默认包」，A 的注入词、顺序、时机都不变（G-GOLDEN 逐字节为证）。
-    """
-    if package_dir is None:
-        return
-    global _TOKENIZER_PACKAGE_DIR
-    directory = Path(package_dir)
-    if _is_default_package_dir(directory):
-        # 默认包：唯一 FREQ 注入者；真正注入推迟到首次 tokenize（见 `_ensure_tokenizer`）。
-        _TOKENIZER_PACKAGE_DIR = directory
-        return
-    _register_overlay(directory)
+def _current_package_name() -> str:
+    global _CURRENT_PACKAGE_FN
+    if _CURRENT_PACKAGE_FN is None:
+        from core.packages.context import current_package
+        _CURRENT_PACKAGE_FN = current_package
+    return _CURRENT_PACKAGE_FN()
 
 
-def _is_default_package_dir(directory: Path) -> bool:
-    """这个目录是不是「部署默认包」？默认包 → 进 FREQ；其余 → 覆盖层。
+def _package_directory(name: str) -> Path | None:
+    """包名 → 包目录；优先当前上下文**显式绑定**的目录（工具子进程 / 测试临时包）。
 
-    解析不出默认包目录时（测试里的临时 `REPORT_PACKAGES_ROOT` 不含默认包）退化为
-    M1 的「首个声明者进 FREQ」语义——那是旧行为，不是错误，别在这里抛。
+    为什么不能只看 `registry.package_dir(name)`：子进程 `_configure_package()` 与测试会用
+    显式目录绑定上下文，而 `REPORT_PACKAGES_ROOT` 未必指向那里——只看注册表会把覆盖层
+    解析成另一个同名目录（同一句文本父子进程切出两套 token，正是 M1 那个分叉的镜像）。
+    解析不出来返回 `None`（= 该包没有客户词），不抛错：分词不该因为包名未知而失败。
     """
     try:
-        from core import paths
-        from core.packages.context import default_package
+        from core.packages import context as _context
+        from core.packages import registry as _packages
 
-        return _same_dir(Path(directory), paths.package_dir(default_package()))
-    except Exception:
-        return True
-
-
-def _same_dir(left: Path, right: Path) -> bool:
-    try:
-        return Path(left).resolve() == Path(right).resolve()
-    except OSError:
-        return False
-
-
-def _dictionary_source_dir() -> Path | None:
-    """词典来源目录：显式声明的默认包目录 → 部署默认包目录 → `None`（只用通用词典）。
-
-    为什么兜底是「部署默认包」而不是「当前上下文包」（M2）：FREQ 的注入者必须与请求
-    无关，否则同一个进程里谁先分词谁就改全局基线（A 的 28789 条记录会随请求顺序漂移）。
-    """
-    if _TOKENIZER_PACKAGE_DIR is not None:
-        return _TOKENIZER_PACKAGE_DIR
-    try:
-        from core import paths
-        from core.packages.context import default_package
-
-        return paths.package_dir(default_package())
+        if str(name) == _context.current_package():
+            ref = _context.current_ref()
+            if ref.directory is not None:
+                return Path(ref.directory)
+        return _packages.package_dir(name)
     except Exception:
         return None
 
@@ -311,11 +268,11 @@ def _dictionary_words(package_dir: Path | None) -> list[str]:
     """客户词典：模板 `vocabulary` 的键与值 + 可选 `<package>/dict.txt`（一行一词）。
 
     模板那段覆盖两类词：地名 canonical 与别名、类目 label 与类目词。通用词典在复合地名与
-    类目词上会切碎（例如把某开发区名切成 `X`+`经`+`开`+`区` 四个碎片），注入后才是整词；
+    类目词上会切碎（例如把某开发区名切成 `X`+`经`+`开`+`区` 四个碎片），覆盖层再把它们拼回整词；
     `dict.txt` 是客户临时加词的出口，**缺失不是错误**。
 
     顺序固定（localities 组、cluster_terms 组，先 label 后 values，最后 dict.txt）：
-    顺序进 jieba 的注入序，改顺序会改产物。
+    顺序只影响登记的元组形态；覆盖层按「最长优先」匹配，不依赖登记序。
     """
     words: list[str] = []
     if package_dir is not None:
@@ -330,38 +287,15 @@ def _dictionary_words(package_dir: Path | None) -> list[str]:
                 words.append(str(label))
                 words.extend(str(item) for item in values)
         try:
-            text = (Path(package_dir) / 'dict.txt').read_text(encoding='utf-8-sig')
-            words.extend(line.strip() for line in text.splitlines())
+            text_file = (Path(package_dir) / 'dict.txt').read_text(encoding='utf-8-sig')
+            words.extend(line.strip() for line in text_file.splitlines())
         except OSError:
             pass
     return [word for word in words if word]
 
 
-def _inject_dictionary(jieba_module, package_dir: Path | None) -> None:
-    """把该包**全部**词 `add_word` 进共享 jieba（只用于默认包；同目录重复调用不重注）。
-
-    逐词原样注入，**不做去重**：`add_word` 对重复词会再加一次词频并把 `total` 累加一次，
-    而 `total` 进 `calc()` 的 `-log(total)` 项、会改变边缘切分决策——实测省掉 4 次重复注入
-    就让 A 包 28789 条语料的 token 总数从 2458308 变成 2458359（+51）。听起来像"去重优化"，
-    实际是改了产物，所以这里保持与改造前逐字节一致。
-    """
-    global _TOKENIZER_INJECTED_DIR, _INJECTED_NAME
-    directory = Path(package_dir) if package_dir is not None else None
-    if (directory is not None and _TOKENIZER_INJECTED_DIR is not None
-            and _same_dir(directory, _TOKENIZER_INJECTED_DIR)):
-        return
-    for word in _dictionary_words(package_dir):
-        jieba_module.add_word(word, freq=_CUSTOM_WORD_FREQ)
-        _INJECTED_WORDS.add(word)
-    _TOKENIZER_INJECTED_DIR = directory
-    _INJECTED_NAME = directory.name if directory is not None else None
-    # 注入前若有人读过该包的覆盖层，清掉：它现在是「进 FREQ 的默认包」，覆盖层必须为空
-    if _INJECTED_NAME is not None:
-        _OVERLAYS.pop(_INJECTED_NAME, None)
-
-
 def _register_overlay(package_dir: Path) -> tuple[str, ...]:
-    """登记一个非默认包的词表覆盖层（按词长倒序；只登记，不碰 jieba 的 FREQ）。"""
+    """登记某个包的词表覆盖层（按词长倒序；只登记，不碰 jieba 的 `FREQ`）。"""
     package_dir = Path(package_dir)
     words = {word for word in _dictionary_words(package_dir) if len(word) >= 2}
     overlay = tuple(sorted(words, key=lambda word: (-len(word), word)))
@@ -369,32 +303,18 @@ def _register_overlay(package_dir: Path) -> tuple[str, ...]:
     return overlay
 
 
-def _current_package_name() -> str:
-    global _CURRENT_PACKAGE_FN
-    if _CURRENT_PACKAGE_FN is None:
-        from core.packages.context import current_package
-        _CURRENT_PACKAGE_FN = current_package
-    return _CURRENT_PACKAGE_FN()
-
-
 def _overlay(package: str | None = None) -> tuple[str, ...]:
-    """当前包的覆盖层；默认包（已进 FREQ）返回空元组 → 调用方走零开销早退。
+    """某个包（缺省 = 当前上下文）的覆盖层；首次见到该包时才读它的 `template.json`。
 
-    按需登记：首次见到某个非默认包时才读它的 `template.json`（启动期仍只 scandir）。
+    默认包**不再特殊**：它和别的包一样按需读词表、返回非空元组。空元组只表示
+    「这个包没有客户词」或「包目录解析不出来」——两者都是合法状态，不抛错。
     """
     name = package or _current_package_name()
-    if not _TOKENIZER_READY:
-        # 还没初始化就没有「已注入的包」，此刻登记覆盖层是错的（首次初始化会注入当前包）。
-        return ()
-    if name == _INJECTED_NAME:
-        return ()
     overlay = _OVERLAYS.get(name)
     if overlay is not None:
         return overlay
-    try:
-        from core.packages import registry as _packages
-        directory = _packages.package_dir(name)
-    except Exception:
+    directory = _package_directory(name)
+    if directory is None:
         _OVERLAYS[name] = ()
         return ()
     return _register_overlay(directory)
@@ -436,9 +356,9 @@ def _merge_overlay(tokens: list[str], overlay: tuple[str, ...]) -> list[str]:
 
 
 def _ensure_tokenizer():
-    """首次调用时初始化 jieba（设好 cache 目录）并注入**默认包**词典；之后直接复用。"""
-    global _TOKENIZER_READY, _JIEBA
-    if _TOKENIZER_READY:
+    """首次调用时初始化 jieba（设好 cache 目录）；**不向共享 FREQ 注入任何包词表**。"""
+    global _JIEBA
+    if _JIEBA is not None:
         return _JIEBA
     import jieba
 
@@ -453,11 +373,8 @@ def _ensure_tokenizer():
     except OSError:
         pass
 
-    _inject_dictionary(jieba, _dictionary_source_dir())
     _JIEBA = jieba
-    _TOKENIZER_READY = True
     return jieba
-
 
 
 def _keep_token(token: str) -> bool:
@@ -485,15 +402,13 @@ def tokenize(text: str, package: str | None = None) -> list[str]:
 
     HMM=False 是确定性的前提：HMM 会按上下文动态造词，同一份数据两次跑可能不同。
 
-    **两种「客户词」机制（语义不同，别混；这是 M1 的核心权衡）**：
-      1. 默认包（首个 `configure_tokenizer` / `paths.package_dir()` 那个包）→ `add_word`
-         进共享 jieba 的 `FREQ`：既影响该词本身的切分，也影响 jieba 的 DAG 前缀可达性；
-      2. 非默认包 → 词表**覆盖层**：`lcut` 之后在 token 流上做**最长匹配**合并，不改 FREQ。
-    两者对同一份词表的结果**可能不同**（尤其子串冲突：`社区` 命中后 `社区卫生` 会被切开），
-    这是刻意的——机制 1 会全局改分词（实测让默认包 0.85% 的记录分词改变、G-GOLDEN 变红），
-    所以只许一个包享用；新增包对既有包必须零影响。
-    `package=None` = 当前上下文（`core.packages.context`），默认包时覆盖层为空 → 与旧版
-    逐字节等价（`if overlay:` 早退，热路径零额外开销）。
+    **客户词只有一种机制（M3 起，所有包一视同仁）**：`lcut` 之后在 token 流上做**最长匹配**
+    合并，把该包 `template.json` / `dict.txt` 里的词拼回整词，**绝不改 jieba 的共享 FREQ**。
+    没有「默认包 add_word」分支了：那个分支会让换默认包改变原默认包的分词（实测 245/28789
+    条记录受影响、G-GOLDEN 1675→1674 组），详见模块 docstring。**别加回去。**
+
+    `package=None` = 当前上下文（`core.packages.context`），每包词表只在首次用到时读一次；
+    包没有客户词时 `if overlay:` 早退，热路径零额外开销。
     """
     value = normalize_text(text)
     if not value:

@@ -64,12 +64,8 @@ def index(): return (Path(__file__).parent/'static/index.html').read_text(encodi
 def status(): return {'model_configured':bool(MODEL_URL and MODEL_NAME and MODEL_KEY),'baseline_template_available':True,'baseline_template_reason':'8 月标色 Word 已核对并生成 99 个占位符；模板颜色与统计口径仍有待审项','sample_files':[x.name for x in Path.cwd().glob('*.docx')]+[x.name for x in Path.cwd().glob('*.xlsx')]}
 
 @app.get('/api/workflow-graphs')
-def workflow_graphs():
-    from .workflow import build_report_graph,build_writing_graph
-    result={}
-    for name,compiled in [('report',build_report_graph(deps)),('writing',build_writing_graph(deps))]:
-        graph=compiled.get_graph();result[name]={'nodes':list(graph.nodes),'edges':[{'source':e.source,'target':e.target,'conditional':e.conditional} for e in graph.edges],'mermaid':graph.draw_mermaid()}
-    return result
+def workflow_graphs(request:Request):
+    from .api_views.graphs import workflow_graphs_view;return workflow_graphs_view(deps,request.headers.get('X-Report-Package') or request.query_params.get('package',''))
 
 @app.post('/api/files')
 async def upload(request:Request,file:UploadFile=File(...)):

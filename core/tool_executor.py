@@ -109,12 +109,9 @@ def _run_in_process(name,arguments,root,task_id,conn,package_dir=None,data_base=
 def _configure_package(package_dir, data_base=None):
     """按客户包路径配置四个注册表（幂等）。子进程里调用，不依赖 app 的 import 副作用。
 
-    第五件：`configure_tokenizer(package_dir)`——客户词典注入的来源目录必须由子进程
-    自己知道。jieba 的词表是**进程内**状态，父进程注过不等于子进程注过；而每组工具调用
-    都是一个新子进程，所以这一步挂在这里而不是宿主 import 期。
-    该调用只声明目录，不加载词典（加载推迟到首次 `tokenize()`），见 `core.text`；
-    M2 起「默认包进 FREQ、其余走覆盖层」由 `core.text` 判定——于是**工具子进程与父进程
-    对同一个包走同一套口径**（M1 的「首个声明者赢」会让 B 的父子进程切出两套 token）。
+    第五件（M3 起已删除）：分词不再需要子进程侧「注入来源目录」——词表按包在首次
+    `tokenize()` 时由 `core.text` 走覆盖层读取（包上下文由 `vocabulary.configure()` 绑定，
+    显式目录也由它带进来）。父进程与工具子进程因此天然同一套口径。
 
     数据根：`data_base`（部署级 `data/`）优先；缺省按「包目录的上一级 = 仓库/部署根、
     其下 `data/`」推导。**不再**用 `package_dir.parent.parent` 反推数据根后直接当包根用。
@@ -122,7 +119,6 @@ def _configure_package(package_dir, data_base=None):
     from core.manifest import load_manifest
     from core.paths import configure_data_root
     from core.tools import vocabulary
-    from core.text import configure_tokenizer
     from core.charts import registry as chart_registry
     from core.skills import registry as skill_registry
     from core.prompts import registry as prompt_registry
@@ -138,7 +134,6 @@ def _configure_package(package_dir, data_base=None):
     from core.packages import registry as package_registry
     skill_registry.configure(package_dir, package_registry.packages_root().parent / "skills")
     vocabulary.configure(package_dir)
-    configure_tokenizer(package_dir)
     chart_registry.configure(package_dir)
     prompt_registry.configure(package_dir)
     configure_data_root(root)

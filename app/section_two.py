@@ -108,7 +108,9 @@ def validate_history(result,store,task_id,window,page_refs=None):
     good=[];errors=[];months={x[5:] for x in window['periods']};limit_year=int(window['report_month'][:4])
     norm=lambda s:re.sub(r'\s+','',s)
     if page_refs is None:
-        with store.connect() as conn:page_refs=[row['id'] for row in conn.execute('SELECT id FROM artifacts WHERE task_id=? AND kind=?',(task_id,'historical_page'))]
+        # M3：连接按**任务所属包**取（B 任务不能读 A 的 artifacts 表）。
+        from .packages_api import connect_for
+        with connect_for(store,task_id) as conn:page_refs=[row['id'] for row in conn.execute('SELECT id FROM artifacts WHERE task_id=? AND kind=?',(task_id,'historical_page'))]
     pages={ref:store.get_artifact(ref) for ref in page_refs if ref.startswith('historical_page-')}
     for topic in result.topics:
         valid=[]

@@ -49,8 +49,8 @@ from app.tool import (  # noqa: E402
 )
 from app.tool_executor import RunContext  # noqa: E402
 
-EXPECTED = "74fde3c97d43ecdee77659db44aaf09ee59f71a2e6a9dd7b1dfb90bb372e9931"
-EXPECTED_COUNTS = (28789, 3914, 1675)
+EXPECTED = "fa67af780e3a0c4fa360bc39be44c46566a13d60b41d61fc153f2ce3429f05d8"
+EXPECTED_COUNTS = (28789, 3914, 1677)
 
 
 def canon(payload) -> str:

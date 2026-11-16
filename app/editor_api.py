@@ -28,7 +28,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 
 from .api_views.task_resume import display_name
-from .config import DATA
+from .packages_api import connect_for, files_for
 from .schemas import now
 
 router = APIRouter(include_in_schema=False)
@@ -48,9 +48,13 @@ def _context(task_id: str):
     return store, state
 
 
-def _docx_path(ref: str):
-    """真字节的落盘位置：与 `app/main.py::export` 的 `{ref}.docx` 同一口径。"""
-    return DATA / 'artifacts' / f'{ref}.docx'
+def _docx_path(store, task_id: str, ref: str):
+    """真字节的落盘位置：**该任务所属包**的 `artifacts/{ref}.docx`（与 `app/main.py::export` 同口径）。
+
+    为什么必须按任务取根（M3）：`app/config.DATA` 是**默认包**的数据根，B 任务用它就会把
+    docx 写进/读自 A 的目录——隔离看起来生效、实际没生效。
+    """
+    return files_for(store, task_id) / f'{ref}.docx'
 
 
 def _payload(store, state):
@@ -62,7 +66,7 @@ def _payload(store, state):
         data = store.get_artifact(ref)
     except (KeyError, ValueError):
         return None
-    if not _docx_path(ref).exists():
+    if not _docx_path(store, state.id, ref).exists():
         return None
     return {'ref': ref, 'bytes': int(data.get('bytes', 0)),
             'sha256': data.get('sha256'), 'updated_at': data.get('updated_at')}
@@ -101,7 +105,7 @@ async def save_final_docx(task_id: str, request: Request):
     ref = store.put_artifact(task_id, KIND, {'bytes': len(body), 'sha256': digest,
                                              'updated_at': now(),
                                              'media_type': DOCX_MEDIA})
-    _docx_path(ref).write_bytes(body)
+    _docx_path(store, task_id, ref).write_bytes(body)
     _persist(store, state, ref)
     return {'ref': ref, 'bytes': len(body), 'sha256': digest}
 
@@ -113,7 +117,7 @@ def read_final_docx(task_id: str):
     current = _payload(store, state)
     if current is None:
         raise HTTPException(404, 'final_docx_not_found')
-    return Response(_docx_path(current['ref']).read_bytes(), media_type=DOCX_MEDIA,
+    return Response(_docx_path(store, task_id, current['ref']).read_bytes(), media_type=DOCX_MEDIA,
                     headers={'Content-Disposition':
                              f'attachment; filename="{task_id}-final.docx"'})
 
@@ -164,11 +168,15 @@ def _docx_refs(store, state):
     （`POST /api/tasks/{id}/exports`）只把 `{ref}.docx` 落盘 + 写一行 artifacts，
     **不回写 metadata**；只认 metadata 会漏掉这些「已生成的报告产物」，而编辑器
     正是按 `/api/artifacts/{ref}/download` 读它们的（且该口径与 `{ref}.docx` 完全一致）。
+
+    M3：连接与目录都按**任务所属包**取（`connect_for` / `files_for`）——B 任务的列表
+    不能查 A 的库、也不能看 A 的 artifacts 目录。
     """
-    with store.connect() as conn:
+    folder = files_for(store, state.id)
+    with connect_for(store, state.id) as conn:
         rows = conn.execute('SELECT id FROM artifacts WHERE task_id=? ORDER BY rowid DESC',
                             (state.id,)).fetchall()
-    return [row['id'] for row in rows if (DATA / 'artifacts' / f"{row['id']}.docx").exists()]
+    return [row['id'] for row in rows if (folder / f"{row['id']}.docx").exists()]
 
 
 def _report_item(store, state, index):
@@ -182,13 +190,13 @@ def _report_item(store, state, index):
     current = _payload(store, state)
     if current is not None:
         return {'task_id': state.id, 'name': name, 'updated_at': updated, 'status': 'saved',
-                'bytes': _size(_docx_path(current['ref'])),
+                'bytes': _size(_docx_path(store, state.id, current['ref'])),
                 'url': f'/api/tasks/{state.id}/final-docx'}
     refs = _docx_refs(store, state)
     if not refs:
         return None
     return {'task_id': state.id, 'name': name, 'updated_at': updated, 'status': 'draft',
-            'bytes': _size(DATA / 'artifacts' / f'{refs[0]}.docx'),
+            'bytes': _size(files_for(store, state.id) / f'{refs[0]}.docx'),
             'url': f'/api/artifacts/{refs[0]}/download'}
 
 

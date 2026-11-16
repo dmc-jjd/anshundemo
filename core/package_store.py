@@ -91,9 +91,15 @@ class PackageStores:
     # ------------------------------------------------------------------ #
     # task_id → 包
     # ------------------------------------------------------------------ #
-    def _scan(self) -> None:
+    def _scan(self, force: bool = False) -> None:
+        """扫各包库的 `tasks` 表，补齐「task_id → 包」缓存。
+
+        **`force=True` 是 M3 的多 worker 修复**：另一个 worker 刚建的 B 任务不在本进程
+        的缓存里，只扫一次会让本进程永远回落默认包 → 404。故 miss 时强制重扫一次
+        （`setdefault` 保留已有映射，新增行照补，不丢缓存）。
+        """
         with self._lock:
-            if self._scan_done:
+            if self._scan_done and not force:
                 return
             for name in self._packages_with_data():
                 try:
@@ -106,15 +112,20 @@ class PackageStores:
             self._scan_done = True
 
     def package_of(self, task_id: str) -> str:
-        """任务所属包：路由缓存 → 扫描各包库 → 部署默认包（= 旧任务语义）。"""
-        package = self._task_package.get(str(task_id))
+        """任务所属包：路由缓存 → 重扫各包库 → 部署默认包（= 旧任务语义）。"""
+        key = str(task_id)
+        package = self._task_package.get(key)
         if package:
             return package
-        self._scan()
-        return self._task_package.get(str(task_id)) or self.default_package
+        self._scan(force=True)
+        return self._task_package.get(key) or self.default_package
 
     def root_for(self, task_id: str) -> Path:
         return self.package_root(self.package_of(task_id))
+
+    def connect_for(self, task_id: str):
+        """该任务所属包的数据库连接（`editor_api` / `section_two` 的裸 SQL 调用点用）。"""
+        return self._store(self.package_of(task_id)).connect()
 
     def files_for(self, task_id: str) -> Path:
         return self.root_for(task_id) / 'artifacts'
@@ -156,8 +167,22 @@ class PackageStores:
     # Store 同名 API（按 task_id 路由）
     # ------------------------------------------------------------------ #
     def get_task(self, task_id: str):
+        """按包取任务；包解析命中后仍 404 时**强制重扫一次**再试（多 worker 竞态兜底）。
+
+        场景：本进程缓存的映射里没有这个 id（另一个 worker 刚建的），`package_of` 已重扫过；
+        但两次扫描之间还可能插入新任务。这里兜住「包已定位、库里还没有」之后又出现的情形，
+        且**不静默回落**：重扫仍找不到就照旧抛 `KeyError`（上层 404）。
+        """
         package = self.package_of(task_id)
-        return self._store(package).get_task(task_id)
+        store = self._store(package)
+        try:
+            return store.get_task(task_id)
+        except KeyError:
+            self._scan(force=True)
+            refreshed = self._task_package.get(str(task_id))
+            if refreshed and refreshed != package:
+                return self._store(refreshed).get_task(task_id)
+            raise
 
     def put_task(self, state, expected_revision=None, allow_resume: bool = False):
         package = str(getattr(state, 'package', '') or '') or self.package_of(state.id)

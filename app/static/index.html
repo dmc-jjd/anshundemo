@@ -79,6 +79,7 @@
     <div class="stack">
       <div class="panel">
         <div class="card-h"><h2>新建比对任务</h2><span class="hint">≥ 2 份 · 第一份为排版基准</span></div>
+        <label>客户<select id="templatePackage"></select></label>
         <label>历史报告 Word<input type="file" id="templateFiles" accept=".doc,.docx" multiple></label>
         <label>模板名称<input type="text" id="templateName" autocomplete="off"></label>
         <div class="row row-end"><button class="primary" id="startTemplate" type="button">上传并比对</button></div>
@@ -111,6 +112,7 @@
 <section id="report" class="tab">
   <div class="head"><h1>数据处理</h1></div>
   <div class="panel form-grid">
+    <label>客户<select id="reportPackage"></select></label>
     <label>全量 Excel<input type="file" id="reportFile" accept=".xlsx"></label>
     <label>写作模板<select id="reportTemplate"><option value="">请选择已确认的模板版本</option></select></label>
     <label>报告月份<input type="month" id="reportMonth" value="2026-10"></label>
@@ -167,4 +169,4 @@ window.PRODUCT = { name: '康奈', subname: '洞研智台', tagline: '舆情洞�
   fill('[data-product-full]', full);
 })();
 </script>
-<script src="/static/review-tools.js?v=20261113-v32"></script><script src="/static/data-review-tools.js?v=20261108-mixed-risk"></script><script src="/static/app.js?v=20261116-sections-features"></script><script src="/static/template-draft.js?v=20261113-redesign"></script><script src="/static/insights.js?v=20261108-numbered-sources"></script><script src="/static/report-parameters.js?v=20261108-mixed-risk"></script><script src="/static/writing-review.js?v=20261109-resolved-findings"></script><script src="/static/hotspot.js?v=20261116-hotspot-tabs2"></script></body></html>
+<script src="/static/review-tools.js?v=20261113-v32"></script><script src="/static/data-review-tools.js?v=20261108-mixed-risk"></script><script src="/static/app.js?v=20261116-m3-package-picker"></script><script src="/static/template-draft.js?v=20261113-redesign"></script><script src="/static/insights.js?v=20261108-numbered-sources"></script><script src="/static/report-parameters.js?v=20261108-mixed-risk"></script><script src="/static/writing-review.js?v=20261109-resolved-findings"></script><script src="/static/hotspot.js?v=20261116-hotspot-tabs2"></script></body></html>

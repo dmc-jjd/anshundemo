@@ -64,6 +64,24 @@ def files_for(store, task_id: str) -> Path:
     return helper(task_id) if callable(helper) else Path(store.files)
 
 
+def root_for(store, task_id: str) -> Path:
+    """任务所属包的**数据根**（`hotspot/`、`reference-comparison/` 这类非 artifacts 目录用）。"""
+    helper = getattr(store, 'root_for', None)
+    return Path(helper(task_id)) if callable(helper) else Path(store.root)
+
+
+def connect_for(store, task_id: str):
+    """任务所属包的数据库连接；旧 Store 退化为 `store.connect()`。"""
+    helper = getattr(store, 'connect_for', None)
+    return helper(task_id) if callable(helper) else store.connect()
+
+
+def store_for(store, package: str = '') -> object:
+    """某个包的 Store（热点模块这类**无 task 上下文**的面用）；旧 Store 原样返回。"""
+    helper = getattr(store, 'store_for', None)
+    return helper(package or None) if callable(helper) else store
+
+
 def artifact_file(store, ref: str, suffix: str = '.docx') -> Path:
     """`{ref}{suffix}` 的落盘位置（按 artifact 归属包解析）；旧 Store 退化为旧口径。"""
     helper = getattr(store, 'artifact_file', None)

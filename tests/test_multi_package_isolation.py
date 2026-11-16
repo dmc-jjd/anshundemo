@@ -114,23 +114,34 @@ def test_vocabulary_is_per_package_and_not_polluted():
 # --------------------------------------------------------------------------- #
 
 
-def test_tokenizer_overlay_is_zero_impact_for_default_and_longest_match_for_others():
-    """M1 的 jieba 权衡：默认包 `add_word`（与改造前逐字节一致）、其余包走最长匹配覆盖层。
+def test_tokenizer_overlay_covers_all_packages_including_default():
+    """M3：默认包与其余包**同一套机制**（最长匹配覆盖层），不再有 `add_word` 分支。
 
-    - A：覆盖层为空 → `tokenize(text, package=A)` 必须与不传包逐字节相同（热路径零开销）；
-    - B：B 的词必须是**整 token**，且不许把相邻词越界拼成一个不存在的长串。
+    - A（部署默认包）：词表必须真的生效（`平坝`+`区` → `平坝区`），否则「默认包」特权只是
+      从一个机制换到另一个机制；
+    - B：B 的词必须是**整 token**，且不许把相邻词越界拼成一个不存在的长串；
+    - 两包交叉调用后各自结果不变（覆盖层按包缓存，不写共享 FREQ）。
     """
     from core import text as core_text
 
-    assert core_text._overlay(A) == ()
+    assert core_text._overlay(A), '默认包的覆盖层为空 = 词表没生效'
+    assert core_text._overlay(B), '非默认包的覆盖层为空'
+    assert core_text._overlay(A) != core_text._overlay(B)
     sample = '安顺市平坝区社区卫生服务中心获评景区片区示范点，游客投诉明显下降'
+    # 默认包不再特殊：`tokenize(sample)` 与显式传 A 完全同源
     assert core_text.tokenize(sample) == core_text.tokenize(sample, package=A)
+    a_tokens = core_text.tokenize(sample, package=A)
+    assert '平坝区' in a_tokens, a_tokens
     b_tokens = core_text.tokenize(sample, package=B)
     assert '景区片区' in b_tokens, b_tokens
     assert '景区片区示范点' not in b_tokens, f'越界拼接：{b_tokens}'
     assert b_tokens == core_text.tokenize(sample, package=B), '覆盖层不确定'
-    # 覆盖层只合并、不拆分：B 的 token 数不会多于同文本在 A 下的 token 数
-    assert len(b_tokens) <= len(core_text.tokenize(sample, package=A))
+    # 覆盖层只合并不拆分：B 的 token 数不会多于同文本在 A 下的 token 数
+    assert len(b_tokens) <= len(a_tokens)
+    # 交叉调用不得污染对方（默认包与 B 都只读自己的词表）
+    for _ in range(5):
+        assert core_text.tokenize(sample, package=B) == b_tokens
+        assert core_text.tokenize(sample, package=A) == a_tokens
 
 
 # --------------------------------------------------------------------------- #

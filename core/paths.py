@@ -153,14 +153,27 @@ def configure_template_dir(path) -> None:
 def template_dir(package: str | None = None) -> Path:
     """客户模板目录；**取用时**才校验存在性，import 期不碰盘。
 
-    两种错误必须区分：
-    - 显式覆盖了但在另一个上下文里（如新起线程）→ 回落按包名解析，不让「没继承 context」变成错误；
-    - 已解析但目录不存在（该包没有自己的模板）→ `template_dir_missing:<包名>`。
+    M3 起支持两种布局，按顺序取第一个存在的（都按包名分家，绝不回落别的包）：
+        ① `<packages_root>/<包>/templates/` —— 模板随包发布（新增包只往包里放文件，
+           不用再动宿主 `templates/` 目录；`REPORT_PACKAGES_ROOT` 指到外部时也成立）；
+        ② `<templates_root>/<包>/` —— 宿主旧布局（A 包现网就在用，一字未搬）。
+    两者都不存在（该包没有自己的版式模板）→ `template_dir_missing:<包>`。这不是错误回落，
+    是**如实报缺**：B 类客户（无自有版式模板、只用上传的历史报告比对）本就不需要这个目录；
+    需要出终稿 docx 的包必须自己提供 ① 或 ②。
+
+    显式 `configure_template_dir()` 的覆盖只在 `package is None` 时生效（legacy 注入面）。
     """
     override = _template_dir_var.get() if package is None else None
-    directory = override if override is not None else _registry.templates_root() / (
-        _context.current_package() if package is None else str(package))
+    name = _context.current_package() if package is None else str(package)
+    if override is not None:
+        directory = Path(override)
+    else:
+        candidates = (_registry.packages_root() / name / 'templates',
+                      _registry.templates_root() / name)
+        directory = next((candidate for candidate in candidates if candidate.is_dir()),
+                         candidates[-1])
     if not directory.is_dir():
-        raise RuntimeError(f'template_dir_missing:{directory.name}'
-                           f'（期望 templates/{directory.name}/，该目录不存在）')
+        raise RuntimeError(
+            f'template_dir_missing:{name}'
+            f'（期望 packages/{name}/templates/ 或 templates/{name}/，两者都不存在）')
     return directory

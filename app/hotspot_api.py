@@ -13,7 +13,9 @@
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+
+from core.packages.context import package_context
 
 from . import hotspot
 from .social_hotlist import profile as social_profile
@@ -21,24 +23,42 @@ from .social_hotlist import profile as social_profile
 router = APIRouter(include_in_schema=False)
 
 
-def _store():
-    """请求期从 main 取（不在 import 期绑定，保持注入面柔性）。"""
-    from . import main
+def _package(request: Request) -> str:
+    """目标客户包：`X-Report-Package` 头或 `?package=`；空 = 部署默认包，坏包 404/422。"""
+    from .packages_api import resolve_package
 
-    return main.store
+    return resolve_package(request.headers.get('X-Report-Package')
+                           or request.query_params.get('package', ''))
+
+
+def _store(package: str = ''):
+    """请求期从 main 取（不在 import 期绑定，保持注入面柔性）+ 按包取 Store。
+
+    M3 缺口 2：热点数据（`<包根>/hotspot/latest.json` + `hotspot-homepage` 任务）必须
+    落在目标包里。原先 `hotspot._index_path()` 用 `store.root`，而主 `store` 是
+    `PackageStores` 的「默认包旧面」——B 采集的结果实际写进 A，读也读 A。
+    """
+    from . import main
+    from .packages_api import store_for
+
+    return store_for(main.store, package)
 
 
 @router.get('/api/hotspot')
-def hotspot_view():
-    return hotspot.view(_store())
+def hotspot_view(request: Request):
+    package = _package(request)
+    with package_context(package):
+        return hotspot.view(_store(package))
 
 
 @router.post('/api/hotspot/collect')
-async def hotspot_collect():
+async def hotspot_collect(request: Request):
     from .hotspot import HotspotError
 
+    package = _package(request)
     try:
-        return await hotspot.collect(_store())
+        with package_context(package):
+            return await hotspot.collect(_store(package))
     except HotspotError as exc:
         raise HTTPException(exc.status, str(exc))
 

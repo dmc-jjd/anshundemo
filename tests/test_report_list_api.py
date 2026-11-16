@@ -15,7 +15,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app.main as main
-from app import editor_api
 from app.editor_api import DELETED_KEY, META_KEY
 from app.schemas import TaskState, now
 from app.storage import Store
@@ -24,10 +23,9 @@ TOKENS = {'Authorization': 'local-demo'}
 
 
 def _env(tmp_path, monkeypatch):
-    """临时 Store + 把 `editor_api.DATA`（docx 落盘根）指向同一个根。"""
+    """临时 Store；docx 落盘根由 `editor_api` 按**任务所属包**从 store 反推（M3），无需注入。"""
     store = Store(tmp_path / 'data')
     monkeypatch.setattr(main, 'store', store)
-    monkeypatch.setattr(editor_api, 'DATA', store.root)
     return store
 
 

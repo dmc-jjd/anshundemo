@@ -1,9 +1,10 @@
 """Read the explicitly generated reconciliation, bound to its frozen version."""
 import hashlib,json
 from pathlib import Path
+from .packages_api import root_for
 
 def view(store,task_id,details=False):
-    state=store.get_task(task_id);root=store.root/'reference-comparison'
+    state=store.get_task(task_id);root=root_for(store,task_id)/'reference-comparison'
     path=root/'summary.json'
     if not path.exists():raise ValueError('reference_comparison_not_available')
     summary=json.loads(path.read_text(encoding='utf-8'))

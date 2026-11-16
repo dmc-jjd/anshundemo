@@ -1,7 +1,6 @@
 from .config import DATA_BASE, PACKAGE, PACKAGE_DIR, ROOT
 from core import paths
 from core.packages import registry as package_registry
-from core.text import configure_tokenizer
 from core.tools import vocabulary
 from core.charts import registry as chart_registry
 from core.skills import registry as skill_registry
@@ -19,9 +18,8 @@ paths.configure_template_dir(ROOT / 'templates' / PACKAGE)
 # 启动期只 scandir（不解析任何包内文件）。100 包实测 ~1 ms；全量 configure 是秒级，
 # 只允许在首次使用时按需加载（见 `GET /api/packages` / `core.packages.registry.catalog`）。
 package_registry.bootstrap()
-# 分词器归属：唯一进 FREQ 的是部署默认包（M2 起按「默认包」而不是「首个声明者」判定）。
-# 非默认包只登记覆盖层；父进程与工具子进程因此对同一个包走同一套机制（M2 口径统一）。
-configure_tokenizer(PACKAGE_DIR)
+# 分词器：M3 起不再有「默认包进 FREQ」这一步——词表按包走最长匹配覆盖层，首次用到时才读
+# 该包的 template.json/dict.txt（见 core/text.py 模块 docstring）。这里只绑定包上下文。
 vocabulary.configure(PACKAGE_DIR)
 chart_registry.configure(PACKAGE_DIR)
 skill_registry.configure(PACKAGE_DIR, ROOT / 'skills')
