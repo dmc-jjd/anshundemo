@@ -40,3 +40,7 @@ s4*/
 # 锛坄core/text.py` 宸叉妸 tmp_dir 閽夊埌 `.conda/`锛岃繖涓�琛屾槸绗簩閬撲繚闄╋級
 jieba.cache
 jieba.u*.cache
+
+# Node 构建依赖（web/ 只提交源码与构建脚本）
+node_modules/
+web/node_modules/

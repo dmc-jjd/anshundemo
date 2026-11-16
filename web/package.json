@@ -1,0 +1,19 @@
+{
+  "name": "kangnai-web-editor",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "canvas-editor 打包入口：产出 app/static/vendor/canvas-editor.js",
+  "scripts": {
+    "build": "node build.mjs",
+    "clean": "node -e \"require('fs').rmSync('../app/static/vendor',{recursive:true,force:true})\""
+  },
+  "dependencies": {
+    "@hufe921/canvas-editor": "^1.0.0",
+    "@hufe921/canvas-editor-plugin-docx": "^1.0.0",
+    "buffer": "^6.0.3"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  }
+}
