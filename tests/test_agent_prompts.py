@@ -12,7 +12,14 @@ def test_monthly_outlook_prompts_share_research_and_output_quantity_policy():
     plan=get_prompt('historical_researcher.plan');research=get_prompt('historical_researcher.research')
     outlook=get_prompt('writer.outlook');field=get_prompt('writer.outlook_field');template=get_prompt('template_analyst.template')
     assert '5—8类' in plan and '5—8类' in research and '目标5类' in research
-    assert '4—5类' in outlook and '4—5类' in field and '4—5类' in template
+    # 数量口径只约束「怎么写」的两条（outlook / outlook_field）。
+    # template_analyst 是建模板的基座提示词，必须客户无关：它不能出现安顺的
+    # 章节名，也不能出现具体的类目数（那是某一类报告体例的约定，不是通用规则）。
+    assert '4—5类' in outlook and '4—5类' in field
+    assert '4—5类' not in template
+    assert '工作建议' not in template and '一个完整语义单元一个字段' not in template
+    # 取而代之的是通用判据：按功能/内容性质判断，而不是按章节名称。
+    assert '判断依据是内容性质' in template and '可变列表' in template
     policy=TEMPLATE_POLICY['recommendations']
     assert policy['min_items']==4 and policy['max_items']==5
     assert '5—8类' in policy['structure'] and '目标5类' in policy['structure'] and '4—5类' in policy['structure']

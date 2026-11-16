@@ -1,8 +1,10 @@
 """Local event matches -> model adjudication -> genuinely uncertain human cases.
 
-WP-S8-L3 搬迁：与 `app/event_analysis.py` 逐字相同，**唯一改动**是 7 行机械改名——
-本地分类词表的旧名（S8 §0.4 判定的 A 类禁词）在基座里叫 `CLUSTER_RULES`，是**同一个对象**
-（`core/tool.py:17` 由 `vocabulary.cluster_terms()` 加载），故分类结果、规则哈希、词序全部不变。
+WP-S8-L3 搬迁：与宿主同名模块逐字相同；分类词表的旧名（S8 §0.4 判定的 A 类禁词）在基座里
+不许出现。**M1 改动**：不再拿 `core/tool.py` 的模块级旧名快照（那是首次 import 期冻结的
+「当时那个包」的词表），改为在 `analyse_events()` 入口按**当前包**取一次
+`vocabulary.cluster_terms()`——分类结果、规则哈希、词序对默认包逐字节不变，但多包并存时
+B 包的规则哈希不会再算成 A 的（rules_hash 错 = checkpoint 复用判定错）。
 """
 from __future__ import annotations
 from .agent import get_prompt
@@ -82,7 +84,8 @@ def negative_ranking(groups,records,limit=10):
     return sorted(result,key=lambda r:(-r['negative_count'],r['id']))[:limit]
 
 async def analyse_events(deps,task_id):
-    from .tool import CLUSTER_RULES
+    from .tools import vocabulary
+    cluster_rules=vocabulary.cluster_terms()   # 按当前包解析（不再读 core/tool 的旧名快照）
     store=deps.store;state=store.get_task(task_id)
     # 模板级开关：TOP10 关掉时该阶段整段不跑（不调模型、不产梗概）；开着时逐字不变。
     features=template_feature_switches(state,store)
@@ -91,7 +94,7 @@ async def analyse_events(deps,task_id):
     source_key=state.result_refs['group_events']
     checkpoint=store.get_artifact(state.result_refs['event_analysis_checkpoint']) if state.result_refs.get('event_analysis_checkpoint') else {}
     if checkpoint.get('source_key')!=source_key:checkpoint={'source_key':source_key,'merges':{},'classes':{},'briefs':{}}
-    rules_hash=hashlib.sha256(json.dumps(CLUSTER_RULES,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+    rules_hash=hashlib.sha256(json.dumps(cluster_rules,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
     if checkpoint.get('classification_rules_hash') not in (None,rules_hash):checkpoint['classes']={}
     checkpoint['classification_rules_hash']=rules_hash
     # Preserve previous evidence and decisions, but regenerate summaries violating the new rule.
@@ -251,18 +254,18 @@ async def analyse_events(deps,task_id):
         if len(human_categories)>1:
             manual_conflicts[gid]='合并后的事件包含不同的人工指定分类：'+'、'.join(sorted(human_categories))
             continue
-        source_categories=Counter(r.get('category') for r in members if r.get('category') in CLUSTER_RULES)
+        source_categories=Counter(r.get('category') for r in members if r.get('category') in cluster_rules)
         text=' '.join(r['title']+' '+r.get('summary','')[:600] for r in members[:3])
-        scores={label:sum(text.count(word) for word in terms) for label,terms in CLUSTER_RULES.items()}
+        scores={label:sum(text.count(word) for word in terms) for label,terms in cluster_rules.items()}
         best=max(scores,key=scores.get);high=scores[best]
         if len(source_categories)==1:
             local_classes[gid]=next(iter(source_categories));class_reasons[gid]='来源已有有效分类'
         elif high>0 and list(scores.values()).count(high)==1:
-            local_classes[gid]=best;class_reasons[gid]='本地分类词命中：'+ '、'.join(w for w in CLUSTER_RULES[best] if w in text)
+            local_classes[gid]=best;class_reasons[gid]='本地分类词命中：'+ '、'.join(w for w in cluster_rules[best] if w in text)
         elif gid not in checkpoint['classes']:pending.append(group)
     async def classify_batch(batch):
         payload={'instruction':get_prompt('event_classifier.classify'),
-            'categories':list(CLUSTER_RULES)+['其他'],
+            'categories':list(cluster_rules)+['其他'],
             'events':[{'id':g['id'],'evidence':evidence(g['member_ids'])} for g in batch]}
         feedback=None; error_name=''
         for attempt in range(3):
@@ -270,7 +273,7 @@ async def analyse_events(deps,task_id):
                 if feedback:payload['correction_errors']=feedback
                 answers=await ask('event_classifier',payload,ClassificationBatch,[g['id'] for g in batch])
                 for answer in answers:
-                    if answer.status=='classified' and answer.category not in set(CLUSTER_RULES)|{'其他'}:raise ValueError('unknown_category')
+                    if answer.status=='classified' and answer.category not in set(cluster_rules)|{'其他'}:raise ValueError('unknown_category')
                 return answers,None
             except ValidationError as exc:
                 error_name='ValidationError'

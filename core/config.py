@@ -30,6 +30,7 @@ def _load_local_env() -> None:
         name = name.strip()
         if name not in {'REPORT_MODEL_URL', 'REPORT_MODEL_NAME', 'REPORT_MODEL_KEY',
                         'REPORT_MODEL_THINKING', 'REPORT_MODEL_REASONING_EFFORT',
+                        'REPORT_MODEL_MAX_TOKENS',
                         'REPORT_SEARCH_URL', 'REPORT_SEARCH_KEY',
                         'REPORT_DEMO_DATA', 'REPORT_MAX_TOOL_CALLS',
                         'REPORT_MAX_PLANNING_CALLS'}:
@@ -47,6 +48,11 @@ MODEL_NAME = os.getenv('REPORT_MODEL_NAME', '')
 MODEL_KEY = os.getenv('REPORT_MODEL_KEY', '')
 MODEL_THINKING = os.getenv('REPORT_MODEL_THINKING', 'enabled')
 MODEL_REASONING_EFFORT = os.getenv('REPORT_MODEL_REASONING_EFFORT', 'low')
+# 单次响应输出上限。模板研判改成「全量一次」后，一份完整模板响应实测约 57k 字符
+# （69 字段 + 41 块），按 chars/token≈0.8 估算需要 36~47k completion tokens，原来写死的
+# 24000 装不下（会触发 template_response_truncated）。端点 self-report
+# max_output_tokens=393216，64000 是留足余量的安全值，不是目标值。
+MODEL_MAX_TOKENS = int(os.getenv('REPORT_MODEL_MAX_TOKENS', '64000'))
 MAX_TOOL_CALLS = int(os.getenv('REPORT_MAX_TOOL_CALLS', '40'))
 MAX_PLANNING_CALLS = int(os.getenv('REPORT_MAX_PLANNING_CALLS', '12'))
 

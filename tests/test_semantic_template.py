@@ -87,23 +87,25 @@ def test_upload_three_reports_rejects_duplicate_and_old_candidate_confirmation(t
         assert client.post(f'/api/templates/{state.id}/confirm',json=request).status_code==200
 
 
-def test_retry_reuses_only_validated_batches_and_keeps_all_report_context(tmp_path):
+def test_retry_after_transport_failure_resends_the_whole_template_with_full_context(tmp_path):
+    """三块分批取消后没有按批断点：传输失败后整份重发，上下文仍是全部报告正文。"""
     docs=[docx(tmp_path/f'{i}.docx',f'报告{i}首段。</w:t></w:r></w:p><w:p><w:r><w:t>二段。</w:t></w:r></w:p><w:p><w:r><w:t>三段。</w:t></w:r></w:p><w:p><w:r><w:t>四段。') for i in range(3)]
     store=Store(tmp_path/'store');store.put_task(TaskState(id='t',kind='template',phase='queued',metadata={'paths':[d['path'] for d in docs]}))
     calls=[]
-    async def fails_second(role,payload):
+    async def fails(role,payload):
         calls.append(payload['target_blocks'])
         assert all(len(d['blocks'])==4 for d in payload['source_reports'])
-        if payload['target_blocks']==[3]:raise TimeoutError('test timeout')
-        return await semantic_analyst(role,payload)
-    failed=asyncio.run(run_template(Dependencies(store,fails_second),'t'))
-    assert failed.phase=='template_review_failed' and len(failed.metadata['template_review_checkpoints'])==1
+        assert payload['target_blocks']==[0,1,2,3]
+        raise TimeoutError('test timeout')
+    failed=asyncio.run(run_template(Dependencies(store,fails),'t'))
+    assert failed.phase=='template_review_failed' and failed.metadata['template_review_checkpoints']=={}
+    assert calls==[[0,1,2,3]]
     calls.clear()
     async def resume(role,payload):
         calls.append(payload['target_blocks']);return await semantic_analyst(role,payload)
     ready=asyncio.run(run_template(Dependencies(store,resume),'t'))
     assert ready.phase=='awaiting_template_confirmation',ready.metadata.get('template_error')
-    assert calls==[[3]]
+    assert calls==[[0,1,2,3]]                       # 整份重发，不是续跑某一批
 
 
 def test_business_question_has_visible_evidence_and_blocks_confirmation(tmp_path,monkeypatch):

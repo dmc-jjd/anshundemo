@@ -1,6 +1,8 @@
 """locality 域工具：属地候选识别。自 `app/tool.py` 原样搬出，逻辑未改。
 
-`LOCALITIES` 在函数内从 `vocabulary` 取，不在模块级取——避免 import 期依赖包配置。
+`LOCALITIES` 在函数内从 `vocabulary` 取，不在模块级取——避免 import 期依赖包配置；
+包由 `core.packages.context` 的 ContextVar 提供（M1 无请求期切包）。这里保持**零参调用**契约——
+既有测试会用零参替身打桩 `vocabulary.localities`（`monkeypatch.setattr`），加参数会破坏该契约。
 """
 
 from __future__ import annotations

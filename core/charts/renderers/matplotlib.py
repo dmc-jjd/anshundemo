@@ -13,8 +13,8 @@ class ChartRequest(BaseModel):
     chart_type:Literal['sentiment','daily','platform','theme','locality']
     style:Literal['pie','line','bar','barh']|None=None
 
-# 模块级常量：既有调用方按 list 使用（app.writer_tools 经 app 层 import，此时已 configure）
-CHARTS=[c['id'] for c in registry.charts()]
+# 图表 id 集合不再是模块级快照（旧 `CHARTS=[c['id'] for c in registry.charts()]` 在首次
+# import 期冻结成当时那个包，B 包只有 3 张图）；现在每次按当前包（`registry.ids()`）判定。
 _plot_lock=threading.Lock()
 # 报告对象工厂由宿主注入（`app/writer_tools.py` 注册 `FrozenReport`）——core 不 import app。
 _report_factory=None
@@ -27,7 +27,7 @@ def chart_payload(report,kind,style=None):
     from matplotlib.figure import Figure
     from matplotlib.backends.backend_agg import FigureCanvasAgg
     from matplotlib.font_manager import FontProperties
-    if kind not in CHARTS:raise ValueError('unknown_chart_type')
+    if kind not in registry.ids():raise ValueError('unknown_chart_type')
     template=report.store.get_artifact(report.state.template_ref)
     selected=styles_for(template,report.state.metadata.get('chart_styles'),data_root=paths.data_root())[kind]
     style=style or selected

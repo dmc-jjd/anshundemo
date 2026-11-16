@@ -1,7 +1,12 @@
 """records 域工具：导入、筛选、分类、材料选择与证据读取。自 `app/tool.py` 原样搬出，逻辑未改。
 
-三个数据面常量（必需列 / 列名映射 / 摘要列）与函数一同搬来，仍从 `vocabulary` 读取，
-不回落字面量——records 字段序由 `COLUMN_MAP` 的键序决定（见 tests/test_s2_manifest_vocabulary.py）。
+三个数据面常量（必需列 / 列名映射 / 摘要列）**不再**以模块级快照存在——这是同一份词表的
+第二份快照（第一份在 `core/tool.py`），两份各按自己的 import 时机冻结，改一份不会让另一份红。
+现在 `import_records()` 在函数内按当前包（或显式 `package=` 的包）取，records 工件字段序
+仍由列名映射的键序决定（见 tests/test_s2_manifest_vocabulary.py），行为逐字节不变。
+
+三不变量（`core/packages/` 同一套）：① 模块级包派生常量为零；② 不在请求期切包；
+③ package 不进 artifact payload。
 """
 
 from __future__ import annotations
@@ -16,16 +21,19 @@ from core.tools.contracts import ToolResult
 from core.tools import vocabulary
 from core.tools._shared import records_of
 
-REQUIRED_COLUMNS=vocabulary.required_columns()
-COLUMN_MAP=vocabulary.column_map()
-SUMMARY_COLUMNS=vocabulary.summary_columns()
+
+def _data_fields(package=None):
+    """`(必需列, 列名映射, 摘要列)`：函数内按包读，模块级不留快照。"""
+    return (vocabulary.required_columns(package), vocabulary.column_map(package),
+            vocabulary.summary_columns(package))
 
 
 def import_records(args,ctx):
     path=Path(args['path']); sheet=int(args.get('sheet_index',3))
+    required_columns, column_map, summary_columns = _data_fields(getattr(ctx,'package',None))
     book=read_xlsx(path,sheet_index=sheet)
     rows=book['rows']; header=rows[0]['cells']
-    for column in REQUIRED_COLUMNS:
+    for column in required_columns:
         if column not in header: raise ValueError('missing_required_columns')
     records=[]; file_hash=hashlib.sha256(path.read_bytes()).hexdigest()
     for row in rows[1:]:
@@ -36,12 +44,12 @@ def import_records(args,ctx):
         if re.fullmatch(r'\d+(?:\.\d+)?',published):
             try:published=(datetime(1899,12,30)+timedelta(days=float(published))).isoformat(timespec='minutes')
             except (ValueError,OverflowError):pass
-        mapped={field:data.get(column,'') for column,field in COLUMN_MAP.items()}
+        mapped={field:data.get(column,'') for column,field in column_map.items()}
         mapped['published']=published
         records.append(normalize_record({
             'id':rid,
             **mapped,
-            'summary':data.get(SUMMARY_COLUMNS[0]) or (data.get(SUMMARY_COLUMNS[1],'') or '')[:1200],
+            'summary':data.get(summary_columns[0]) or (data.get(summary_columns[1],'') or '')[:1200],
             'source_ref':{'file_hash':file_hash,'sheet':book['sheet'],'row':row['excel_row']},
         }))
     ref=ctx.store.put_artifact(ctx.task_id,'records',{'records':records,'file_hash':file_hash,'header':header,'sheet':book['sheet'],'normalization':NORMALIZATION_VERSION})

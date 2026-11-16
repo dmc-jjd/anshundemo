@@ -3,14 +3,19 @@
 本层四处改造（`docs/team/任务分解-S8.md` §3-1 / §3-3）：
 1. 包目录不再从宿主 `config` 拿——基座不 import 宿主；改 `paths.package_dir()`
    （宿主在 `__init__` 注入，与 `data_root` 同一个注入面）。
-2. `_default_policy()` 里 `load_manifest(...)` 必须**函数内**取包目录：模块级求值会让
-   「先 import core、后 import 宿主」的顺序炸（S7 B3 同理由）。
+2. 策略必须**按包**取：M1 去掉进程级 `_POLICY` 单例（旧实现里 B 任务的工具白名单 / 预算
+   由 A 的 manifest 决定，且永不失效）。现在 `RunContext.package` 显式带包，
+   `_default_policy(package)` 读 `PackageLoad.tool_policy`（键含包名 + 指纹）。
 3. `.tool` 的 import 下沉到函数内：spawn 子进程 unpickle `_run_in_process` 时会先执行本模块顶层，
-   而 `core/tool.py` 顶层读 5 个 `vocabulary.*`；`core/__init__.py` 是空的，此刻尚未 configure。
-   先把 `_configure_package(...)` 跑完再触达 `core.tool`，子进程才不会 `package_not_configured`
+   而 `core/tool.py` 顶层只导函数与基座常量；`core/__init__.py` 是空的，此刻尚未配置包。
+   先把 `_configure_package(...)` 跑完再触达包数据，子进程才不会 `package_not_configured`
    （S6 §0.8 / F5 陷阱的镜像：表现为每个工具调用都超时、工件全空，而门禁仍绿）。
 4. 子进程与父进程拿到的是**同一张已扩表目录**：`writer_tools` / `historical_web` 已在 L1 进基座，
    故 `_tool_specs()` 的扩表与宿主组合根 `app/tool.py` 逐字等价（先 writer 后 web，21 项不变）。
+
+三不变量（`core/packages/` 同一套）：① 模块级包派生常量为零；② 本模块不提供「请求期切包」，
+`_configure_package` 只许子进程初始化期调用；③ package 不进 artifact payload（只进
+`RunContext` 与子进程参数）。
 """
 from __future__ import annotations
 import asyncio,time,uuid,multiprocessing
@@ -18,7 +23,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from .schemas import ToolCall,ToolResult
 from . import paths
-from core.manifest import load_manifest
 from core.ports import (REJECT_BUDGET_EXCEEDED,REJECT_FROZEN_FACTS,REJECT_PHASE_NOT_ALLOWED,
                         REJECT_TOOL_NOT_ALLOWED,ToolPolicy)
 from core.tools import hints
@@ -46,9 +50,12 @@ class RunContext:
     timeout: float = 60
     model_adapter: object = None
     policy: ToolPolicy | None = None
+    #: 本次执行属于哪个包；`None` = 当前上下文（ContextVar，未设置回落默认包）。
+    #: M1 只做到「按包解析」，请求期切包属 M3；字段先落在这里，是为了让工具子进程
+    #: 与策略缓存有**显式**的包维度，而不是继续吃模块级单例。
+    package: str | None = None
 
-_POLICY=None
-def _default_policy():
+def _default_policy(package: str | None = None):
     """客户包的策略：`capabilities.require` 剪枝 + `features.*` 能力开关。
 
     两层叠加：
@@ -57,21 +64,13 @@ def _default_policy():
 
     于是「去重/分类/研判不必每份报告都跑」由客户包数据决定，不由执行器里的 if 决定。
     未声明 require / 未声明 features 时，行为与改造前完全一致。
+
+    M1 起按包取（旧实现是进程级 `_POLICY` memo，B 任务的工具白名单由 A 的 manifest 决定）：
+    结果挂在 `PackageLoad.tool_policy` 上，键含包名 + 指纹，改 manifest 即失效。
     """
-    global _POLICY
-    if _POLICY is None:
-        manifest=load_manifest(paths.package_dir())
-        policy=manifest.policy
-        required=manifest.required_capabilities
-        features=manifest.features
-        if required or features:
-            from core.tools.registry import resolve_tools
-            narrowed=resolve_tools(required, features)
-            base=set(policy.allow) if policy.allow else narrowed
-            policy=ToolPolicy(allow=frozenset(base&narrowed),
-                              phases=policy.phases,budgets=policy.budgets)
-        _POLICY=policy
-    return _POLICY
+    from core.packages import registry as _packages
+
+    return _packages.load(package).tool_policy
 
 def _ref_key(name,arguments):
     spec=hints.REF_KEY.get(name)
@@ -152,7 +151,7 @@ async def execute_tool(call:ToolCall,context:RunContext)->ToolResult:
     start=time.monotonic(); state=context.store.get_task(context.task_id)
     specs={x.name:x for x in _tool_specs()}
     if call.tool_name not in specs: return ToolResult(status='error',error_code='unknown_tool')
-    policy=context.policy or _default_policy()
+    policy=context.policy or _default_policy(context.package)
     if call.tool_name not in set(policy.allow)|set(policy.phases.get(context.phase,frozenset())):
         declared=set(policy.allow)|{x for tools in policy.phases.values() for x in tools}
         return _reject(context,call,REJECT_PHASE_NOT_ALLOWED if call.tool_name in declared else REJECT_TOOL_NOT_ALLOWED)
@@ -191,7 +190,8 @@ async def execute_tool(call:ToolCall,context:RunContext)->ToolResult:
     context.store.append_event(context.task_id,{'type':'tool_start','tool':call.tool_name,'reason':call.reason,'arguments':call.arguments,'call_id':call.call_id})
     try:
         timeout=hints.TIMEOUT_S.get(call.tool_name,context.timeout)
-        result=await asyncio.to_thread(_bounded_run,call.tool_name,call.arguments,context.store.root,context.task_id,timeout,str(paths.package_dir()))
+        # 子进程拿「这次任务所属包的目录」——不再固定当前上下文的包（M1：显式包优先）
+        result=await asyncio.to_thread(_bounded_run,call.tool_name,call.arguments,context.store.root,context.task_id,timeout,str(paths.package_dir(context.package)))
     except Exception as e: result=ToolResult(status='error',error_code=type(e).__name__,warnings=[str(e)])
     result.elapsed_ms=int((time.monotonic()-start)*1000)
     state=context.store.get_task(context.task_id)

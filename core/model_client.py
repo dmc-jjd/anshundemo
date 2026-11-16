@@ -2,7 +2,7 @@ from __future__ import annotations
 import asyncio,json,time,uuid,urllib.request,urllib.error
 from datetime import datetime,timezone
 from pydantic import BaseModel,ValidationError
-from .config import MODEL_URL,MODEL_NAME,MODEL_KEY,MODEL_THINKING,MODEL_REASONING_EFFORT
+from .config import MODEL_URL,MODEL_NAME,MODEL_KEY,MODEL_THINKING,MODEL_REASONING_EFFORT,MODEL_MAX_TOKENS
 
 class ModelUnavailable(RuntimeError): pass
 class TaskPaused(BaseException): pass
@@ -76,7 +76,7 @@ async def invoke_agent(role_id:str,payload:dict,response_model:type[BaseModel],c
         system=(AGENT_DEFINITIONS[role_id].responsibility+'。'+AGENT_DEFINITIONS[role_id].boundary+
                 get_prompt('model.json_output')+schema)
         if not messages:messages.extend([{'role':'system','content':system},{'role':'user','content':json.dumps(payload,ensure_ascii=False)}])
-        parameters={'model':MODEL_NAME,'messages':messages,'response_format':{'type':'json_object'},'max_tokens':24000}
+        parameters={'model':MODEL_NAME,'messages':messages,'response_format':{'type':'json_object'},'max_tokens':MODEL_MAX_TOKENS}
         if tools:parameters.update(tools=tools,tool_choice='none' if turn==6 else 'auto')
         if MODEL_THINKING in ('enabled','disabled'):
             parameters['thinking']={'type':MODEL_THINKING}

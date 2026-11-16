@@ -84,12 +84,14 @@ def enabled_agents(manifest) -> frozenset[str]:
     return frozenset(declared) if declared else frozenset(ALL_AGENTS)
 
 
-def resolve_enabled_agents() -> frozenset[str]:
-    """按宿主配置的客户包（`core.paths.package_dir()`）解析本次启用的角色。"""
-    from core import paths
-    from core.manifest import load_manifest
+def resolve_enabled_agents(package: str | None = None) -> frozenset[str]:
+    """解析本次启用的角色：`package` 缺省 = 当前上下文的包（不再由「进程当前包」决定一切）。
 
-    return enabled_agents(load_manifest(paths.package_dir()))
+    显式传包是给「同一进程要跑多个客户」用的；M1 起本函数不再读模块级单槽。
+    """
+    from core.packages import registry as _packages
+
+    return enabled_agents(_packages.load(package).manifest)
 
 
 def validate_declared_agents(declared: Iterable[str], known_roles: Iterable[str]) -> None:

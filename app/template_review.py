@@ -163,8 +163,32 @@ def compile_review(model_result, packet, comparison_ref, target_blocks=None):
     return candidate
 
 
+NUMBERED_ITEM=re.compile(r'^\s*\d+[.、．]')
+
+
 def normalize_recommendations(candidate,reports):
-    """Compile numbered advice paragraphs into one variable-length writer field."""
+    """Compile numbered advice paragraphs into variable-length writer lists.
+
+    Two entry points share the same output shape (one ``repeat`` block plus one
+    ``paragraph_list`` field), so the renderer and the writer need no change:
+
+    1. The legacy 「工作建议」 section: a heading containing 工作建议 followed by
+       numbered paragraphs. Kept byte-for-byte, 安顺 templates depend on it.
+    2. Any other positional list: a contiguous run of three or more numbered
+       paragraphs after a heading/lead paragraph that recurs at the same ordinal
+       in every source report. 龙川's 「三、下一步关注重点」 is two such lists;
+       without this branch its ten items degrade to ten fixed fields named after
+       the month's topics (校园传染病、泄洪调度…), and the outlook writer path
+       never activates because no ``paragraph_list`` field exists.
+    """
+    legacy=_work_recommendations(candidate,reports)
+    candidate=legacy if legacy is not None else _positional_lists(candidate,reports)
+    _restore_item_numbers(candidate,reports)
+    return candidate
+
+
+def _work_recommendations(candidate,reports):
+    """Legacy 「工作建议」 compile; ``None`` means the heading is absent."""
     def numbered(document):
         active=False;result=[]
         for block in document['blocks']:
@@ -173,7 +197,7 @@ def normalize_recommendations(candidate,reports):
         return result
     source_groups=[numbered(d) for d in reports]
     originals=source_groups[0]
-    if not originals:return candidate
+    if not originals:return None
     indexes={b['index'] for b in originals}
     replaced_ids={p['field'] for b in candidate['blocks'] if b['index'] in indexes for p in b['parts'] if 'field' in p}
     source_keys={(d['id'],b['index']) for d,blocks in zip(reports,source_groups) for b in blocks}
@@ -204,3 +228,106 @@ def normalize_recommendations(candidate,reports):
     candidate['review_items']=unresolved
     candidate['resolved_by_policy']=resolved
     return candidate
+
+
+def _numbered_runs(document):
+    """Contiguous numbered-item paragraph runs (>=3) that follow a lead paragraph.
+
+    The lead may be a section heading or a background paragraph; a run at the
+    document head or right after a table is body text, not a positional list.
+    """
+    blocks=document['blocks'];runs=[];start=None
+
+    def close(end):
+        if start is None:return
+        run=blocks[start:end];lead=blocks[start-1] if start else None
+        if len(run)>=3 and lead is not None and lead.get('kind')=='paragraph' and not NUMBERED_ITEM.match(lead['text']):
+            runs.append(run)
+
+    for position,block in enumerate(blocks):
+        item=block.get('kind')=='paragraph' and bool(NUMBERED_ITEM.match(block.get('text','')))
+        if item and start is None:start=position
+        elif not item and start is not None:close(position);start=None
+    if start is not None:close(len(blocks))
+    return runs
+
+
+def _positional_lists(candidate,reports):
+    """Compile recurring numbered runs into repeat blocks of 4—6 positional items."""
+    groups=[_numbered_runs(document) for document in reports]
+    converted=[]
+    for ordinal,run in enumerate(groups[0]):
+        # A positional list must exist at the same ordinal in every report;
+        # otherwise the base report's run is body text, not a template slot.
+        if all(len(other)>ordinal for other in groups[1:]):converted.append((ordinal,run))
+    if not converted:return candidate
+    replaced={b['index'] for _,run in converted for b in run}
+    replaced_ids={p['field'] for block in candidate['blocks'] if block['index'] in replaced for p in block['parts'] if 'field' in p}
+    taken={f['id'] for f in candidate['fields']};fields=[];anchors={}
+    for ordinal,run in converted:
+        fid='numbered_items_%d'%(ordinal+1)
+        while fid in taken:fid+='_'
+        taken.add(fid)
+        semantic='该位置历史上为连续编号条目；按位置生成本组全部条目，主题与条数随月份变化。'
+        field={'id':fid,'display_name':'编号条目列表（第%d组）'%(ordinal+1),'owner':'writer','kind':'paragraph_list',
+               'source_type':'analysis','semantic':semantic,
+               'rule':'按本月证据生成4至6条编号条目，每条独立成段；不沿用历史月份的主题，不固定历史条数；列表不含编号，由程序按顺序编号。',
+               'format':'字符串数组，一项对应一个编号条目','missing_policy':'block',
+               'reason':'历史报告该位置为条数不等的连续编号条目；使用4至6条可变列表避免固定历史条数与历史主题。',
+               'binding':None,'block':run[0]['index'],
+               'sources':[{'file':document['path'],'sha256':document['sha256'],'block':b['index'],'text':b['text']}
+                          for document,other in zip(reports,groups) for b in other[ordinal]],
+               'value_schema':{'type':'array','minItems':4,'maxItems':6,'items':{'type':'string','minLength':1}}}
+        fields.append(field)
+        anchors[run[0]['index']]={'index':run[0]['index'],'kind':'repeat','parts':[{'field':fid}],
+            'source_block_indexes':[b['index'] for b in run],'purpose':semantic,
+            'sources':[{'report_id':document['id'],'block':b['index']}
+                       for document,other in zip(reports,groups) for b in other[ordinal]]}
+    remaining=[]
+    for block in candidate['blocks']:
+        if block['index'] in anchors:remaining.append(anchors[block['index']])
+        elif block['index'] not in replaced:remaining.append(block)
+    candidate['blocks']=remaining
+    candidate['fields']=[f for f in candidate['fields'] if f['id'] not in replaced_ids]+fields
+    # Model findings about item numbering are answered by this rule, not left as
+    # open questions for the human reviewer.
+    list_keys={(document['id'],b['index']) for document,other in zip(reports,groups)
+               for ordinal,_ in converted for b in other[ordinal]}
+    unresolved=[];resolved=[]
+    for question in candidate.get('review_items') or []:
+        refs={(s['report_id'],s['block']) for s in question['sources']}
+        if refs and refs<=list_keys and re.search(r'条数|三条|第四条|集合|子块|固定.*条|条目|序号|编号',question['question']):
+            resolved.append({'rule':'编号条目为4—6条可变列表，程序按顺序自动编号','sources':question['sources']})
+        else:unresolved.append(question)
+    candidate['review_items']=unresolved
+    if resolved:candidate['resolved_by_policy']=(candidate.get('resolved_by_policy') or [])+resolved
+    return candidate
+
+
+def _restore_item_numbers(candidate,reports):
+    """An item ordinal is structure, never field content.
+
+    Some model batches stuff the ordinal into the field value ("5.秋季流感…"),
+    so one list ends up with two conflicting conventions: blocks 29—32 keep "1."
+    as fixed text, blocks 33/39/40 swallow it. Lift every surviving ordinal back
+    to a fixed-text part and trim it from that field's sources, so reconstruction
+    and rendering stay exact.
+    """
+    base_sha=reports[0]['sha256'];fields={f['id']:f for f in candidate['fields']}
+    for block in candidate['blocks']:
+        if block.get('kind')!='paragraph' or not block.get('parts'):continue
+        first=block['parts'][0]
+        if 'field' not in first:continue
+        field=fields.get(first['field'])
+        if not field or field.get('owner')!='writer' or field.get('kind') in ('number','table_rows'):continue
+        base=next((s for s in field.get('sources') or [] if s.get('sha256')==base_sha and s.get('block')==block['index']),None)
+        match=NUMBERED_ITEM.match(base.get('text','')) if base else None
+        if not match:continue
+        prefixes=[]
+        for source in field.get('sources') or []:
+            match=NUMBERED_ITEM.match(source.get('text',''))
+            if not match or not source['text'][len(match.group(0)):].strip():prefixes=None;break
+            prefixes.append((source,match.group(0)))
+        if prefixes is None:continue
+        block['parts']=[{'text':prefixes[0][1]}]+block['parts']
+        for source,prefix in prefixes:source['text']=source['text'][len(prefix):]

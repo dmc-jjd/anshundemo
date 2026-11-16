@@ -77,6 +77,8 @@ def propose_vector_event_neighbors(args,ctx):
 
 def group_events(args,ctx):
     from .dedup import group_by_representative,merge_group_round,remap_borderline_candidates
+    # 包由 `core.packages.context` 的 ContextVar 提供（M1 无请求期切包）；这里保持**零参调用**
+    # 契约——既有测试用零参替身打桩 `vocabulary.dedup_*`，改成带参会破坏该契约。
     records=records_of(ctx,args['records_ref'])
     threshold=args.get('threshold')
     threshold=float(threshold) if threshold is not None else vocabulary.dedup_threshold()
