@@ -57,9 +57,19 @@
   instance.use(API.docxPlugin);
 
   var cmd = instance.command;
+  // 调试/自测钩子：外部（CDP 断言、控制台）需要 getValue() 核对真实排版结果。
+  window.__edEditor = instance;
 
   // ── 工具栏 ───────────────────────────────────────────────────
-  document.querySelector('.ed-bar').addEventListener('click', function (event) {
+  var barEl = document.querySelector('.ed-bar');
+
+  // 点工具栏按钮不把焦点从编辑器抢走：否则「点 B → 接着打字」会把字打到按钮上。
+  // 只拦 mousedown 的默认动作（焦点转移），click 与视觉反馈不受影响。
+  barEl.addEventListener('mousedown', function (event) {
+    if (event.target.closest('.ed-btn')) event.preventDefault();
+  });
+
+  barEl.addEventListener('click', function (event) {
     var btn = event.target.closest('.ed-btn');
     if (!btn || btn.disabled) return;
     var d = btn.dataset;
@@ -77,6 +87,70 @@
       status('命令不支持: ' + (d.cmd || d.align || d.title || d.list || ''));
     }
   });
+
+  // ── 工具栏按下态（事件驱动）────────────────────────────────────
+  // 依据（@hufe921/canvas-editor dist 类型定义 + vendor bundle 实测）：
+  //   instance.eventBus.on('rangeStyleChange', cb)  事件总线，payload = IRangeStyle
+  //   instance.listener.rangeStyleChange = cb       同一 payload 的 options 回调口（备用）
+  //   instance.command.getRangeContext()            手动查（本页不用，太重）
+  //   IRangeStyle = { type, undo, redo, painter, font, size,
+  //                   bold, italic, underline, strikeout, color, highlight,
+  //                   rowFlex, level, listType, ... }
+  //   编辑器每次 render 之后在 rAF 里调 range.setRangeStyle() 派发。
+  //   recoveryRangeStyle()（失焦/离开画布）派发的 payload 里 type === null，
+  //   正常 payload 的 type 恒为 'text'/'table'/…；据此丢弃重置包，
+  //   免得点完按钮状态被整体清零（点击路径同帧会先来一个重置包）。
+  var TOGGLE = {
+    bold: barEl.querySelector('[data-cmd="executeBold"]'),
+    italic: barEl.querySelector('[data-cmd="executeItalic"]'),
+    underline: barEl.querySelector('[data-cmd="executeUnderline"]'),
+    strikeout: barEl.querySelector('[data-cmd="executeStrikeout"]'),
+    alignLeft: barEl.querySelector('[data-align="left"]'),
+    alignCenter: barEl.querySelector('[data-align="center"]'),
+    alignRight: barEl.querySelector('[data-align="right"]'),
+    alignJustify: barEl.querySelector('[data-align="alignment"]'),
+    titleFirst: barEl.querySelector('[data-title="first"]'),
+    titleSecond: barEl.querySelector('[data-title="second"]'),
+    titleP: barEl.querySelector('[data-title="p"]'),
+    listUl: barEl.querySelector('[data-list="ul"]'),
+    listOl: barEl.querySelector('[data-list="ol"]')
+  };
+
+  function mark(btn, on) {
+    if (!btn) return;
+    if (on) { btn.classList.add('on'); } else { btn.classList.remove('on'); }
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
+
+  function applyRangeStyle(st) {
+    if (!st || st.type == null) return;
+    mark(TOGGLE.bold, !!st.bold);
+    mark(TOGGLE.italic, !!st.italic);
+    mark(TOGGLE.underline, !!st.underline);
+    mark(TOGGLE.strikeout, !!st.strikeout);
+
+    // rowFlex 为空 = 左对齐（canvas-editor 的默认值）
+    var flex = st.rowFlex || 'left';
+    mark(TOGGLE.alignLeft, flex === 'left');
+    mark(TOGGLE.alignCenter, flex === 'center');
+    mark(TOGGLE.alignRight, flex === 'right');
+    mark(TOGGLE.alignJustify, flex === 'alignment' || flex === 'justify');
+
+    // level 为空 = 正文；third…sixth 不在本工具栏的三档内，故三颗都不亮
+    var level = st.level || '';
+    mark(TOGGLE.titleFirst, level === 'first');
+    mark(TOGGLE.titleSecond, level === 'second');
+    mark(TOGGLE.titleP, level === '');
+
+    mark(TOGGLE.listUl, st.listType === 'ul');
+    mark(TOGGLE.listOl, st.listType === 'ol');
+  }
+
+  if (instance.eventBus && typeof instance.eventBus.on === 'function') {
+    instance.eventBus.on('rangeStyleChange', applyRangeStyle);
+  } else if (instance.listener) {
+    instance.listener.rangeStyleChange = applyRangeStyle;
+  }
 
   // ── 载入 docx ────────────────────────────────────────────────
   function importBuffer(buf, label) {

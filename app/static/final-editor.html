@@ -18,6 +18,11 @@
   .ed-btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
   .ed-btn.primary:hover{background:var(--brand-deep);border-color:var(--brand-deep)}
   .ed-btn:disabled{opacity:.45;cursor:default}
+  /* 按下态：只用底色 + 边框 + 字重（不加阴影/位移）。
+     声明在 .ed-btn:hover 之后，且 .on:hover 单独再写一条高的选择器，
+     保证悬停时按下态不会被 hover 的 background 冲掉。 */
+  .ed-btn.on{background:var(--brand-bg);border-color:var(--brand);color:var(--brand-tx);font-weight:600}
+  .ed-btn.on:hover{background:var(--brand-bg);border-color:var(--brand);color:var(--brand-tx)}
   .ed-spacer{flex:1 1 auto}
   .ed-main{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;
            background:var(--bg);padding:14px 0 40px}
@@ -59,25 +64,25 @@
   <button class="ed-btn" data-cmd="executeUndo" title="撤销">撤销</button>
   <button class="ed-btn" data-cmd="executeRedo" title="重做">重做</button>
   <span class="sep"></span>
-  <button class="ed-btn" data-cmd="executeBold" title="加粗"><b>B</b></button>
-  <button class="ed-btn" data-cmd="executeItalic" title="斜体"><i>I</i></button>
-  <button class="ed-btn" data-cmd="executeUnderline" title="下划线"><u>U</u></button>
-  <button class="ed-btn" data-cmd="executeStrikeout" title="删除线"><s>S</s></button>
+  <button class="ed-btn" id="edBold" data-cmd="executeBold" title="加粗" aria-pressed="false"><b>B</b></button>
+  <button class="ed-btn" id="edItalic" data-cmd="executeItalic" title="斜体" aria-pressed="false"><i>I</i></button>
+  <button class="ed-btn" id="edUnderline" data-cmd="executeUnderline" title="下划线" aria-pressed="false"><u>U</u></button>
+  <button class="ed-btn" id="edStrikeout" data-cmd="executeStrikeout" title="删除线" aria-pressed="false"><s>S</s></button>
   <span class="sep"></span>
   <button class="ed-btn" data-size="-" title="字号减小">A−</button>
   <button class="ed-btn" data-size="+" title="字号增大">A+</button>
   <span class="sep"></span>
-  <button class="ed-btn" data-align="left" title="左对齐">左</button>
-  <button class="ed-btn" data-align="center" title="居中">中</button>
-  <button class="ed-btn" data-align="right" title="右对齐">右</button>
-  <button class="ed-btn" data-align="alignment" title="两端对齐">两端</button>
+  <button class="ed-btn" id="edAlignLeft" data-align="left" title="左对齐" aria-pressed="false">左</button>
+  <button class="ed-btn" id="edAlignCenter" data-align="center" title="居中" aria-pressed="false">中</button>
+  <button class="ed-btn" id="edAlignRight" data-align="right" title="右对齐" aria-pressed="false">右</button>
+  <button class="ed-btn" id="edAlignJustify" data-align="alignment" title="两端对齐" aria-pressed="false">两端</button>
   <span class="sep"></span>
-  <button class="ed-btn" data-title="first" title="标题一">H1</button>
-  <button class="ed-btn" data-title="second" title="标题二">H2</button>
-  <button class="ed-btn" data-title="p" title="正文">正文</button>
+  <button class="ed-btn" id="edTitleH1" data-title="first" title="标题一" aria-pressed="false">H1</button>
+  <button class="ed-btn" id="edTitleH2" data-title="second" title="标题二" aria-pressed="false">H2</button>
+  <button class="ed-btn" id="edTitleP" data-title="p" title="正文" aria-pressed="false">正文</button>
   <span class="sep"></span>
-  <button class="ed-btn" data-list="ul" title="无序列表">• 列表</button>
-  <button class="ed-btn" data-list="ol" title="有序列表">1. 列表</button>
+  <button class="ed-btn" id="edListUl" data-list="ul" title="无序列表" aria-pressed="false">• 列表</button>
+  <button class="ed-btn" id="edListOl" data-list="ol" title="有序列表" aria-pressed="false">1. 列表</button>
   <button class="ed-btn" data-table="1" title="插入 3×3 表格">插表格</button>
   <span class="sep"></span>
   <button class="ed-btn" id="edLoadTpl" title="载入模板 docx">载入模板</button>
@@ -94,6 +99,6 @@
 </div>
 
 <script src="/static/vendor/canvas-editor.js?v=20261116b"></script>
-<script src="/static/final-editor.js?v=20261116-cf"></script>
+<script src="/static/final-editor.js?v=20261116-pressed"></script>
 </body>
 </html>
