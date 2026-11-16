@@ -102,8 +102,8 @@
     "files": 0,
     "entries": []
   },
-  "app_files": 58,
-  "app_hash": "46107fa69191ab944801635e1f6a93cb82024e64abfdf6aaad8ae31e8e5d20cd",
+  "app_files": 59,
+  "app_hash": "d30c47083eb1697682e67fe3951961b0684a317256ae26404048236ceccbc71b",
   "app_files_detail": {
     "app/__init__.py": "8d9e11b9f24296165d4622d83c60742da1afa7047ad2916fe545a8641deb6598",
     "app/agent.py": "caf4cfaddf84219748ecfbeff9b192c785a538901c18962abb35972810b40035",
@@ -117,6 +117,7 @@
     "app/chart_spec.py": "d0ea3b645cb1329f21ed92dde0060fafef4a1ae360aae1dc6cd8911ea845b810",
     "app/config.py": "960ebf02e695eb8bae708433a710ad77eef6d1bc2bbf3049c06c9c43aa333dc7",
     "app/data_review.py": "d8d0b21c531a1acebab535695a67df0c2055737538c4f8527f4d0dbae1fb0e82",
+    "app/editor_api.py": "a91f180cbcc78aee2f9a17b8ec893e8d49d171e270ca792019cea27e185db08e",
     "app/event_analysis.py": "ca3eaca929fc0db3ca1a16f5613806ed402669d84885f14790d10b2915f8f10f",
     "app/event_grouping.py": "d2932c5ed1f3ee44fea0cfdb2ebb8b6ea4a4430565a177d64458efb90315cb38",
     "app/export.py": "ac6582043544bedc625014a47d51f1992eed523d12ce212163e4717459ac21d5",
@@ -129,7 +130,7 @@
     "app/historical_web.py": "74f13e63540f2abd24ce2d3add4a1f3fe40a4253d1c05ade5b0e5762e8a66c5e",
     "app/hotspot.py": "f46abf4fb6264dab42aef940bc523237eb872fd20e7a3dee79aa03706c8d7361",
     "app/hotspot_api.py": "6dfd60829da5e7bb6b93b140d27b5c2abc227bdcbbc54a407c5eec13d38211c3",
-    "app/main.py": "24db482c0cd19e72d4a2b044b4aa67db2fe1ca38f9a803488031db2aecc8ae15",
+    "app/main.py": "3df115b01128a412edf6771a37fea9a0ebed436ad822035c769a2e3515181690",
     "app/model_client.py": "6afcbd0a3221ffd30616a1ec8420d024dd5d9c02e9006e46628c584fd686c355",
     "app/ooxml.py": "979021e699e8149e54e4a70e082567b9a555da9a541b8bd922b673301d4225d3",
     "app/reference_comparison.py": "613caa8f593d967e74ad3a80b6d5b6b404e114031418ab7573cf0eeab5cec06d",
@@ -165,5 +166,5 @@
     "app/writing_review.py": "c11a4cccaf78e032298f9e0b8d0ed9d47626020b78a49b87b87c1f62cf09f47d"
   },
   "python": "3.13.18",
-  "recorded_at": "2026-11-16T10:29:14+08:00"
+  "recorded_at": "2026-11-16T11:10:45+08:00"
 }

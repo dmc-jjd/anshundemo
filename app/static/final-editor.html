@@ -26,6 +26,9 @@
   .ed-note .sp{flex:1}
   .ed-stage{width:100%;max-width:var(--page-max);margin:0 auto;padding:0 var(--pad-x)}
   .ed-stage canvas{box-shadow:0 1px 2px rgba(20,20,19,.06)}
+  /* 壳里 --page-max 是 100%，纸张默认贴着左边缘；这里只把 #ceContainer 的内容居中，
+     不动壳的 token（style.css 不归本页管）。 */
+  #ceContainer{display:flex;flex-direction:column;align-items:center}
 </style>
 </head>
 <body>
@@ -37,6 +40,7 @@
   </div>
   <div class="topmeta">
     <span id="edTaskName">—</span>
+    <span class="saved" id="edSaved" title="保存到系统的状态"><i aria-hidden="true"></i><span id="edSavedText">未保存</span></span>
     <span id="edStatus">就绪</span>
   </div>
 </header>
@@ -80,7 +84,8 @@
   <button class="ed-btn" id="edLoadDoc" title="载入已生成报告 docx">载入报告</button>
   <span class="ed-spacer"></span>
   <button class="ed-btn" data-cmd="executePrint" title="打印">打印</button>
-  <button class="ed-btn primary" id="edExport" title="导出 docx">导出 docx</button>
+  <button class="ed-btn primary" id="edSave" title="把当前稿件存回系统">保存到系统</button>
+  <button class="ed-btn" id="edExport" title="导出 docx 到本地">导出 docx</button>
 </div>
 
 <div class="ed-main">
@@ -89,6 +94,6 @@
 </div>
 
 <script src="/static/vendor/canvas-editor.js?v=20261116b"></script>
-<script src="/static/final-editor.js?v=20261116b"></script>
+<script src="/static/final-editor.js?v=20261116-cf"></script>
 </body>
 </html>

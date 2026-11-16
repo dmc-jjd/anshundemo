@@ -1,6 +1,11 @@
 /* 终稿编辑页（canvas-editor）
- * 载入：GET /api/template-docx（模板）或 /api/artifacts/<id>/download（已生成报告）
- * 导出：docx 插件生成真 docx，浏览器直接下载
+ * 载入：优先 GET /api/tasks/<id>/final-docx（存回系统的编辑版）；
+ *       没有时回退老的「metadata 找 draft_ref → /api/artifacts/<ref>/download」。
+ * 保存：插件 executeExportDocx 返回 Blob（canvas-editor 1.2.0 的 A2 实现是
+ *       `return E2(blob, name), blob`），拿到 Blob → POST /api/tasks/<id>/final-docx。
+ *       插件导出时还会同步创建一个 <a download> 并 click；为了「保存」不弹另存为，
+ *       这里在导出期间短暂拦截插件自己那个带 download 属性的下载锚，结束立刻恢复。
+ * 导出：仍走浏览器下载（插件原生行为，不拦截）。
  *
  * 命令名与枚举均已核对（canvas-editor 1.2.0）：
  *   executeUndo/Redo/Bold/Italic/Underline/Strikeout
@@ -8,18 +13,29 @@
  *   executeRowFlex(RowFlex.LEFT|CENTER|RIGHT|ALIGNMENT)
  *   executeTitle(TitleLevel.FIRST|SECOND|'')  executeList(ListType.UL|OL)
  *   executeInsertTable(row, col)  executePrint
- *   executeImportDocx({arrayBuffer}) / executeExportDocx({fileName})
+ *   executeImportDocx({arrayBuffer}) / executeExportDocx({fileName}) -> Promise<Blob>
  */
 (function () {
   'use strict';
+
+  var DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
   var API = window.KNCanvas;
   var msgEl = document.getElementById('edMsg');
   var statusEl = document.getElementById('edStatus');
   var nameEl = document.getElementById('edTaskName');
+  var savedEl = document.getElementById('edSavedText');
+  var saveBtn = document.getElementById('edSave');
 
   function say(t) { msgEl.textContent = t || '—'; }
   function status(t) { statusEl.textContent = t; }
+  function setSaved(t) { if (savedEl) savedEl.textContent = t; }
+
+  function hhmm(value) {
+    var d = value instanceof Date ? value : new Date(value);
+    if (isNaN(d.getTime())) return '--:--';
+    return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+  }
 
   if (!API || !API.Editor) { say('编辑器脚本未加载'); return; }
 
@@ -40,12 +56,14 @@
   });
   instance.use(API.docxPlugin);
 
-  // ── 工具栏 ───────────────────────────────────────────────────
   var cmd = instance.command;
+
+  // ── 工具栏 ───────────────────────────────────────────────────
   document.querySelector('.ed-bar').addEventListener('click', function (event) {
     var btn = event.target.closest('.ed-btn');
     if (!btn || btn.disabled) return;
     var d = btn.dataset;
+    if (!d.cmd && !d.size && !d.align && !d.title && !d.list && !d.table) return;
     try {
       if (d.cmd) { cmd[d.cmd](); }
       else if (d.size === '+') { cmd.executeSizeAdd(); }
@@ -54,7 +72,6 @@
       else if (d.title) { cmd.executeTitle(d.title === 'p' ? '' : d.title); }
       else if (d.list) { cmd.executeList(d.list); }
       else if (d.table) { cmd.executeInsertTable(3, 3); }
-      else { return; }
       status('已执行');
     } catch (err) {
       status('命令不支持: ' + (d.cmd || d.align || d.title || d.list || ''));
@@ -62,29 +79,38 @@
   });
 
   // ── 载入 docx ────────────────────────────────────────────────
+  function importBuffer(buf, label) {
+    cmd.executeImportDocx({ arrayBuffer: buf });
+    say('已载入 ' + label + ' · ' + (buf.byteLength / 1024).toFixed(0) + ' KB');
+    status('已载入');
+  }
+
   function loadFrom(url, label) {
     say('正在载入 ' + label + '…'); status('载入中');
     fetch(url)
       .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
-      .then(function (buf) {
-        cmd.executeImportDocx({ arrayBuffer: buf });
-        say('已载入 ' + label + ' · ' + (buf.byteLength / 1024).toFixed(0) + ' KB');
-        status('已载入');
-        })
+      .then(function (buf) { importBuffer(buf, label); })
       .catch(function (err) { say('载入失败：' + err.message); status('载入失败'); });
   }
 
+  // 优先取存回系统的编辑版；非 200 才回退到「metadata 找 draft_ref → artifact 下载」。
   function loadTaskDocx(id) {
     fetch('/api/tasks/' + encodeURIComponent(id))
       .then(function (r) { return r.json(); })
       .then(function (task) {
         var md = task.metadata || {};
-        var ref = md.draft_ref || md.final_docx_ref || md.docx_ref;
         nameEl.textContent = task.display_name || id;
-        if (!ref) { say('该任务没有可载入的 docx 产物'); status('无产物'); return; }
-        loadFrom('/api/artifacts/' + encodeURIComponent(ref) + '/download', '报告 docx');
+        say('正在载入编辑版…'); status('载入中');
+        return fetch('/api/tasks/' + encodeURIComponent(id) + '/final-docx')
+          .then(function (r) { return r.ok ? r.arrayBuffer() : null; })
+          .then(function (buf) {
+            if (buf) { importBuffer(buf, '编辑版 docx'); return; }
+            var ref = md.draft_ref || md.docx_ref;
+            if (!ref) { say('该任务没有可载入的 docx 产物'); status('无产物'); return; }
+            loadFrom('/api/artifacts/' + encodeURIComponent(ref) + '/download', '报告 docx');
+          });
       })
-      .catch(function (err) { say('任务详情读取失败：' + err.message); });
+      .catch(function (err) { say('任务详情读取失败：' + err.message); status('载入失败'); });
   }
 
   document.getElementById('edLoadTpl').addEventListener('click', function () {
@@ -99,26 +125,117 @@
         var list = Array.isArray(tasks) ? tasks : (tasks.tasks || []);
         var hit = list.filter(function (t) { return t.draft; })[0];
         if (!hit) { say('没有已生成的报告可载入'); status('无数据'); return; }
+        taskId = hit.id;
+        if (nameEl) nameEl.textContent = hit.display_name || hit.id;
+        refreshSaved();
         loadTaskDocx(hit.id);
       })
       .catch(function (err) { say('任务列表读取失败：' + err.message); });
   });
 
-  // ── 导出 ────────────────────────────────────────────────────
+  // ── 导出 / 保存 ─────────────────────────────────────────────
+  function fileName() {
+    return (taskId || '终稿') + '-' + new Date().toISOString().slice(0, 10) + '.docx';
+  }
+
+  // 导出到本地（插件原生下载，不拦截）
   document.getElementById('edExport').addEventListener('click', function () {
-    var name = (taskId || '终稿') + '-' + new Date().toISOString().slice(0, 10) + '.docx';
+    var name = fileName();
     try {
-      cmd.executeExportDocx({ fileName: name });
+      var maybe = cmd.executeExportDocx({ fileName: name });
+      if (maybe && typeof maybe.then === 'function') { maybe.catch(function () {}); }
       say('已导出 ' + name); status('已导出');
     } catch (err) {
       say('导出失败：' + err.message); status('导出失败');
     }
   });
 
-  say('就绪 · 载入模板或报告后可编辑导出');
+  // 导出但拿到 Blob：插件内部的 E2() 会造一个 <a download> 并立刻 click，
+  // 这里在导出期间只拦「带 download 属性的锚」的 click，结束后立即恢复原型。
+  function exportBlobSilently(name) {
+    var proto = window.HTMLAnchorElement.prototype;
+    var original = proto.click;
+    proto.click = function () {
+      if (this.hasAttribute('download')) { return; }
+      return original.apply(this, arguments);
+    };
+    function restore() { proto.click = original; }
+    return Promise.resolve()
+      .then(function () { return cmd.executeExportDocx({ fileName: name }); })
+      .then(function (blob) { restore(); return blob; },
+            function (err) { restore(); throw err; });
+  }
+
+  var saving = false;
+  if (saveBtn) saveBtn.addEventListener('click', function () {
+    if (saving) return;
+    if (!taskId) {
+      say('保存失败：页面未带 ?task=，不知道该存到哪个任务');
+      status('保存失败');
+      setSaved('未保存');
+      return;
+    }
+    saving = true; saveBtn.disabled = true;
+    say('正在生成 docx 并上传…'); status('保存中');
+    exportBlobSilently(fileName())
+      .then(function (blob) {
+        if (!blob || typeof blob.arrayBuffer !== 'function') {
+          throw new Error('插件未返回 docx 字节');
+        }
+        return blob.arrayBuffer();
+      })
+      .then(function (buf) {
+        return fetch('/api/tasks/' + encodeURIComponent(taskId) + '/final-docx', {
+          method: 'POST',
+          headers: { 'Content-Type': DOCX_MIME },
+          body: buf
+        }).then(function (r) {
+          return r.text().then(function (text) {
+            if (!r.ok) {
+              var detail = text;
+              try { detail = JSON.parse(text).detail || text; } catch (e) {}
+              throw new Error('HTTP ' + r.status + (detail ? ' ' + String(detail).slice(0, 60) : ''));
+            }
+            var data = {};
+            try { data = JSON.parse(text); } catch (e) {}
+            say('已保存到系统 · ' + (data.bytes || buf.byteLength) + ' 字节 · sha256 '
+                + String(data.sha256 || '').slice(0, 12) + '…');
+            status('已保存');
+            setSaved('已保存 ' + hhmm(new Date()));
+          });
+        });
+      })
+      .catch(function (err) {
+        say('保存失败：' + err.message);
+        status('保存失败');
+        setSaved('保存失败');
+      })
+      .then(function () { saving = false; if (saveBtn) saveBtn.disabled = false; });
+  });
+
+  // ── 打开时读「已保存 / 未保存」 ─────────────────────────────
+  function refreshSaved() {
+    if (!taskId) { setSaved('未保存'); return; }
+    fetch('/api/tasks/' + encodeURIComponent(taskId) + '/final-docx/meta')
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (m) {
+        if (m && m.available && m.updated_at) { setSaved('已保存 ' + hhmm(m.updated_at)); }
+        else { setSaved('未保存'); }
+      })
+      .catch(function () { setSaved('未保存'); });
+  }
+
+  if (!taskId) {
+    setSaved('未保存');
+  } else {
+    refreshSaved();
+    loadTaskDocx(taskId);
+  }
+
+  say('就绪 · 载入模板或报告后可编辑、保存到系统或导出');
   status('就绪');
 
-  // 测试钩子：?load=tpl 自动载入模板；?load=doc 自动载入最新报告
+  // 测试钩子：?load=tpl 自动载入模板；?load=doc 自动载入报告
   var auto = params.get('load');
   if (auto === 'tpl') { loadFrom('/api/template-docx', '模板 docx'); }
   else if (auto === 'doc') { document.getElementById('edLoadDoc').click(); }
