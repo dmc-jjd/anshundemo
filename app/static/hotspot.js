@@ -38,6 +38,18 @@
     var categories = [];   // 类别清单（接口返回体的 categories，来自客户包词表）
     var active = ALL;      // 当前 TAB：默认「全部」
 
+    // 类别 TAB 单行横向溢出：鼠标滚轮（deltaY）转成横向滚动，触控板横向滑动（deltaX）优先。
+    // 只有容器确实溢出（scrollWidth > clientWidth）时才 preventDefault——未溢出时不劫持页面纵向滚动。
+    tabsHost.addEventListener('wheel', function (event) {
+      if (tabsHost.scrollWidth <= tabsHost.clientWidth) return;
+      var delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+      if (!delta) return;
+      if (event.deltaMode === 1) delta *= 16;                        // 行模式
+      else if (event.deltaMode === 2) delta *= tabsHost.clientWidth; // 页模式
+      event.preventDefault();
+      tabsHost.scrollLeft += delta;
+    }, { passive: false });
+
     function setError(text) {
       if (text) {
         errorLine.textContent = text;

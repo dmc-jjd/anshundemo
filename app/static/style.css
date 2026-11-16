@@ -286,10 +286,26 @@ select{cursor:pointer}
 .hotspot-acts{display:flex;align-items:center;gap:12px;margin:0;flex:0 0 auto}
 .hotspot-acts .btn{height:30px;min-height:30px;padding:0 14px}
 .hotspot-panel .card-h .hint{font-variant-numeric:tabular-nums}
-/* 热点类别 TAB：单行横向滚动，不换行撑高卡片（类别数由接口给，可能多于 12）；
-   当前 TAB 的 scrollIntoView 在 hotspot.js，属行为，不放这里。 */
-#hotspotTabs{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-ms-overflow-style:none;margin:0 0 6px;padding:0 0 8px}
-#hotspotTabs::-webkit-scrollbar{display:none}
+/* 热点类别 TAB：单行横向滚动，不换行撑高卡片（类别数由接口给，可能多于 12）。
+   细滚动条常显：完全隐藏会让用户不知道可以横向滚；5px 高 + 透明轨道 + 弱色滑块。
+   第 85 行的全局 *{scrollbar-width:thin} 会让 Chromium 忽略 ::-webkit-scrollbar 尺寸，
+   故此处显式 scrollbar-width:auto 回退到自定义细条；Firefox 再由下面的 @supports 用标准属性
+   （-moz-appearance 探针只在 Firefox 命中）拿到同样细的同色滚动条。
+   padding-right 是末项安全边距，保证最后一个 TAB 滚到底时不被边缘裁掉。
+   底部 3px + 滚动条 5px ≈ 原 padding-bottom 8px，卡片高度不变。
+   滚轮转横向滚动与当前 TAB 的 scrollIntoView 在 hotspot.js，属行为，不放这里。 */
+#hotspotTabs{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;
+  scrollbar-width:auto;scrollbar-color:auto;
+  margin:0 0 6px;padding:0 12px 3px 0}
+@supports (-moz-appearance:none){
+  #hotspotTabs{scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+}
+#hotspotTabs::-webkit-scrollbar{height:5px}
+#hotspotTabs::-webkit-scrollbar-track{background:transparent}
+/* border:0 / background-clip:border-box 是必要的复位：全局第 88 行的滑块带
+   3px 透明边框 + content-box 裁剪，5px 高的滑块会被裁成 0 可见高度（占位却看不见）。 */
+#hotspotTabs::-webkit-scrollbar-thumb{background:var(--line);border:0;background-clip:border-box;border-radius:3px}
+#hotspotTabs::-webkit-scrollbar-thumb:hover{background:var(--faint)}
 #hotspotTabs .hotspot-tab{flex:0 0 auto;white-space:nowrap}
 .hotspot-error{margin:0 0 10px;color:var(--red);font-size:13px;line-height:1.5;word-break:break-all}
 .hotspot-list{list-style:none;margin:0;padding:0;flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain}
