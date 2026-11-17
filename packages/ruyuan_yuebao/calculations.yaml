@@ -31,7 +31,12 @@ b9_period_end:
 
 b12_peak_date_full:
   metric: peak_date
+  scope: negative_warning_events
   include_year: true
+  include_day_suffix: true
+b12_peak_date_short:
+  metric: peak_date
+  scope: negative_warning_events
   include_day_suffix: true
 
 b14_platform_list:

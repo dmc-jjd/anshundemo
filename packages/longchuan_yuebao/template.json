@@ -1,0 +1,113 @@
+{
+  "package": "longchuan_yuebao",
+  "version": "1.0.0",
+  "writer_slots": [
+    "b5_sensitive_examples",
+    "b8_top_events",
+    "b21_dynamic_titles",
+    "b21_top_title",
+    "b25_event_examples",
+    "b27_risk_theme",
+    "b28_risk_context",
+    "numbered_items_1",
+    "b34_risk_theme",
+    "b35_risk_context",
+    "numbered_items_2",
+    "b42_case_material",
+    "b43_case_analysis",
+    "b44_case_suggestions"
+  ],
+  "section_two": {
+    "field_roles": {
+      "numbered_items_1": "general",
+      "numbered_items_2": "general"
+    }
+  },
+  "data_contract": {
+    "sheet_index": 1,
+    "required_columns": [
+      "标题",
+      "舆情调性"
+    ],
+    "summary_columns": [
+      "摘要"
+    ],
+    "column_map": {
+      "标题": "title",
+      "发布时间": "published",
+      "来源信息": "source",
+      "作者": "author",
+      "作者Id": "source_id",
+      "事件分类": "category",
+      "网址": "url",
+      "媒体环节": "platform",
+      "媒体属性": "media_attribute",
+      "媒体级别": "media_level",
+      "舆情调性": "sentiment",
+      "是否预警": "warning"
+    },
+    "dedup": {
+      "threshold": 0.65,
+      "candidate_floor_ratio": 0.6,
+      "merge_rounds": 2,
+      "merge_threshold": 0.5
+    }
+  },
+  "vocabulary": {
+    "localities": {
+      "龙川县": [
+        "龙川县",
+        "我县"
+      ]
+    },
+    "cluster_terms": {
+      "未分类": [
+        "未分类"
+      ]
+    }
+  },
+  "charts": [
+    {
+      "id": "daily",
+      "title": "舆情信息走势",
+      "draft_title": "每日信息量（原始记录）",
+      "final_title": "舆情信息走势",
+      "family": "line",
+      "style": "line",
+      "binding": {
+        "source": "metrics.daily_count"
+      },
+      "unit": "条",
+      "scope": "all_records",
+      "axis_label": "日期"
+    },
+    {
+      "id": "platform",
+      "title": "信息平台来源分布",
+      "draft_title": "媒体环节分布（原始记录）",
+      "final_title": "信息平台来源分布",
+      "family": "pie",
+      "style": "pie",
+      "binding": {
+        "source": "metrics.platform"
+      },
+      "unit": "条",
+      "scope": "all_records",
+      "axis_label": "传播平台"
+    },
+    {
+      "id": "source",
+      "title": "信源分布",
+      "draft_title": "来源信息分布（原始记录）",
+      "final_title": "信源分布",
+      "family": "pie",
+      "style": "pie",
+      "binding": {
+        "source": "metrics.source"
+      },
+      "unit": "条",
+      "scope": "all_records",
+      "axis_label": "信源"
+    }
+  ]
+}

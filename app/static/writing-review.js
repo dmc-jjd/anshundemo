@@ -30,12 +30,14 @@ async function openWritingReview(id){
  const [x,view,state]=await Promise.all([api(`/api/tasks/${id}/writing-review`),api(`/api/tasks/${id}/draft-view`),api(`/api/tasks/${id}`)]);
  const current=x.report?.draft_hash===x.draft_hash,editable=state.phase==='awaiting_final_review',active=writingBusy(state.phase);
  const contentRound=x.run?.stage_rounds?.content_reviewer,formatRepairs=x.run?.stage_repair_attempts?.format_reviewer||0;
- body.replaceChildren(node('p',`${contentRound?'内容审核第 '+contentRound+' / 5 轮':'格式审核'}；格式已退修 ${formatRepairs} / 5 次 → Writer按意见退修 → 人工最终核查。两阶段分别限次；人工保存后直接进入终审，不再回到模型。`,{class:'help'}));
+ body.replaceChildren(node('p',`${contentRound?'内容审核第 '+contentRound+' / 3 轮':'格式审核'}；格式已退修 ${formatRepairs} / 2 次 → Writer按意见退修 → 人工最终核查。两阶段分别最多 3 轮审核；人工保存后直接进入终审，不再回到模型。`,{class:'help'}));
  const summary=node('section',null,{class:'review-summary'});
  for(const role of Object.keys(writingRole)){const r=current?x.report.reviewers?.[role]:null,card=node('div',null,{class:'member-card'});card.dataset.reviewer=role;card.append(node('h3',writingRole[role]),node('strong',r?reviewState[r.status]||r.status:active?'等待本轮结果':'当前稿尚未审核'));if(r?.summary){const points=node('ol',null,{class:'review-summary-list','aria-label':writingRole[role]+'意见概述'});reviewSummaryItems(r.summary).forEach(text=>points.append(node('li',text)));card.append(points)}summary.append(card)}body.append(summary);
  body.append(node('p',x.ready?'双审核及待办已处理。报告字段与图表完整后，可确认终审。':active?'自动写作与审核正在执行，下面仅展示当前进展。':!current?'需要先完成当前稿的格式、内容审核。':`当前还有 ${x.issues.filter(i=>i.blocking).length} 项阻断意见，请查看原句并最终处理。`,{class:x.ready?'help':'notice'}));
  if(x.run?.format_limit_reached)body.append(node('p','格式审核已到重试上限，已保留格式意见并继续内容审核。遗留格式问题与内容意见在此统一作最终人工核查。',{class:'notice'}));
  if(view.missing?.length)body.append(node('p',`另外还有 ${view.missing.length} 个字段未完成；在“查看报告与缺失项”补全。`,{class:'notice'}));
+ if(view.pending_charts)body.append(node('p',`另外还有 ${view.pending_charts} 张图尚未生成，完成后才可确认终审。`,{class:'notice'}));
+ if(state.phase==='paused')body.append(node('p',(state.metadata?.paused_from_phase==='awaiting_final_review'?'任务已暂停。请先点“继续任务”回到人工终审，再确认报告。':'任务已暂停。请先点“继续任务”。'),{class:'notice'}));
  if(x.run?.repair_error){body.append(node('p',active?'退修未通过校验，已保留有效正文，正在反馈错误并继续审核。':'自动退修已达本阶段上限，已保留上一版有效正文。请按下方原句完成最终人工核查。',{class:'notice'}));const technical=node('details');technical.append(node('summary','查看退修校验原因'),node('pre',x.run.repair_error));body.append(technical)}
  const reason=node('textarea',null,{rows:'2','aria-label':'补充核查说明（选填）',placeholder:'例如：已对照来源核查，该表述符合本期报告口径，保留当前内容。'});
  if(x.issues.length&&editable)body.append(node('label','补充核查说明（选填，直接点击保留也可完成核查）'),reason);
@@ -98,7 +100,8 @@ async function openWritingReview(id){
  for(const [index,repair] of (x.repairs||[]).entries()){const d=node('details');d.append(node('summary',`第 ${index+1} 次自动退修`));for(const patch of repair.patches){d.append(node('h4',definitions[patch.field_id]?.display_name||patch.field_id),node('p','修改前'),node('blockquote',Array.isArray(patch.before)?patch.before.join('\n\n'):patch.before),node('p','修改后'),node('blockquote',Array.isArray(patch.after)?patch.after.join('\n\n'):patch.after))}history.append(d)}
  if(!(x.style_history||[]).length)history.append(node('p','当前稿尚无检测记录。'));body.append(history);
  const trace=node('details');trace.append(node('summary','查看实际图节点执行记录'));const table=node('table');for(const e of x.graph_nodes){const row=node('tr');row.append(node('td',graphNames[e.node]||e.node),node('td',({started:'开始',finished:'完成',error:'未完成'})[e.status]||e.status),node('td',new Date(e.at).toLocaleTimeString('zh-CN')));table.append(row)}trace.append(table,node('a','查看编译图结构',{href:'/api/workflow-graphs',target:'_blank'}));body.append(trace);
- if(!active&&state.phase!=='approved')$('#dialogActions').append(button(current?'重试未完成审核':'审核当前稿',async()=>{await post(`/api/tasks/${id}/review-draft`,{expected_hash:x.draft_hash});$('#reviewDialog').close();toast('已启动当前稿双审核，保留已完成人工文字。');shownRevision=null;await refresh(true)}));
+ if(state.phase==='paused')$('#dialogActions').append(button('继续任务',async()=>{await post(`/api/tasks/${id}/resume`,{});toast('任务已继续。');shownRevision=null;await refresh(true);await openWritingReview(id)},true));
+ if(!active&&state.phase!=='approved'&&state.phase!=='paused')$('#dialogActions').append(button(current?'重试未完成审核':'审核当前稿',async()=>{await post(`/api/tasks/${id}/review-draft`,{expected_hash:x.draft_hash});$('#reviewDialog').close();toast('已启动当前稿双审核，保留已完成人工文字。');shownRevision=null;await refresh(true)}));
  if(view.can_approve&&state.phase!=='approved')$('#dialogActions').append(button('确认报告并终审',async()=>{await post(`/api/tasks/${id}/approve`,{draft_hash:x.draft_hash});$('#reviewDialog').close();toast('报告已通过终审。');shownRevision=null;await refresh(true)},true));
 }
 

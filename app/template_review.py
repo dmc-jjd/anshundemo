@@ -78,7 +78,8 @@ def make_input(documents, comparison, local, package=None):
     local_view['other_report_hypotheses']=[hypothesis(c) for c in local.get('other_report_hypotheses',[])]
     comparison_view={'documents': comparison['documents'], 'method': comparison['method'],
                      'alignments': [{key: a[key] for key in ('base_file','other_file','type','base_blocks','other_blocks')}
-                                    for a in comparison['alignments']]}
+                                    for a in comparison['alignments']],
+                     'intra_paragraph_frames': comparison.get('intra_paragraph_frames') or []}
     return TemplateModelInput(
         policy={'version':POLICY_VERSION,**deepcopy(TEMPLATE_POLICY)},
         source_reports=[{'id': f'r{i+1}', **d} for i, d in enumerate(documents)],

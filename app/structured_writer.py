@@ -86,6 +86,45 @@ def data_values(template,report,plans=None,package=None):
         except Exception as exc:issues.append({'field_id':field['id'],'semantic':field.get('display_name',field['id']),'message':str(exc)[:600],'error':type(exc).__name__})
     return values,issues
 
+def _layout_docx_path(template):
+    path=Path(template.get('layout_source') or '')
+    if not path.exists() and path.name and (DATA/'uploads'/path.name).exists():
+        path=DATA/'uploads'/path.name
+    return path if path.exists() else None
+
+def layout_drawing_count(template, charts_only=False):
+    """Count drawing ML objects in the layout Word file.
+
+    charts_only=True keeps only real chart drawings, so cover images and
+    text boxes are not treated as unfinished report charts.
+    """
+    path=_layout_docx_path(template)
+    if path is None: return 0
+    from core.tools.doc97 import is_legacy_doc
+    if is_legacy_doc(path): return 0
+    from lxml import etree as ET
+    query='//*[local-name()="drawing"][.//*[local-name()="chart"]]' if charts_only else '//*[local-name()="drawing"]'
+    with zipfile.ZipFile(path) as z:
+        return len(ET.fromstring(z.read('word/document.xml')).xpath(query))
+
+def pending_chart_count(template, charts):
+    """Unfinished report charts: declared template charts and real Word charts,
+    never decorative pictures or text boxes. Layouts without template.charts
+    keep the legacy all-drawing count so existing image-placeholder fixtures still work.
+    """
+    declared=len((template or {}).get('charts') or [])
+    chart_drawings=layout_drawing_count(template or {}, charts_only=True)
+    if declared:
+        expected=max(declared, chart_drawings)
+    else:
+        expected=max(layout_drawing_count(template or {}), chart_drawings)
+    return max(0, expected-len(charts or {}))
+
+def preview_status(template, values, charts):
+    missing=[f['id'] for f in (template or {}).get('fields',[]) if f['id'] not in (values or {})]
+    pending=pending_chart_count(template or {}, charts)
+    return {'missing_fields':missing,'pending_charts':pending,'preview_only':bool(missing or pending)}
+
 def save_draft(store,state,template,values,allowed,charts,issues):
     missing=[f['id'] for f in template['fields'] if f['id'] not in values]
     issues=[i for i in issues if i.get('field_id') in missing or i.get('chart')]
@@ -95,11 +134,7 @@ def save_draft(store,state,template,values,allowed,charts,issues):
         missing_recommendation_evidence=any(i.get('error')=='historical_evidence_insufficient' for i in issues))
     draft.content_hash=hashlib.sha256(draft.model_dump_json(exclude={'content_hash'}).encode()).hexdigest()
     state.draft_ref=store.put_artifact(state.id,'structured_draft',draft.model_dump())
-    from lxml import etree as ET
-    path=Path(template['layout_source'])
-    if not path.exists() and (DATA/'uploads'/path.name).exists():path=DATA/'uploads'/path.name
-    with zipfile.ZipFile(path) as z:expected=len(ET.fromstring(z.read('word/document.xml')).xpath('//*[local-name()="drawing"]'))
-    pending=max(0,expected-len(charts))
+    pending=pending_chart_count(template, charts)
     state.metadata.update(preview_only=bool(missing or pending),missing_fields=missing,writer_issues=issues,pending_charts=pending)
     state.metadata['structured_writer_version']=2
     store.put_task(state,state.revision)
@@ -195,7 +230,8 @@ async def write_structured_preview(deps,task_id,agents=None):
     from lxml import etree as ET
     path=Path(template['layout_source'])
     if not path.exists() and (DATA/'uploads'/path.name).exists():path=DATA/'uploads'/path.name
-    with zipfile.ZipFile(path) as z:expected=len(ET.fromstring(z.read('word/document.xml')).xpath('//*[local-name()="drawing"]'))
+    from core.charts.spec import chart_slot_drawings as _chart_slot_drawings
+    with zipfile.ZipFile(path) as z:expected=len(_chart_slot_drawings(ET.fromstring(z.read('word/document.xml'))))
     from .chart_spec import styles_for,definitions as _chart_definitions
     planned=_chart_definitions(template)
     planned=sorted(planned,key=lambda item:int(item.get('drawing_index') or 10**6))

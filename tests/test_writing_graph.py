@@ -53,7 +53,7 @@ def test_repair_loop_preserves_facts_data_and_human_fields(tmp_path):
     count=len(calls);edit_structured(store,'r',{'w1':'人工终审后确认的正文'},draft['content_hash'])
     state=store.get_task('r');assert len(calls)==count and review_ready(state,store.get_artifact(state.draft_ref)['content_hash'])
 
-def test_five_review_rounds_then_human_is_final_without_model_reentry(tmp_path):
+def test_three_review_rounds_then_human_is_final_without_model_reentry(tmp_path):
     store,template,state=seeded(tmp_path);calls=[]
     async def adapter(role,payload):
         calls.append(role)
@@ -63,7 +63,7 @@ def test_five_review_rounds_then_human_is_final_without_model_reentry(tmp_path):
         if role=='content_reviewer':reply['issues']=[{'field_id':'w1','kind':'logic','severity':'blocking','quote':payload['fields'][0]['value'],'description':'测试中的逻辑问题仍未解除。','suggestion':'补足条件与影响关系。','action':'revise'}]
         return reply
     state=asyncio.run(run_writing_graph(Dependencies(store,adapter),'r',True))
-    assert state.metadata['writing_review_run']['round']==5 and calls.count('writer')==4
+    assert state.metadata['writing_review_run']['round']==3 and calls.count('writer')==2
     draft=store.get_artifact(state.draft_ref);assert not review_ready(state,draft['content_hash'])
     count=len(calls);state=asyncio.run(run_writing_graph(Dependencies(store,adapter),'r',True));assert len(calls)==count
     issues=[i['id'] for i in state.review_items if i['kind']=='writing_review' and i['status']=='open']
@@ -166,7 +166,7 @@ def test_unresolved_format_only_dispatches_content_after_limit_and_keeps_finding
         if role=='format_reviewer':answer['issues']=[{'field_id':'w1','kind':'format','quote':payload['fields'][0]['value'],'description':'格式始终未通过。','suggestion':'按本期规则修正格式。','action':'revise'}]
         return answer
     state=asyncio.run(run_writing_graph(Dependencies(store,adapter),'r',True))
-    assert calls==['format_reviewer','writer']*5+['format_reviewer','content_reviewer']
+    assert calls==['format_reviewer','writer']*2+['format_reviewer','content_reviewer']
     assert 'content_reviewer' in state.metadata['review_report']['reviewers']
     assert state.metadata['writing_review_run']['format_limit_reached'] is True
     assert state.metadata['writing_review_run']['blocked_at']=='final_review'

@@ -46,10 +46,16 @@ def import_records(args,ctx):
             except (ValueError,OverflowError):pass
         mapped={field:data.get(column,'') for column,field in column_map.items()}
         mapped['published']=published
+        summary=(data.get(summary_columns[0]) or '') if summary_columns else ''
+        if not summary:
+            for column in summary_columns[1:]:
+                summary=data.get(column) or ''
+                if summary: break
+            summary=summary[:1200]
         records.append(normalize_record({
             'id':rid,
             **mapped,
-            'summary':data.get(summary_columns[0]) or (data.get(summary_columns[1],'') or '')[:1200],
+            'summary':summary,
             'source_ref':{'file_hash':file_hash,'sheet':book['sheet'],'row':row['excel_row']},
         }))
     ref=ctx.store.put_artifact(ctx.task_id,'records',{'records':records,'file_hash':file_hash,'header':header,'sheet':book['sheet'],'normalization':NORMALIZATION_VERSION})

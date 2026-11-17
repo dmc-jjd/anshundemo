@@ -22,7 +22,10 @@ def reports(tmp_path):
 def test_three_reports_model_corrects_coincidental_fixed_words_and_word_output(tmp_path):
     docs=reports(tmp_path);local=build_structured_template(docs,'comparison')
     assert len(local['source_reports'])==3
-    assert '交通管理' in ''.join(p.get('text','') for b in local['blocks'] for p in b['parts'])
+    fixed=''.join(p.get('text','') for b in local['blocks'] for p in b['parts'])
+    # 前两份碰巧都写「交通管理」，第三份没有。公共衔接语可保留，碰巧相同的类目不能固化。
+    assert '重点涉及' in fixed
+    assert '交通管理' not in fixed
     packet=make_input(docs,compare_reports(docs),local)
     result=asyncio.run(semantic_analyst('template_analyst',{**packet,'target_blocks':[0]}))
     template=compile_review(result,packet,'comparison')

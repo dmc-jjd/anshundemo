@@ -1,9 +1,9 @@
-"""模板任务软删除：标记不删文件、列表/下拉消失、引用保护（force）、同名可重建。
+"""模板任务硬删除：任务与未引用工件移除、列表/下拉消失、引用保护（force）、同名可重建。
 
 判据（用户需求）：
 1. 待确认候选与已确认模板都能删；删后不进 GET /api/templates（02 库 + 03 下拉同源）；
-2. 软删除只打标记：artifact 文件仍可取、报告任务的 template_ref 不动；
-3. 被报告任务引用时默认 409 并给引用数，?force=true 才删；
+2. 硬删除会移除任务记录；未被报告引用的工件从库和磁盘删除，建包读盘扫描再也看不到；
+3. 被报告任务引用时默认 409 并给引用数，?force=true 才删任务；已确认模板文件保留，报告 template_ref 不动；
 4. 删除后相同模板名可重新创建并确认成功（旧任务不再占位）。
 """
 from __future__ import annotations
@@ -11,14 +11,17 @@ from __future__ import annotations
 import io
 import zipfile
 
+import pytest
 from fastapi.testclient import TestClient
 
 import app.main as main
+from app.api_views.template_library import purge_soft_deleted_templates
 from app.schemas import TaskState
 from app.storage import Store
 from app.structured_template import build_structured_template
 from app.template_compare import parse_report_document
 from app.workflow import Dependencies
+from core.structured_template import load_confirmed_template
 from test_structured_template import semantic_analyst
 
 DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -80,7 +83,24 @@ def _library_ids(client):
     return {item['id'] for item in client.get('/api/templates').json()}
 
 
-def test_delete_candidate_removes_from_library_and_keeps_artifacts(tmp_path, monkeypatch):
+def _scan_confirmed(store):
+    """建包 skill 方式二：按 list_tasks 读已确认模板。"""
+    hits = []
+    for task in store.list_tasks():
+        if task.kind != 'template' or task.metadata.get('template_deleted_at'):
+            continue
+        ref = task.metadata.get('confirmed_template_ref')
+        if not ref:
+            continue
+        try:
+            load_confirmed_template(store, ref)
+        except ValueError:
+            continue
+        hits.append((task.id, ref))
+    return hits
+
+
+def test_delete_candidate_removes_task_and_artifacts(tmp_path, monkeypatch):
     store, _ = _store(tmp_path, monkeypatch)
     task, ref = _candidate_task(store, tmp_path)
     with TestClient(main.app) as client:
@@ -88,31 +108,35 @@ def test_delete_candidate_removes_from_library_and_keeps_artifacts(tmp_path, mon
         response = _delete(client, task.id)
         assert response.status_code == 200, response.text
         body = response.json()
-        assert body['phase'] == 'cancelled' and body['references'] == 0
+        assert body['deleted'] is True and body['hard'] is True and body['references'] == 0
+        assert ref in body['removed_artifacts']
         assert task.id not in _library_ids(client)
-        # 03 页下拉只取 confirmed_by_human：候选本来就不在，删除后更不在
         dropdown = [item for item in client.get('/api/templates').json()
                     if item['status'] == 'confirmed_by_human']
-        assert all(item['task_id'] != task.id for item in dropdown)
+        assert all(item.get('task_id') != task.id for item in dropdown)
 
-    state = store.get_task(task.id)
-    assert state.phase == 'cancelled' and state.metadata['template_deleted_at']
-    # 软删除：候选 artifact 文件仍可取
-    assert store.get_artifact(ref)['blocks']
-    assert any(event['type'] == 'template_task_deleted' and event['soft'] is True
-               for event in store.events(task.id))
+    with pytest.raises(KeyError):
+        store.get_task(task.id)
+    with pytest.raises(KeyError):
+        store.get_artifact(ref)
+    assert store.events(task.id) == []
 
 
 def test_delete_confirmed_template_without_references(tmp_path, monkeypatch):
     store, _ = _store(tmp_path, monkeypatch)
     task, ref = _confirmed_task(store, tmp_path)
+    assert _scan_confirmed(store)
     with TestClient(main.app) as client:
         assert ref in _library_ids(client)
         response = _delete(client, task.id)
         assert response.status_code == 200, response.text
+        assert response.json()['hard'] is True
         assert ref not in _library_ids(client)
-    assert store.get_task(task.id).metadata['template_deleted_at']
-    assert store.get_artifact(ref)['status'] == 'confirmed_by_human'  # 文件保留
+    with pytest.raises(KeyError):
+        store.get_task(task.id)
+    with pytest.raises(KeyError):
+        store.get_artifact(ref)
+    assert _scan_confirmed(store) == []
 
 
 def test_referenced_confirmed_template_is_rejected_then_force_deleted(tmp_path, monkeypatch):
@@ -128,13 +152,17 @@ def test_referenced_confirmed_template_is_rejected_then_force_deleted(tmp_path, 
 
         forced = _delete(client, task.id, force=True)
         assert forced.status_code == 200, forced.text
-        assert forced.json()['references'] == 1
+        payload = forced.json()
+        assert payload['references'] == 1 and payload['kept_artifacts'] == [ref]
         assert ref not in _library_ids(client)
 
-    # 报告任务的 template_ref 原封不动，仍可按工件查看
+    # 报告任务的 template_ref 原封不动，仍可按工件查看；模板任务已不在 list_tasks
     report = store.get_task('report-using-it')
     assert report.template_ref == ref
     assert store.get_artifact(ref)
+    with pytest.raises(KeyError):
+        store.get_task(task.id)
+    assert _scan_confirmed(store) == []
 
 
 def test_delete_guards_unknown_report_double_running(tmp_path, monkeypatch):
@@ -147,13 +175,34 @@ def test_delete_guards_unknown_report_double_running(tmp_path, monkeypatch):
         # 内置基线不是任务，不能删
         assert _delete(client, 'anshun-monthly-colored').status_code == 404
         assert _delete(client, 'a-report').status_code == 422
-        # 研判仍在后台跑：拒绝（避免被跑完的图复活）
+        # 研判仍在后台跑：拒绝
         running = _delete(client, 'running-tpl')
         assert running.status_code == 409 and running.json()['detail'] == 'template_still_running'
         done = _delete(client, 'cand-candidate-x')
         assert done.status_code == 200
         again = _delete(client, 'cand-candidate-x')
-        assert again.status_code == 409 and again.json()['detail'] == 'template_already_deleted'
+        assert again.status_code == 404 and again.json()['detail'] == 'task_not_found'
+
+
+def test_purge_promotes_legacy_soft_deleted_templates(tmp_path, monkeypatch):
+    store, _ = _store(tmp_path, monkeypatch)
+    task, ref = _confirmed_task(store, tmp_path)
+    leftover = store.get_task(task.id)
+    leftover.metadata['template_deleted_at'] = '2026-01-01T00:00:00+00:00'
+    leftover.phase = 'cancelled'
+    store.put_task(leftover, leftover.revision)
+    # 旧机制下 list_templates 看不到，但 list_tasks 仍能扫到
+    with TestClient(main.app) as client:
+        assert ref not in _library_ids(client)
+    assert any(t.id == task.id for t in store.list_tasks())
+
+    results = purge_soft_deleted_templates(store)
+    assert len(results) == 1 and results[0]['error'] is None
+    with pytest.raises(KeyError):
+        store.get_task(task.id)
+    with pytest.raises(KeyError):
+        store.get_artifact(ref)
+    assert _scan_confirmed(store) == []
 
 
 def _docx_bytes(text):
@@ -202,3 +251,5 @@ def test_same_named_template_can_be_created_and_confirmed_after_delete(tmp_path,
         same_name = [item for item in items if item['name'] == name]
         assert len(same_name) == 1 and same_name[0]['id'] == new_ref
         assert old_ref not in {item['id'] for item in items}
+        with pytest.raises(KeyError):
+            store.get_task(old_task.id)

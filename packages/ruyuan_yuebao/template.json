@@ -242,7 +242,7 @@
       "binding": {
         "source": "theme_clusters.groups"
       },
-      "style": "bar",
+      "style": "pie",
       "scope": "negative_warning_events",
       "title": "负面预警内容分类",
       "final_title": "负面预警内容分类",

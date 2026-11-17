@@ -2,6 +2,7 @@
 from __future__ import annotations
 import copy,hashlib,io,json,re,zipfile
 from difflib import SequenceMatcher
+from .tools.template_compare import shared_paragraph_frames
 from pathlib import Path
 from jsonschema import Draft202012Validator
 
@@ -11,6 +12,102 @@ def top10_table_schema():
         'prefixItems':[{'type':'string'},{'type':'string','minLength':15,'maxLength':35},{'type':'string'}]}}
 def _tokens(text):
     return re.findall(r'\d+(?:\.\d+)?%?|[^\d]',text)
+
+def _pair_blocks(base_blocks,other_blocks):
+    def normalized(b):return b.get('kind','paragraph')+':'+NUMBER.sub('#',b['text'])
+    alignment=SequenceMatcher(None,[normalized(b) for b in base_blocks],
+                             [normalized(b) for b in other_blocks],autojunk=False)
+    pairs={}
+    for tag,a0,a1,b0,b1 in alignment.get_opcodes():
+        if a1-a0==b1-b0 and tag in ('equal','replace'):
+            for a,b in zip(base_blocks[a0:a1],other_blocks[b0:b1]):
+                if a.get('kind')==b.get('kind') and SequenceMatcher(None,normalized(a),normalized(b),autojunk=False).ratio()>=.3:
+                    pairs[a['index']]=b
+    return pairs
+
+def _token_parts(base_text,other_text,base_doc,other_doc,a,b,fields,source):
+    parts=[]
+    tokens_a,tokens_b=_tokens(base_text),_tokens(other_text)
+    for tag,a0,a1,b0,b1 in SequenceMatcher(None,tokens_a,tokens_b,autojunk=False).get_opcodes():
+        left=''.join(tokens_a[a0:a1]);right=''.join(tokens_b[b0:b1])
+        if tag=='equal':
+            if left:parts.append({'text':left})
+            continue
+        fid=f'block_{a["index"]}_field_{len(fields)+1}'
+        numeric=bool(NUMBER.fullmatch(left.strip() or right.strip()))
+        fields.append({'id':fid,'owner':'data' if numeric else 'writer','kind':'number' if numeric else 'text',
+                       'semantic':'根据两份原文差异提出，含义与来源规则待确认',
+                       'value_schema':{'type':'string','minLength':1,**({'pattern':r'^\d+(?:\.\d+)?%?$'} if numeric else {})},
+                       'block':a['index'],'binding':None,
+                       'sources':[source(base_doc,a,left),source(other_doc,b,right)]})
+        parts.append({'field':fid})
+    return parts
+
+def _locate_frame_spans(text,frames):
+    pos=0
+    spans=[]
+    for item in frames:
+        index=text.find(item['text'],pos)
+        if index<0:return None
+        spans.append((index,index+len(item['text'])))
+        pos=index+len(item['text'])
+    return spans
+
+def _append_span_field(fields,a,base_doc,other_doc,b,left,right,source):
+    fid=f'block_{a["index"]}_field_{len(fields)+1}'
+    numeric=bool(NUMBER.fullmatch((left or '').strip() or (right or '').strip()))
+    fields.append({'id':fid,'owner':'data' if numeric else 'writer','kind':'number' if numeric else 'text',
+                   'semantic':'根据两份原文差异提出，含义与来源规则待确认',
+                   'value_schema':{'type':'string','minLength':1,**({'pattern':r'^\d+(?:\.\d+)?%?$'} if numeric else {})},
+                   'block':a['index'],'binding':None,
+                   'sources':[source(base_doc,a,left),source(other_doc,b,right)]})
+    return {'field':fid}
+
+def _gap_parts(gap_a,gap_b,a,base_doc,other_doc,b,fields,source,other_gaps=None):
+    if not gap_a and not gap_b:
+        return []
+    candidates=[gap_b]+[g for g in (other_gaps or []) if g is not None]
+    ratios=[SequenceMatcher(None,gap_a,g).ratio() for g in candidates if g]
+    long_dissimilar=((len(gap_a)>=40 and (not ratios or min(ratios)<0.75))
+                     or (ratios and min(ratios)<0.5 and len(gap_a)>=12))
+    if gap_a and (not gap_b or long_dissimilar):
+        return [_append_span_field(fields,a,base_doc,other_doc,b,gap_a,gap_b,source)]
+    return _token_parts(gap_a,gap_b,base_doc,other_doc,a,b,fields,source)
+
+def _frame_parts(a,correspondences,base_doc,fields,source):
+    texts=[a['text']]+[block['text'] for _,block in correspondences]
+    frames=shared_paragraph_frames(texts)
+    if not frames:
+        return None
+    locations=[]
+    for _,block in correspondences:
+        spans=_locate_frame_spans(block['text'],frames)
+        if spans is None:
+            return None
+        locations.append(spans)
+    primary_doc,primary_block=correspondences[0]
+    primary_spans=locations[0]
+    other_span_sets=list(zip(correspondences,locations))
+    parts=[]
+    pos=0
+    for index,frame in enumerate(frames):
+        if frame['start']>pos:
+            gap_a=a['text'][pos:frame['start']]
+            prev=0 if index==0 else primary_spans[index-1][1]
+            gap_b=primary_block['text'][prev:primary_spans[index][0]]
+            extra=[]
+            for (doc,block),spans in other_span_sets[1:]:
+                left=0 if index==0 else spans[index-1][1]
+                extra.append(block['text'][left:spans[index][0]])
+            parts.extend(_gap_parts(gap_a,gap_b,a,base_doc,primary_doc,primary_block,fields,source,extra))
+        parts.append({'text':frame['text']})
+        pos=frame['end']
+    if pos<len(a['text']):
+        gap_a=a['text'][pos:]
+        gap_b=primary_block['text'][primary_spans[-1][1]:]
+        extra=[block['text'][spans[-1][1]:] for (_,block),spans in other_span_sets[1:]]
+        parts.extend(_gap_parts(gap_a,gap_b,a,base_doc,primary_doc,primary_block,fields,source,extra))
+    return parts
 
 def _schema(fields,writer_only=False):
     properties={}
@@ -59,20 +156,13 @@ def build_structured_template(documents:list[dict],comparison_ref:str)->dict:
                    'block':a['index'],'binding':{'tool':'top10_events','path':[]} if is_top10 else None}
             fields.append(field); blocks.append({'index':a['index'],'kind':'table','headers':headers,'parts':[{'field':fid}]})
             continue
-        tokens_a,tokens_b=_tokens(a['text']),_tokens(b['text'])
-        for tag,a0,a1,b0,b1 in SequenceMatcher(None,tokens_a,tokens_b,autojunk=False).get_opcodes():
-            left=''.join(tokens_a[a0:a1]);right=''.join(tokens_b[b0:b1])
-            if tag=='equal':
-                if left:parts.append({'text':left})
-                continue
-            fid=f'block_{a["index"]}_field_{len(fields)+1}'
-            numeric=bool(NUMBER.fullmatch(left.strip() or right.strip()))
-            fields.append({'id':fid,'owner':'data' if numeric else 'writer','kind':'number' if numeric else 'text',
-                           'semantic':'根据两份原文差异提出，含义与来源规则待确认',
-                           'value_schema':{'type':'string','minLength':1,**({'pattern':r'^\d+(?:\.\d+)?%?$'} if numeric else {})},
-                           'block':a['index'],'binding':None,
-                           'sources':[source(base,a,left),source(other,b,right)]})
-            parts.append({'field':fid})
+        correspondences=[(other,b)]
+        for extra in documents[2:]:
+            mapped=_pair_blocks(base['blocks'],extra['blocks']).get(a['index'])
+            if mapped is not None:
+                correspondences.append((extra,mapped))
+        framed=_frame_parts(a,correspondences,base,fields,source)
+        parts=framed if framed is not None else _token_parts(a['text'],b['text'],base,other,a,b,fields,source)
         blocks.append({'index':a['index'],'kind':'paragraph','parts':parts})
     payload={'format_version':1,'status':'candidate_requires_review','comparison_ref':comparison_ref,
              'source_reports':[{'path':d['path'],'sha256':d['sha256']} for d in documents],
@@ -217,10 +307,10 @@ def render_structured_docx(template:dict,values:dict,allowed_refs:set[str],requi
         rel_path='word/_rels/document.xml.rels'
         rels=ET.fromstring(zin.read(rel_path)) if rel_path in zin.namelist() else ET.Element('{http://schemas.openxmlformats.org/package/2006/relationships}Relationships')
         content_types=ET.fromstring(zin.read('[Content_Types].xml')) if '[Content_Types].xml' in zin.namelist() else None
-        from core.charts.spec import drawing_ids as _drawing_ids,DEFAULT_DRAWING_IDS
+        from core.charts.spec import drawing_ids as _drawing_ids,DEFAULT_DRAWING_IDS,chart_slot_drawings,bind_drawing_image
         chart_names=_drawing_ids(template)
-        # Replace each old drawing's relationship, preserving its Word geometry.
-        for i,drawing in enumerate(list(root.iter(W+'drawing')),1):
+        # 只替换图表槽，保留封面图和文本框的几何与关系。
+        for i,drawing in enumerate(chart_slot_drawings(root),1):
             name=chart_names.get(i) or (DEFAULT_DRAWING_IDS[i-1] if i<=len(DEFAULT_DRAWING_IDS) else str(i))
             if name in charts:
                 import base64
@@ -241,8 +331,7 @@ def render_structured_docx(template:dict,values:dict,allowed_refs:set[str],requi
                 rid=f'rIdFrozenChart{i}'
                 if any(r.get('Id')==rid for r in rels):raise ValueError('chart_relationship_collision')
                 ET.SubElement(rels,'{http://schemas.openxmlformats.org/package/2006/relationships}Relationship',Id=rid,Type='http://schemas.openxmlformats.org/officeDocument/2006/relationships/image',Target=filename)
-                for blip in drawing.xpath('.//*[local-name()="blip"]'):
-                    blip.set('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed',rid)
+                bind_drawing_image(drawing, rid)
             else:
                 if require_complete:raise ValueError('missing_current_chart:'+name)
                 parent=drawing.getparent();parent.remove(drawing)

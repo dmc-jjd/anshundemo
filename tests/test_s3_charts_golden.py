@@ -1,8 +1,7 @@
 """S3 出口门禁：正式报告图（Matplotlib）字节基线 + 基座零客户图表标题 + 薄壳契约。
 
-基线来源：WP-S3-D 改码前由未改动的 `app.writer_tools.chart_payload` 录制，
-逐字等于 `docs/team/任务分解-S3.md` §0.5-B；audit 记录见 `docs/team/baseline/mpl-charts-S3.json`。
-PNG 内嵌 `Software=Matplotlib version<ver>` —— 升级 matplotlib 必然改字节，须重录基线并同时升级版本说明。
+基线来源：WP-S3-D 初录于 `app.writer_tools.chart_payload`；2026-11-17 因饼图标签改为围在扇区四周，重录 sentiment / platform（daily / theme / locality 未变）。
+PNG 内嵌 `Software=Matplotlib version<ver>` —— 升级 matplotlib 必然改字节，须重录基线并同时升级版本说明。audit 记录见 `docs/team/baseline/mpl-charts-S3.json`。
 """
 import base64,hashlib,json
 from pathlib import Path
@@ -11,12 +10,12 @@ from app.frozen_report import FrozenReport
 from core.charts import registry
 
 # 录制时 matplotlib==3.11.2
-GOLDEN={'sentiment':'980a9a4a8aa0fff9224a14df37f958371ccb7d81a1e258a4f504373df4f09da1',
+GOLDEN={'sentiment':'c58c6dccc9891e47b21aff14d386954ea9c3a4deb8f18372cb889619e609fd82',
         'daily':'4f6dde78aa0629ced004833c0f30a7fc3a0c1b9f21860a9def7667d34ea5cbba',
-        'platform':'c616ef84b5da84f8cca2be27532a14a1c858c3483a40f63aed88b1f7b664dd0e',
+        'platform':'9b5b2d89cd840de0e385563b6a688c5c2db32a8112d7d03c670d7ec752b6efa9',
         'theme':'2c8554635c0d2bac79c291e8034e663f756252393fe887b3994c7caf6ec31741',
         'locality':'ebb7c799c86be635c8f6f24be74bba74897bfb9705bfe463bd132856c7cfed49'}
-COMPOSITE='d4d58d44726c9290c2e03d8029f9f0bae1bcc00c779e5a36aebe94d72dd59e9d'
+COMPOSITE='df94f10469b4b31b3da5906f9d9dc05132aab5190a33fcd6e055eccd743772e6'
 SLOTS=('title','draft_title','final_title','locality_basis')
 
 def test_matplotlib_five_png_golden(tmp_path):

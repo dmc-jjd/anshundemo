@@ -9,8 +9,9 @@
 为什么 `.doc` 是「200 + 降级」而不是报错：
     definition 的主体（块 / 字段 / 图表实例 / schema）全部不依赖版式源文件。只读版式的
     那一部分只有「图形数量」（`drawing_index` 的语义 = 模板 docx 里第 N 个图形）。`.doc`
-    的图形是 OLE2 里的 EMF 对象，数量给不出来，于是图表清单降级为空并在返回体标记
-    `layout_available=False`；坏 ZIP 不同——它是真错误，按 422 交回可指导文案。
+    的图形是 OLE2 里的 EMF 对象，数量给不出来，于是 `layout_available=False`，
+    图表清单回落到当前包登记的全部图表（由系统按数据重画），不再截成空清单。
+    坏 ZIP 不同——它是真错误，按 422 交回可指导文案。有图形槽的 `.docx` 仍按槽数截取。
 
 `.docx` 的返回体必须逐字不变：`test_docx_definition_body_is_byte_identical_to_pre_change`
 用**独立重放的改前逻辑**算出期望字节，与响应逐字节比对。
@@ -41,6 +42,15 @@ requires_sample = pytest.mark.skipif(not SAMPLE.exists(), reason='样本 .doc �
 
 NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 BASIS = '用户确认的月报图形规则，可在模板审核时更换'
+
+def _registry_charts_projection():
+    """版式给不出图形槽时，definitions 使用的包内图表 7 键投影。"""
+    return [{'id': item['id'], 'drawing_index': index + 1, 'title': item['title'],
+             'style': item['style'], 'style_basis': BASIS, 'scope': item['scope'],
+             'unit': item['unit']}
+            for index, item in enumerate(registry.charts())]
+
+
 
 
 def _sha(path: Path) -> str:
@@ -73,7 +83,7 @@ def _client(tmp_path: Path, monkeypatch, layout: Path) -> tuple[TestClient, str]
 
 @requires_sample
 def test_legacy_doc_definition_returns_200_with_degraded_charts(tmp_path, monkeypatch):
-    """`.doc` 基准报告 → 200（改前 500）；块/字段照常，图表清单降级为空并带标记。"""
+    """`.doc` 基准报告 → 200（改前 500）；块/字段照常，图表回落到包内登记清单并带标记。"""
     client, ref = _client(tmp_path, monkeypatch, SAMPLE)
     with client:
         response = client.get('/api/templates/t/definition')
@@ -84,7 +94,7 @@ def test_legacy_doc_definition_returns_200_with_degraded_charts(tmp_path, monkey
     definition = body['definition']
     assert body['artifact_ref'] == ref
     assert definition['layout_available'] is False
-    assert definition['charts'] == []
+    assert definition['charts'] == _registry_charts_projection()
     assert definition['layout_source'] == str(SAMPLE)
     assert [Path(item['path']).name for item in definition['source_reports']] == [SAMPLE.name]
 
@@ -96,7 +106,7 @@ def test_legacy_doc_base_builds_template_before_definition_is_served(tmp_path):
     template = build_structured_template(documents, 'comparison')
 
     assert template['layout_source'] == str(SAMPLE)
-    assert template['charts'] == []
+    assert template['charts'] == _registry_charts_projection()
     assert template['blocks']
     assert template['output_schema']['type'] == 'object'
 
@@ -157,8 +167,8 @@ def test_broken_layout_source_is_422_with_actionable_detail(tmp_path, monkeypatc
 
 @requires_sample
 def test_definitions_degrades_legacy_doc_instead_of_raising(tmp_path):
-    """直调 `.doc`：降级为空，不能是 `BadZipFile`（它不是 ValueError，路由层兜不住）。"""
-    assert chart_spec.definitions({'layout_source': str(SAMPLE)}) == []
+    """直调 `.doc`：回落到包内图表，不能是 `BadZipFile`（它不是 ValueError，路由层兜不住）。"""
+    assert chart_spec.definitions({'layout_source': str(SAMPLE)}) == _registry_charts_projection()
     assert chart_spec.layout_available({'layout_source': str(SAMPLE)}) is False
 
 
@@ -175,4 +185,7 @@ def test_definitions_raises_value_error_for_broken_zip(tmp_path):
 def test_with_styles_on_legacy_doc_does_not_raise(tmp_path):
     """`chart-version` 走的是同一个 `definitions`——`.doc` 上也不能 500。"""
     changed = chart_spec.with_styles({'layout_source': str(SAMPLE)}, {'theme': 'barh'})
-    assert changed['charts'] == []
+    assert [item['id'] for item in changed['charts']] == [item['id'] for item in registry.charts()]
+    themed = [item for item in changed['charts'] if item['id'] == 'theme']
+    if themed:
+        assert themed[0]['style'] == 'barh'

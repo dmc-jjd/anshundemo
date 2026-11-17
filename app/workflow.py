@@ -5,7 +5,7 @@ import asyncio,hashlib,json,uuid
 from dataclasses import dataclass
 from core.agent_steps import graph_agents,prune_spec,resolve_enabled_agents
 from core.graph.compiler import END_TARGET,compile_graph
-from core.graph.review_loop import ReviewBudgets,build_review_loop
+from core.graph.review_loop import ReviewBudgets,STAGE_REVIEW_MAX_ROUNDS,build_review_loop
 from core.ports import GraphNode,GraphSpec,ReviewerSpec
 from typing_extensions import TypedDict
 from .schemas import TaskState,ToolCall,ToolDecision,DraftVersion,FactSnapshot
@@ -247,7 +247,7 @@ def _writing_spec(review_only=False):
 
 
 def build_writing_graph(dependencies:Dependencies,review_only=False,agents=None):
-    from .reviewers import begin_run,local_review,style_review,run_reviewer,review_route,format_route,revise_draft,finish_review,repairable
+    from .reviewers import begin_run,local_review,style_review,run_reviewer,review_route,format_route,revise_draft,finish_review,repairable,stage_under_budget
     agents=_enabled_agents(agents)
     store=dependencies.store
     def validate(task_id):
@@ -268,13 +268,13 @@ def build_writing_graph(dependencies:Dependencies,review_only=False,agents=None)
         ('content_local_validation',lambda tid:local_review(store,tid)),('content_style_detection',phase_node('style_detection',lambda tid:style_review(store,tid))),
         ('final_format_review',lambda tid:run_reviewer(dependencies,tid,'format_reviewer',phase='final_format_review')),
         ('await_final_review',lambda tid:finish_review(store,tid))]
-    # 审校循环的 12 个出口名由 ReviewerSpec.kind 派生（出口名的唯一来源）；预算显式 5——
+    # 审校循环的 12 个出口名由 ReviewerSpec.kind 派生（出口名的唯一来源）；预算与 STAGE_REVIEW_MAX_ROUNDS 一致——
     # ReviewerSpec.max_rounds 默认 2 且全仓零消费，接线即改行为。
     plan=build_review_loop(reviewers=(ReviewerSpec('format','format_reviewer'),ReviewerSpec('content','content_reviewer')),
         actions={'review:format_reviewer':'format_review','review:content_reviewer':'content_review',
                  'revalidate:format_reviewer':'local_validation','revalidate:content_reviewer':'content_local_validation',
                  'revision':'revise_draft','final_review':'final_format_review','await_final':'await_final_review'},
-        budgets=ReviewBudgets(max_rounds=5))
+        budgets=ReviewBudgets(max_rounds=STAGE_REVIEW_MAX_ROUNDS))
     # 线性流水线：writer成稿 → 格式审核(循环退修) → 内容审核(循环退修) → 最终格式审核 → 人工研判。
     # 初始成稿后一律先走格式审核；格式审核完毕后才会进入内容审核。
     # 格式审核：仍有可退修意见 → 退修改写；通过/达上限 → 内容审核；取消 → 终审。
@@ -289,13 +289,13 @@ def build_writing_graph(dependencies:Dependencies,review_only=False,agents=None)
         run=task.metadata['writing_review_run'];stage=run.get('repair_stage','content_reviewer')
         if stage=='content_reviewer':
             # 内容退修失败/被拒：轮次内重审内容，否则交给最终格式审核。
-            if run.get('stage_rounds',{}).get(stage,0)<5 and repairable(store,task,stage):
+            if stage_under_budget(run,stage) and repairable(store,task,stage):
                 run['retry_reviewer']=stage;store.put_task(task,task.revision);return 'content'
             return 'final_format'
         if not repairable(store,task,stage):
             # Writer 拒绝格式退修或无退修点：保留格式意见，转发到内容审核一次。
             return 'content' if format_route(store,task.id)=='content' else 'finish'
-        if run.get('stage_repair_attempts',{}).get(stage,0)<5:return 'retry'
+        if run.get('stage_repair_attempts',{}).get(stage,0)<STAGE_REVIEW_MAX_ROUNDS:return 'retry'
         return 'content' if format_route(store,task.id)=='content' else 'finish'
     # 内容退修后的独立重校验链路 → 回到内容审核；与格式审核的重校验链路完全分离。
     routers={'format_review':lambda value:format_route(store,value['task_id']),
@@ -508,10 +508,24 @@ def _data_review_details(state):
         if state.result_refs.get(ref):details[key]=state.result_refs[ref]
     return details
 
+def _processing_failure_message(state):
+    results=(state.metadata or {}).get('tool_results') or {}
+    errors=[item for item in results.values() if isinstance(item,dict) and item.get('status')=='error']
+    if not errors:
+        return '数据处理未完成，请查看运行动态并重试。'
+    last=errors[-1]
+    detail=next((w for w in (last.get('warnings') or []) if w), last.get('error_code') or '未知原因')
+    code=last.get('error_code') or ''
+    if code and str(detail)!=str(code):
+        return f'数据处理失败：{code}（{detail}）'
+    return f'数据处理失败：{detail}'
+
 def _await_data_review(deps:Dependencies,task_id:str):
     store=deps.store;state=store.get_task(task_id)
     if state.cancel_requested: state.phase='cancelled'
-    elif 'import_records' not in state.result_refs: state.phase='failed'
+    elif 'import_records' not in state.result_refs:
+        state.phase='failed'
+        state.metadata['failure_message']=_processing_failure_message(state)
     else:
         obsolete={'model_question','event_groups','first_section_warning_rule','theme_clusters','template_review','ranking_rule','warning_scope'}
         for item in state.review_items:
@@ -520,7 +534,7 @@ def _await_data_review(deps:Dependencies,task_id:str):
         required=_required_refs(_template_features(store,state))
         if not required<=state.result_refs.keys():
             state.phase='failed'
-            state.metadata['failure_message']='数据处理未完成，请查看运行动态并重试。'
+            state.metadata['failure_message']=_processing_failure_message(state)
         elif not any(x['kind']=='data_review' and x['status']=='open' for x in state.review_items):
             state.review_items.append(_item('data_review','请查看本期统计、自动归并事件与分类结果，修改后确认本期数据。',True,_data_review_details(state)))
         else:

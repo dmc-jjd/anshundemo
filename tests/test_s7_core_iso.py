@@ -20,7 +20,7 @@ S10-J 起本文件改指 `core-S10-J.json`：该档只新增 `core/tools/doc97.p
 
 S10-K 起本文件改指 `core-S10-K.json`：该档 `core/` 逐字节未变（`core_hash` 与 S10-J 相同、
 `core_files` 仍 97、`CORE-DEP` 0/0），变化全部在 `app/`——模板字段弹窗新增「自定义字段」
-（`app/template_draft.py`、`app/template_draft_api.py`），模板任务软删除（新增
+（`app/template_draft.py`、`app/template_draft_api.py`），模板任务硬删除（新增
 `app/api_views/template_library.py`、`app/template_delete_api.py`，`app/main.py` 净减到 602 行），
 故 `app_hash` 前进；`core-S10-J.json` 及更早各档保留、不覆盖。
 

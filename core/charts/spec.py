@@ -1,7 +1,7 @@
 """图表呈现契约：图表族/样式枚举/实例投影与原图提取。客户实例数据一律取自 registry。"""
 from __future__ import annotations
 
-import hashlib,zipfile,posixpath
+import hashlib,zipfile
 from pathlib import Path
 from typing import Literal
 from pydantic import BaseModel,ConfigDict
@@ -22,6 +22,7 @@ FAMILY_STYLES={
     'platform':('pie','bar','barh'),
     'theme':('pie','bar','barh'),
     'locality':('pie','bar','barh'),
+    'source':('pie','bar','barh'),
 }
 
 # Existing client packages historically stored the style name (pie/line/bar/barh)
@@ -33,6 +34,7 @@ DEFAULT_BINDINGS={
     'platform':{'source':'metrics.platform'},
     'theme':{'source':'theme_clusters.groups'},
     'locality':{'source':'locality.items'},
+    'source':{'source':'metrics.source'},
 }
 
 def family_of(chart):
@@ -166,8 +168,103 @@ def layout_available(template,data_root:Path)->bool:
     path=_layout_path(template,data_root)
     return not is_legacy_doc(path) and zipfile.is_zipfile(path)
 
+def is_chart_drawing(drawing)->bool:
+    """Word 统计图（带 ``c:chart``），不是封面图或文本框。"""
+    return bool(drawing.xpath('.//*[local-name()="chart"]'))
+
+
+def chart_slot_drawings(root):
+    """渲染/编号用的图形槽：版式里有统计图时只收统计图，否则退回全部 ``w:drawing``（图片占位夹具）。"""
+    drawings=list(root.xpath('//*[local-name()="drawing"]'))
+    charts=[item for item in drawings if is_chart_drawing(item)]
+    return charts if charts else drawings
+
+
+def _drawing_extent(drawing, attr):
+    extent=drawing.xpath('.//*[local-name()="extent"]')
+    if not extent:
+        return 0
+    try:
+        return int(extent[0].get(attr) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def source_chart_drawings(root):
+    """历史报告原图对照用的图表槽。
+
+    有 Word 统计图时只收统计图，封面图和文本框不占位。没有统计图、只有嵌入图片时，
+    去掉没有图片的文本框，并丢掉明显高于其它图的整页封面，避免图 1 对上封面。
+    安顺这类五张接近的图片夹具保持原样，五张都会留下。
+    """
+    slots=chart_slot_drawings(root)
+    if any(is_chart_drawing(item) for item in slots):
+        return slots
+    pictures=[item for item in slots if item.xpath('.//*[local-name()="blip"]')]
+    if len(pictures)<=1:
+        return pictures or slots
+    heights=[_drawing_extent(item,'cy') for item in pictures]
+    median=sorted(heights)[len(heights)//2]
+    kept=[item for item,height in zip(pictures,heights)
+          if not (height>=8_000_000 and height>=2*max(median,1))]
+    return kept or pictures
+
+
+_A='http://schemas.openxmlformats.org/drawingml/2006/main'
+_PIC='http://schemas.openxmlformats.org/drawingml/2006/picture'
+_R='http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+_PIC_URI=_PIC
+
+
+def bind_drawing_image(drawing, rid:str)->None:
+    """把一张 PNG 绑到图形槽：已有 blip 的改引用；Word 统计图则改成图片，保留位置和尺寸。"""
+    ET.register_namespace('a', _A)
+    ET.register_namespace('pic', _PIC)
+    ET.register_namespace('r', _R)
+    rel=f'{{{_R}}}embed'
+    blips=drawing.xpath('.//*[local-name()="blip"]')
+    if blips:
+        for blip in blips:
+            blip.set(rel, rid)
+        return
+    graphic=drawing.xpath('.//*[local-name()="graphic"]')
+    if not graphic:
+        return
+    data=graphic[0].xpath('./*[local-name()="graphicData"]')
+    if not data:
+        data=[ET.SubElement(graphic[0], f'{{{_A}}}graphicData')]
+    graphic_data=data[0]
+    for child in list(graphic_data):
+        graphic_data.remove(child)
+    graphic_data.set('uri', _PIC_URI)
+    docPr=drawing.xpath('.//*[local-name()="docPr"]')
+    name=(docPr[0].get('name') if docPr else '') or 'Chart'
+    nid=(docPr[0].get('id') if docPr else '') or '1'
+    extent=drawing.xpath('.//*[local-name()="extent"]')
+    cx=(extent[0].get('cx') if extent else '') or '5486400'
+    cy=(extent[0].get('cy') if extent else '') or '3200400'
+    pic=ET.SubElement(graphic_data, f'{{{_PIC}}}pic')
+    nv=ET.SubElement(pic, f'{{{_PIC}}}nvPicPr')
+    ET.SubElement(nv, f'{{{_PIC}}}cNvPr', id=str(nid), name=name)
+    ET.SubElement(nv, f'{{{_PIC}}}cNvPicPr')
+    fill=ET.SubElement(pic, f'{{{_PIC}}}blipFill')
+    blip=ET.SubElement(fill, f'{{{_A}}}blip')
+    blip.set(rel, rid)
+    stretch=ET.SubElement(fill, f'{{{_A}}}stretch')
+    ET.SubElement(stretch, f'{{{_A}}}fillRect')
+    spPr=ET.SubElement(pic, f'{{{_PIC}}}spPr')
+    xfrm=ET.SubElement(spPr, f'{{{_A}}}xfrm')
+    ET.SubElement(xfrm, f'{{{_A}}}off', x='0', y='0')
+    ET.SubElement(xfrm, f'{{{_A}}}ext', cx=cx, cy=cy)
+    geom=ET.SubElement(spPr, f'{{{_A}}}prstGeom', prst='rect')
+    ET.SubElement(geom, f'{{{_A}}}avLst')
+
+
 def _drawings(path:Path):
-    """版式 docx 里的 `<w:drawing>` 列表；`drawing_index` 的语义就是「模板里的第 N 个图形」。
+    """版式 docx 里用于给图表编号的 `<w:drawing>` 列表。
+
+    有真正的 Word 统计图时，封面图和文本框不占 ``drawing_index``；没有统计图时
+    （测试夹具用图片占位）仍按全部图形编号。`drawing_index` 的语义是「第 N 个图表槽」。
 
     `.doc` 走不了 zipfile：整个 definition 的主体（块/字段/图表实例）都不依赖版式，
     只有**图形数量**依赖它，所以这里按「版式不可用」降级为空，而不是让 `BadZipFile`
@@ -178,15 +275,21 @@ def _drawings(path:Path):
     if not zipfile.is_zipfile(path):
         raise ValueError(f'template_layout_unavailable: 模板的基准报告不是可读的 .docx（OOXML ZIP）：{path.name}')
     with zipfile.ZipFile(path) as z:
-        return ET.fromstring(z.read('word/document.xml')).xpath('//*[local-name()="drawing"]')
+        return chart_slot_drawings(ET.fromstring(z.read('word/document.xml')))
 
 def definitions(template,data_root:Path):
     if template.get('charts'):return template['charts']
     drawings=_drawings(_layout_path(template,data_root))
+    # 版式读得出图形槽时，仍按槽数截取（测试夹具和有图 docx 的既有行为）。
+    # 版式给不出槽（.doc 或 0 个 drawing）时不截成空清单，改用包内登记的全部图表，
+    # 由系统按数据重画；具体客户名不进这段逻辑。
+    items=registry.charts()
+    if drawings:
+        items=items[:len(drawings)]
     # 逐键显式赋值：键集必须仍是这 7 个（用 **item 会把 draft_title 等带进模板工件，改其哈希）
     return [{'id':item['id'],'drawing_index':i+1,'title':item['title'],'style':item['style'],
              'style_basis':STYLE_BASIS_TEMPLATE,'scope':item['scope'],'unit':item['unit']}
-            for i,item in enumerate(registry.charts()[:len(drawings)])]
+            for i,item in enumerate(items)]
 
 def styles_for(template,overrides=None,*,data_root:Path):
     declared={c['id']:c for c in registry.charts()}
@@ -217,37 +320,31 @@ def with_styles(template,styles,*,data_root:Path):
     return result
 
 def source_image(template,kind,source_index=0,*,data_root:Path):
-    kinds=[item['id'] for item in ordered_template_charts(template)]
-    if not kinds and template and template.get('layout_source'):
-        kinds=[item['id'] for item in definitions(template,data_root)]
-    if not kinds:
-        kinds=registry.ids()
-    if kind not in kinds:raise ValueError('unknown_chart')
+    charts=list(ordered_template_charts(template))
+    if not charts and template and template.get('layout_source'):
+        charts=list(definitions(template,data_root))
+    if not charts:
+        charts=[{'id':name,'drawing_index':index} for index,name in enumerate(registry.ids(),1)]
+    item=next((entry for entry in charts if entry['id']==kind),None)
+    if item is None:raise ValueError('unknown_chart')
+    try:
+        slot=int(item.get('drawing_index') or 0)
+    except (TypeError,ValueError):
+        slot=0
+    if slot<=0:
+        slot=next(index for index,entry in enumerate(charts,1) if entry['id']==kind)
     source=template['source_reports'][source_index];path=Path(source['path'])
     if not path.exists() and (data_root/'uploads'/path.name).exists():path=data_root/'uploads'/path.name
     # `.doc` 的图形是 OLE2 里的 EMF 对象，不是 ZIP 内的 media 条目——本函数不做 OLE2 图片提取，
     # 提前按「不可预览」拒绝，而不是让 zipfile 抛 BadZipFile 变成 500。
     if is_legacy_doc(path):raise ValueError('source_chart_unavailable')
     if hashlib.sha256(path.read_bytes()).hexdigest()!=source['sha256']:raise ValueError('template_source_changed')
+    from core.charts.source_preview import preview_source_drawing
     with zipfile.ZipFile(path) as z:
-        drawings=ET.fromstring(z.read('word/document.xml')).xpath('//*[local-name()="drawing"]')
-        drawing=drawings[kinds.index(kind)];blip=drawing.xpath('.//*[local-name()="blip"]')[0]
-        rid=blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
-        rels=ET.fromstring(z.read('word/_rels/document.xml.rels'))
-        rel=next(r for r in rels if r.get('Id')==rid and r.get('TargetMode')!='External')
-        target=rel.get('Target','');name=target.lstrip('/') if target.startswith('/') else posixpath.normpath('word/'+target)
-        if not name.startswith('word/media/'):raise ValueError('not_embedded_chart_image')
-        data=z.read(name)
-    mime='image/png' if data.startswith(b'\x89PNG') else 'image/jpeg' if data.startswith(b'\xff\xd8') else None
-    if not mime:
-        # Historical Word reports contain EMF, which browsers cannot display.
-        # Pillow uses Windows GDI to rasterize it without altering the document.
-        import io
-        from PIL import Image
+        drawings=source_chart_drawings(ET.fromstring(z.read('word/document.xml')))
         try:
-            with Image.open(io.BytesIO(data)) as image:
-                if image.format=='WMF':image.load(dpi=160)
-                out=io.BytesIO();image.convert('RGB').save(out,format='PNG');data=out.getvalue()
-            mime='image/png'
-        except (OSError,ValueError) as exc:raise ValueError('source_image_format_not_previewable') from exc
-    return data,mime
+            drawing=drawings[slot-1]
+        except IndexError as exc:
+            raise ValueError('source_chart_unavailable') from exc
+        return preview_source_drawing(z,drawing)
+

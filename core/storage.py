@@ -94,6 +94,34 @@ CREATE TABLE IF NOT EXISTS idempotency(key TEXT PRIMARY KEY, value TEXT);''')
     def list_tasks(self)->list[TaskState]:
         with self.connect() as c: rows=c.execute('SELECT state FROM tasks ORDER BY rowid DESC').fetchall()
         return [TaskState.model_validate_json(r['state']) for r in rows]
+    def delete_task(self, task_id: str, *, keep_artifact_ids: list[str] | tuple[str, ...] = ()) -> list[str]:
+        """永久删除任务及其事件、审核草稿，以及未被保留的工件（库记录与文件）。
+
+        ``keep_artifact_ids`` 里的工件行仍挂在原 ``task_id`` 上，``get_artifact`` 仍可用。
+        任务不存在时只清理能清理的行，返回已删除的 artifact id 列表，不抛错。
+        """
+        keep = {str(x) for x in keep_artifact_ids if x}
+        deleted: list[str] = []
+        with self.connect() as c:
+            rows = c.execute('SELECT id, path FROM artifacts WHERE task_id=?', (task_id,)).fetchall()
+            for row in rows:
+                aid = row['id']
+                if aid in keep:
+                    continue
+                c.execute('DELETE FROM artifacts WHERE id=?', (aid,))
+                path = self.files / f'{aid}.json'
+                if not path.exists():
+                    path = Path(row['path'])
+                try:
+                    if path.exists():
+                        path.unlink()
+                except OSError:
+                    pass
+                deleted.append(aid)
+            c.execute('DELETE FROM events WHERE task_id=?', (task_id,))
+            c.execute('DELETE FROM review_drafts WHERE task_id=?', (task_id,))
+            c.execute('DELETE FROM tasks WHERE id=?', (task_id,))
+        return deleted
     def get_review_draft(self,task_id,analysis_ref=None):
         with self.connect() as c:row=c.execute('SELECT * FROM review_drafts WHERE task_id=?',(task_id,)).fetchone()
         if not row or analysis_ref is not None and row['analysis_ref']!=analysis_ref:return None

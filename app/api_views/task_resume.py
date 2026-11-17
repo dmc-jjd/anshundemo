@@ -21,6 +21,24 @@ def _first_present(metadata, keys):
     return None
 
 
+def template_display_index(store, library_items=None):
+    """任务列表用的模板名索引：先用模板库条目，再用各包已确认模板任务的名字补齐。
+
+    模板库若因工件读失败暂时漏掉某条，报告任务仍应显示中文模板名，而不是原始 template_version- id。
+    """
+    index = {item['id']: item for item in (library_items or [])}
+    for task in store.list_tasks():
+        if getattr(task, 'kind', None) != 'template':
+            continue
+        if (task.metadata or {}).get('template_deleted_at'):
+            continue
+        ref = (task.metadata or {}).get('confirmed_template_ref')
+        name = str((task.metadata or {}).get('template_name') or '').strip()
+        if ref and name:
+            index.setdefault(ref, {'id': ref, 'name': name})
+    return index
+
+
 def display_name(state, templates_by_id):
     """`/api/tasks` 的派生显示名（单一事实源）：模板名 · 报告月份 · 第N期 · 成文日期。
 

@@ -28,7 +28,7 @@ BASE_ARGUMENTS = {
     'propose_keyword_event_candidates': {'required': ['records_ref'], 'properties': {'records_ref': 'artifact_ref', 'keyword_jaccard': 'number'}},
     'propose_vector_event_neighbors': {'required': ['keyword_candidates_ref'], 'properties': {'keyword_candidates_ref': 'artifact_ref', 'min_score': 'number', 'max_neighbors': 'integer'}},
     'cluster_event_themes': {'required': ['records_ref'], 'properties': {'records_ref': 'artifact_ref'}},
-    'render_chart': {'required': ['metrics_ref', 'chart_type'], 'properties': {'metrics_ref': 'artifact_ref', 'chart_type': 'sentiment|daily|platform|theme|locality'}},
+    'render_chart': {'required': ['metrics_ref', 'chart_type'], 'properties': {'metrics_ref': 'artifact_ref', 'chart_type': 'sentiment|daily|platform|theme|locality|source, or a package-declared charts[].id'}},
 }
 
 

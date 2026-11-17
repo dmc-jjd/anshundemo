@@ -171,3 +171,113 @@ def test_package_field_calculations_fill_unbound_data_fields(tmp_path):
     assert result['value']=='4'
     full=calculation_for({'id':'b12_peak_date_full','owner':'data','display_name':'峰值日期全写','binding':None},r,{},package='ruyuan_yuebao')
     assert full['value']=='2026年10月2日'
+
+
+def test_pending_charts_ignore_layout_cover_and_textbox(tmp_path):
+    from app.structured_writer import pending_chart_count
+    w='http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+    a='http://schemas.openxmlformats.org/drawingml/2006/main'
+    r='http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+    c='http://schemas.openxmlformats.org/drawingml/2006/chart'
+    wp='http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing'
+    path=tmp_path/'layout.docx'
+    deco=(f'<w:p><w:r><w:drawing><wp:docPr xmlns:wp="{wp}" name="图片 3"/><a:blip r:embed="cover"/></w:drawing></w:r></w:p>'
+          f'<w:p><w:r><w:drawing><wp:docPr xmlns:wp="{wp}" name="文本框 9"/></w:drawing></w:r></w:p>')
+    charts=''.join(f'<w:p><w:r><w:drawing><c:chart xmlns:c="{c}" r:id="rId{i}"/></w:drawing></w:r></w:p>' for i in range(4))
+    with zipfile.ZipFile(path,'w') as z:
+        z.writestr('word/document.xml',f'<w:document xmlns:w="{w}" xmlns:a="{a}" xmlns:r="{r}"><w:body>{deco}{charts}</w:body></w:document>')
+    template={'layout_source':str(path),'charts':[{'id':name} for name in ('platform','daily','platform_warning','theme')],'fields':[{'id':'w1'}]}
+    filled={'platform':'a','daily':'b','platform_warning':'c','theme':'d'}
+    assert pending_chart_count(template, filled)==0
+    assert pending_chart_count(template, {'platform':'a','daily':'b'})==2
+    # layouts that only use image placeholders and have no charts[] keep the legacy drawing count
+    legacy={'layout_source':str(path),'fields':[]}
+    assert pending_chart_count(legacy, filled)==2
+
+
+def test_render_places_charts_on_chart_slots_not_cover_or_textbox(tmp_path):
+    """封面图和文本框不占 drawing_index；统计图（无 blip 的 Word 图表）改成 PNG。
+
+    已确认模板若仍按「前 4 个图形」写成 drawing_index=1..4（乳源现状），
+    渲染也必须把 1 号图放到第一张统计图，而不是封面。
+    """
+    from lxml import etree as ET
+    w='http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+    a='http://schemas.openxmlformats.org/drawingml/2006/main'
+    r='http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+    c='http://schemas.openxmlformats.org/drawingml/2006/chart'
+    wp='http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing'
+    path=tmp_path/'layout.docx'
+    deco=(f'<w:p><w:r><w:drawing><wp:inline xmlns:wp="{wp}"><wp:extent cx="100" cy="200"/><wp:docPr id="3" name="图片 3"/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><a:blip r:embed="cover"/></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>'
+          f'<w:p><w:r><w:drawing><wp:inline xmlns:wp="{wp}"><wp:docPr id="9" name="文本框 9"/></wp:inline></w:drawing></w:r></w:p>')
+    slots=''.join(
+        f'<w:p><w:r><w:t>图{i}</w:t><w:drawing><wp:inline xmlns:wp="{wp}"><wp:extent cx="5615940" cy="2983865"/><wp:docPr id="{10+i}" name="图表 {i}"/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="{c}" r:id="rIdChart{i}"/></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>'
+        for i in range(1,5)
+    )
+    with zipfile.ZipFile(path,'w') as z:
+        z.writestr('word/document.xml',f'<w:document xmlns:w="{w}" xmlns:a="{a}" xmlns:r="{r}"><w:body>{deco}{slots}</w:body></w:document>')
+        z.writestr('word/_rels/document.xml.rels','<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>')
+        z.writestr('[Content_Types].xml','<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>')
+    s,template=fixture(tmp_path/'store')
+    report=FrozenReport(s,'r')
+    kinds=tuple(CHARTS[:4])
+    charts={name:chart_payload(report,name) for name in kinds}
+    template['layout_source']=str(path)
+    template['source_reports']=[{'sha256':hashlib.sha256(path.read_bytes()).hexdigest()},{'sha256':'other'}]
+    template['charts']=[{'id':name,'drawing_index':index,'title':name,'style':'pie','style_basis':'t','scope':'all','unit':'条'}
+                        for index,name in enumerate(kinds,1)]
+    values={f['id']:{'value':'已填','source_refs':[report.fact_ref]} for f in template['fields']}
+    content=render_structured_docx(template,values,{report.fact_ref},require_complete=True,charts=charts)
+    with zipfile.ZipFile(io.BytesIO(content)) as z:
+        frozen=[name for name in z.namelist() if 'frozen_chart_' in name]
+        assert len(frozen)==4
+        root=ET.fromstring(z.read('word/document.xml'))
+        drawings=root.xpath('//*[local-name()="drawing"]')
+        assert len(drawings)==6
+        cover_blips=drawings[0].xpath('.//*[local-name()="blip"]')
+        assert cover_blips and cover_blips[0].get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')=='cover'
+        assert not drawings[1].xpath('.//*[local-name()="blip"]')
+        assert '文本框 9' in (drawings[1].xpath('.//*[local-name()="docPr"]')[0].get('name') or '')
+        embeds=[]
+        for drawing in drawings[2:]:
+            assert not drawing.xpath('.//*[local-name()="chart"]')
+            blips=drawing.xpath('.//*[local-name()="blip"]')
+            assert blips
+            embeds.append(blips[0].get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed'))
+        assert embeds==['rIdFrozenChart1','rIdFrozenChart2','rIdFrozenChart3','rIdFrozenChart4']
+        xml=z.read('word/document.xml')
+        assert b'{{CHART_' not in xml
+
+
+def test_peak_date_honors_scope_and_differs_from_all_records(tmp_path):
+    from core.frozen_report import Calculation
+    s=Store(tmp_path/'store');tid='p'
+    # 全量高峰在 10月2（5条未预警/正面），已预警负面高峰在 10月8（3条）。
+    rows=[]
+    for i in range(5):
+        rows.append({'id':f'a{i}','title':f'信息{i}','summary':f'摘要{i}','source':'省报','media_level':'省级','published':'2026-10-02','sentiment':'正面','warning':'否','platform':'网站'})
+    for i in range(3):
+        rows.append({'id':f'n{i}','title':f'预警{i}','summary':f'预警摘要{i}','source':'省报','media_level':'省级','published':'2026-10-08','sentiment':'负面','warning':'是','platform':'网站'})
+    rows.append({'id':'n3','title':'预警少','summary':'预警少摘要','source':'省报','media_level':'省级','published':'2026-10-05','sentiment':'负面','warning':'是','platform':'网站'})
+    metrics={'record_count':len(rows),'sentiment':{'正面':5,'负面':4},'daily_count':{'2026-10-02':5,'2026-10-05':1,'2026-10-08':3},'platform':{'网站':len(rows)},'peak_day':'2026-10-02'}
+    groups=[{'id':'gpos','representative_id':'a0','member_ids':[f'a{i}' for i in range(5)]},
+            {'id':'gneg','representative_id':'n0','member_ids':['n0','n1','n2','n3']}]
+    refs={'import_records':s.put_artifact(tid,'records',{'records':rows}),
+          'calculate_metrics':s.put_artifact(tid,'metrics',metrics),
+          'confirmed_event_groups':s.put_artifact(tid,'groups',{'groups':groups}),
+          'confirmed_theme_groups':s.put_artifact(tid,'themes',{'groups':[]}),
+          'resolve_locality':s.put_artifact(tid,'geo',{'items':[]})}
+    fact=s.put_artifact(tid,'facts',{'metrics':metrics,'result_refs':refs,'report_month':'2026-10'})
+    s.put_task(TaskState(id=tid,kind='report',phase='facts_frozen',fact_ref=fact,result_refs=refs))
+    r=FrozenReport(s,tid)
+    assert r.calculate({'metric':'peak_date'})['value']=='10月2'
+    assert r.calculate({'metric':'peak_date','scope':'negative_warning_events'})['value']=='10月8'
+    assert r.calculate({'metric':'peak_date','scope':'negative_warning_events','include_year':True,'include_day_suffix':True})['value']=='2026年10月8日'
+    Calculation.model_validate({'metric':'peak_date','scope':'negative_warning_events'})
+    with pytest.raises(Exception):
+        Calculation.model_validate({'metric':'sentiment_count','sentiment':'负面','scope':'negative_warning_events'})
+    from app.structured_writer import calculation_for
+    full=calculation_for({'id':'b12_peak_date_full','owner':'data','display_name':'峰值日期全写','binding':None},r,{},package='ruyuan_yuebao')
+    short=calculation_for({'id':'b12_peak_date_short','owner':'data','display_name':'峰值月日','binding':None},r,{},package='ruyuan_yuebao')
+    assert full['value']=='2026年10月8日'
+    assert short['value']=='10月8日'

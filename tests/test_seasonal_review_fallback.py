@@ -95,9 +95,9 @@ def test_exhausted_format_repair_budget_does_not_consume_content_budget(tmp_path
         return result
     state=asyncio.run(run_writing_graph(Dependencies(store,adapter),'r',True))
     run=state.metadata['writing_review_run']
-    assert run['stage_repair_attempts']=={'format_reviewer':5,'content_reviewer':4}
-    assert calls.index('content_reviewer')>calls.index('writer') and calls.count('content_reviewer')==5
-    assert calls.count('writer')==9 and state.phase=='awaiting_final_review'
+    assert run['stage_repair_attempts']=={'format_reviewer':2,'content_reviewer':2}
+    assert calls.index('content_reviewer')>calls.index('writer') and calls.count('content_reviewer')==3
+    assert calls.count('writer')==4 and state.phase=='awaiting_final_review'
     assert any(i['status']=='open' and i['reviewer']=='format_reviewer' for i in state.review_items)
 
 

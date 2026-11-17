@@ -15,8 +15,8 @@ from core.tools._shared import records_of
 
 
 def calculate_metrics(args,ctx):
-    records=records_of(ctx,args['records_ref']); sentiment=Counter(r['sentiment'] or '未知' for r in records); platform=Counter(r['platform'] or '未知' for r in records)
-    metrics={'record_count':len(records),'sentiment':dict(sentiment),'platform':dict(platform),'warning_raw_count':sum(str(r.get('warning','')).strip() in ('是','已预警','1','true','TRUE','预警') for r in records)}
+    records=records_of(ctx,args['records_ref']); sentiment=Counter(r['sentiment'] or '未知' for r in records); platform=Counter(r['platform'] or '未知' for r in records); source=Counter(r.get('source') or '未知' for r in records)
+    metrics={'record_count':len(records),'sentiment':dict(sentiment),'platform':dict(platform),'source':dict(source),'warning_raw_count':sum(str(r.get('warning','')).strip() in ('是','已预警','1','true','TRUE','预警') for r in records)}
     day=Counter()
     for r in records:
         value=str(r.get('published',''))

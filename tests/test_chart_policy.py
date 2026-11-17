@@ -34,6 +34,8 @@ def test_anshun_family_ignores_style_stored_as_family():
     assert family_of({"id": "daily", "family": "line"}) == "daily"
     assert family_of({"id": "platform_warning", "family": "platform"}) == "platform"
     assert family_of({"id": "platform_warning", "family": "pie"}) == "platform"
+    assert family_of({"id": "source", "family": "pie"}) == "source"
+    assert family_of({"id": "source", "family": "source"}) == "source"
 
 
 def test_drawing_ids_follow_template_not_default_list():

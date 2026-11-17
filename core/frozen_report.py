@@ -15,7 +15,7 @@ class Calculation(BaseModel):
             if value.get('metric') in ('warning_percentage','category_names','category_statistics','leading_category','county_statistics'):
                 value.setdefault('scope','confirmed_events')
                 if value['scope']=='all_records':raise ValueError('该运算按已确认去重事件统计，请选择事件范围。')
-            if value.get('metric') in ('sentiment_count','sentiment_percentage','scaled_count','peak_date') and value.get('scope','all_records')!='all_records':
+            if value.get('metric') in ('sentiment_count','sentiment_percentage','scaled_count') and value.get('scope','all_records')!='all_records':
                 raise ValueError('该运算按全量原始记录统计，不能使用事件分母。')
             if value.get('metric')=='platform_count' and not value.get('platforms') and not value.get('exclude_platforms'):
                 raise ValueError('platform_count 需要 platforms 或 exclude_platforms。')
@@ -40,7 +40,7 @@ CALCULATION_CATALOG={
  'sentiment_count':'全量记录中指定调性的条数',
  'sentiment_percentage':'指定调性条数/全量记录数，输出带百分号的百分数',
  'warning_percentage':'确认重点预警范围内的事件数/全量记录数，输出百分数',
- 'peak_date':'冻结统计中的信息峰值日期，格式X月X，可选择加日字',
+ 'peak_date':'默认是全量记录的信息峰值日期；若高峰口径不是全量，必须显式设置 scope 或 sentiment，按与图表相同的筛选口径重算日序列高峰。格式X月X，可选择加年、加日字',
  'category_names':'指定事件范围按已确认分类计数降序的类别列表',
  'category_statistics':'指定事件范围的全部类别、事件数与占比',
  'leading_category':'最高类别与占比的完整表述',
@@ -116,34 +116,36 @@ class FrozenReport:
         return rows
 
     def metric_counts(self,key,scope='all_records'):
-        """Sentiment / platform / daily_count series, honoring chart scope."""
+        """Sentiment / platform / source / daily_count series, honoring chart scope."""
         if scope=='all_records':
             return dict(self.metrics.get(key) or {})
         import re as _re
         from datetime import datetime as _dt,timedelta as _td
         rows=self.records_for(scope)
-        if key=='platform':
-            return dict(Counter(r.get('platform') or '未知' for r in rows))
-        if key=='sentiment':
-            return dict(Counter(r.get('sentiment') or '未知' for r in rows))
+        if key in ('platform','sentiment','source'):
+            return dict(Counter(r.get(key) or '未知' for r in rows))
         if key=='daily_count':
-            day=Counter()
-            for r in rows:
-                value=str(r.get('published',''))
-                try:
-                    if _re.fullmatch(r'\d+(?:\.\d+)?',value):
-                        item=(_dt(1899,12,30)+_td(days=float(value))).date().isoformat()
-                    else:
-                        item=value[:10]
-                    if item:day[item]+=1
-                except (ValueError,OverflowError):
-                    pass
-            return dict(sorted(day.items()))
+            return self._daily_counts(rows)
         raise ValueError('unknown_metric_series:'+str(key))
 
     def parameters(self):
         params=self.state.metadata.get('report_parameters',{})
         return {'report_month':self.facts.get('report_month') or self.state.metadata.get('report_month'),**params}
+    def _daily_counts(self,rows):
+        import re as _re
+        from datetime import datetime as _dt,timedelta as _td
+        day=Counter()
+        for r in rows:
+            value=str(r.get('published',''))
+            try:
+                if _re.fullmatch(r'\d+(?:\.\d+)?',value):
+                    item=(_dt(1899,12,30)+_td(days=float(value))).date().isoformat()
+                else:
+                    item=value[:10]
+                if item:day[item]+=1
+            except (ValueError,OverflowError):
+                pass
+        return dict(sorted(day.items()))
     def _scoped_records(self,spec):
         rows=self.records_for(spec.scope)
         if spec.sentiment:
@@ -193,8 +195,14 @@ class FrozenReport:
             n=self.metrics.get('sentiment',{}).get(spec.sentiment,0);value=str(n) if m=='sentiment_count' else pct(n,total)
         elif m=='warning_percentage':value=pct(len(self.events(spec.scope)),total)
         elif m=='peak_date':
-            if not self.metrics.get('peak_day'):raise MissingReportInput('冻结统计缺少峰值日期。')
-            value=self._format_day(date.fromisoformat(self.metrics['peak_day']),spec)
+            if spec.scope=='all_records' and not spec.sentiment:
+                peak=self.metrics.get('peak_day')
+                if not peak:raise MissingReportInput('冻结统计缺少峰值日期。')
+            else:
+                tallies=self._daily_counts(self._scoped_records(spec))
+                if not tallies:raise MissingReportInput('所选范围内缺少可用于峰值日期的记录。')
+                peak=max(tallies,key=tallies.get)
+            value=self._format_day(date.fromisoformat(peak),spec)
         elif m in ('period_start','period_end'):
             start,end=self._period_bounds();value=self._format_day(start if m=='period_start' else end,spec)
         elif m in ('platform_names','platform_statistics'):

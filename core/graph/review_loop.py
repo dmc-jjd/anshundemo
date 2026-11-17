@@ -20,15 +20,20 @@ from typing import Mapping
 from core.ports import ReviewerSpec
 
 
+# 格式审核、内容审核各自最多跑这么多轮（含首轮；可退修次数为该值减 1）。
+# 真实执行仍以 app 路由里引用本常量为准；不要误接 ReviewerSpec.max_rounds（默认 2，全仓零消费，接线即改行为）。
+STAGE_REVIEW_MAX_ROUNDS = 3
+
+
 @dataclass(frozen=True, slots=True)
 class ReviewBudgets:
     """审校预算。
 
-    现状真实预算是 **5 处字面 5**；`ReviewerSpec.max_rounds`（默认 2）全仓零消费，
-    **不许拿它当默认**——接线即改行为（`test_writing_graph.py:66/169` 依赖 5 轮）。
+    默认与 `STAGE_REVIEW_MAX_ROUNDS` 一致。`ReviewerSpec.max_rounds`（默认 2）全仓零消费，
+    **不许拿它当默认**——接线即改行为。
     """
 
-    max_rounds: int = 5
+    max_rounds: int = STAGE_REVIEW_MAX_ROUNDS
 
 
 @dataclass(frozen=True, slots=True)

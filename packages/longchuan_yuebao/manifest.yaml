@@ -1,0 +1,82 @@
+package: longchuan_yuebao
+report_type: 舆情月报
+version: 1.0.0
+template: template.json
+prompts: prompts/
+
+# 角色清单（声明式调度）：本客户参与哪些角色。
+# 九个角色全列 —— 与「不写这段」行为一致（不写 = 全部参与），但写全可让
+# check_package 的 AGENTS 段真正核对「声明 ⊂ roles.yaml」，而不是 skip。
+# 角色 id 必须存在于 prompts/roles.yaml，否则启动即失败 manifest_unknown_agent:<id>。
+agents:
+  - template_analyst
+  - data_processor
+  - event_judge
+  - event_classifier
+  - event_summarizer
+  - writer
+  - historical_researcher
+  - format_reviewer
+  - content_reviewer
+
+tools:
+  allow:
+    - import_records
+    - filter_records
+    - resolve_locality
+    - propose_keyword_event_candidates
+    - propose_vector_event_neighbors
+    - group_events
+    - calculate_metrics
+    - classify_records
+    - cluster_event_themes
+    - discover_topics
+    - select_materials
+    - read_evidence
+    - render_chart
+    - build_table
+    - parse_report_document
+    - compare_report_structures
+  phases:
+    writing:
+      - frozen_statistics
+      - query_frozen_materials
+      - plot_frozen_chart
+      - search_historical_web
+      - fetch_historical_page
+  budgets:
+    default: 40
+    writing: 80
+
+charts:
+  pack: chart-core
+  use: [daily, platform, source]
+
+skills:
+  pack: skill-core
+  use: [lieflat-less-ai-tone, source-binding]
+
+# 产物声明：本客户要哪些可审产物。属地与事件分类按客户口径不启用（见 features）。
+capabilities:
+  require: [records, metrics, charts, events, documents]
+
+# 可插拔能力：基座只按声明执行，不认识具体客户。
+# 参数（阈值/词典/区县表）一律在 template.json，不在本文件重复。
+features:
+  # 客户口径：报告不按辖区分组（无属地表、无属地图），故关闭；词表仍留一条
+  # 整体称谓以满足 TEMPLATE 段的非空要求。
+  locality:
+    enabled: false
+  # 客户口径：不做事件分类（数据源「事件分类」整列为空，且报告无主题分布段），
+  # 故关闭；词表留一条占位以满足 TEMPLATE 段的非空要求。
+  event_classification:
+    enabled: false
+  # 敏感舆情明确含「老旧信息重复发布」，重复发布口径在报告里可见，去重开启。
+  dedup:
+    enabled: true
+  # 报告导语有「经预警上报 N 条」的统报口径，第一部分重点预警保留。
+  first_warning:
+    enabled: true
+  # 三份历史报告均无 TOP10 榜单表，客户级关闭（改一行即可回退）。
+  top10:
+    enabled: false

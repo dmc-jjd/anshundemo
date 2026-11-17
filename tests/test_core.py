@@ -164,3 +164,46 @@ def test_empty_recommendations_distinguish_research_and_writer_pending():
     assert '研究依据不足' in research_issue.description
     assert '写作/校验未完成' in writing_issue.description and '转人工' in writing_issue.description
 
+
+def test_intra_paragraph_shared_frames_and_local_parts():
+    from core.tools.template_compare import shared_paragraph_frames,compare_reports
+    from core.structured_template import _frame_parts
+    media=[
+        '涉乳源媒体报道话题主要涉及政务服务、食品安全、交通安全等方面。正面报道主要有：甲报报道《旧闻》。中性报道主要有：气象预警。本月暂无涉及我县的媒体负面报道。',
+        '涉乳源媒体报道话题主要涉及文化文旅、民生服务、文明建设等方面。正面报道主要有：乙报报道《新事》。中性报道主要有：一周天气。负面报道主要有：丙报报道《个案》。',
+        '涉乳源媒体报道话题主要涉及文旅发展、特色农业、非遗教育等方面。正面报道主要有：丁报报道《假期》。中性报道主要有：气象快讯。负面报道主要有：戊报报道《个案》。',
+    ]
+    texts=shared_paragraph_frames(media)
+    joined=''.join(item['text'] for item in texts)
+    assert '涉乳源媒体报道话题主要涉及' in joined
+    assert '等方面。正面报道主要有：' in joined
+    assert '中性报道主要有：' in joined
+    assert '助力乡村振兴' not in joined
+    opinions=[
+        '主要涉及环境保护、社会治安、交通管理等方面。负面网民言论有：“路坏了”等。暂无正面网民言论。',
+        '主要涉及教育管理、交通管理、社会民生等方面。负面网民言论有：“垃圾车很臭”等。暂无正面网民言论。',
+        '主要涉及执政形象、交通管理、市场监管等方面。负面网民言论有：“国道烂尾”等。暂无正面网民言论。',
+    ]
+    frames=shared_paragraph_frames(opinions)
+    body=''.join(item['text'] for item in frames)
+    assert '主要涉及' in body
+    assert '等方面。负面网民言论有：' in body
+    assert '暂无正面网民言论。' in body
+    documents=[]
+    for i,text in enumerate(media,1):
+        documents.append({'path':f'r{i}.docx','sha256':f'sha{i}','blocks':[{'index':1,'kind':'paragraph','text':text}]})
+    comparison=compare_reports(documents)
+    found=next(item for item in comparison['intra_paragraph_frames'] if item['base_block']==1)
+    assert any(frame['text'].endswith('正面报道主要有：') or '正面报道主要有：' in frame['text'] for frame in found['frames'])
+    # local hypothesis should keep connector text and not shred the paragraph into dozens of fields
+    fields=[]
+    def source(doc,block,text):
+        return {'file':doc['path'],'sha256':doc['sha256'],'block':block['index'],'text':text}
+    a=documents[0]['blocks'][0]
+    correspondences=[(documents[1],documents[1]['blocks'][0]),(documents[2],documents[2]['blocks'][0])]
+    parts=_frame_parts(a,correspondences,documents[0],fields,source)
+    assert parts is not None
+    fixed=[part['text'] for part in parts if 'text' in part]
+    assert any('正面报道主要有：' in text for text in fixed)
+    assert any('中性报道主要有：' in text for text in fixed)
+    assert len(fields)<8

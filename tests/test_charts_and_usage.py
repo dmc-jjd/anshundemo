@@ -1,4 +1,4 @@
-import asyncio,copy,io,json
+import asyncio,base64,copy,io,json
 from datetime import datetime
 import pytest
 from fastapi.testclient import TestClient
@@ -137,7 +137,14 @@ def test_word_image_geometry_uses_new_png_aspect_ratio(tmp_path):
     result=render_structured_docx(template,values,{report.fact_ref},require_complete=True,charts=charts)
     with zipfile.ZipFile(io.BytesIO(result)) as z:
         root=ET.fromstring(z.read('word/document.xml'))
-    assert all(x.get('cy')=='768000' for x in root.xpath('//*[local-name()="ext"]'))
+    from PIL import Image
+    expected={str(round(1600000*Image.open(io.BytesIO(base64.b64decode(item['png_base64']))).height/Image.open(io.BytesIO(base64.b64decode(item['png_base64']))).width)) for item in charts.values()}
+    cys=[x.get('cy') for x in root.xpath('//*[local-name()="ext"]')]
+    assert cys and all(cy in expected for cy in cys)
+    # 宽图（折线/柱状）仍是 10:4.8；饼图更接近正方形，高度不再是 768000。
+    assert '768000' in cys
+    pie_cy=str(round(1600000*Image.open(io.BytesIO(base64.b64decode(charts['sentiment']['png_base64']))).height/Image.open(io.BytesIO(base64.b64decode(charts['sentiment']['png_base64']))).width))
+    assert pie_cy!='768000' and pie_cy in cys
 
 @pytest.mark.skipif(__import__('sys').platform!='win32',reason='Windows GDI rasterizes the actual historical EMF images')
 def test_actual_historical_emf_is_previewable_as_png():

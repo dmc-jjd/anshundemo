@@ -9,6 +9,7 @@ from .structured_template import load_confirmed_template,validate_values
 from .frozen_report import FrozenReport
 from .style_skill import skill_context,detect_style
 from .source_binding import SourceCatalog,NumberedRevision,invoke_numbered_writer
+from core.graph.review_loop import STAGE_REVIEW_MAX_ROUNDS
 
 ROLES=('format_reviewer','content_reviewer')
 ACTIVE_PHASES={'writing','style_detection','format_review','content_review','final_format_review','revising'}
@@ -35,6 +36,10 @@ def supersede(store,state,role=None):
 
 def active_issues(state):
     return [i for i in state.review_items if i.get('kind')=='writing_review' and i.get('status')=='open']
+
+def stage_under_budget(run,role):
+    """True if this stage can still start another review/repair. Caps reviewer calls at STAGE_REVIEW_MAX_ROUNDS."""
+    return run.get('stage_rounds',{}).get(role,0)<STAGE_REVIEW_MAX_ROUNDS and run.get('stage_repair_attempts',{}).get(role,0)<STAGE_REVIEW_MAX_ROUNDS
 
 def _task_package(state):
     name=getattr(state,'package',None)
@@ -72,13 +77,13 @@ def format_route(store,task_id):
     if format_passed(state,draft['content_hash']):
         run['format_stage_concluded']=True;store.put_task(state,state.revision);return 'content'
     result=state.metadata.get('review_report',{}).get('reviewers',{}).get('format_reviewer',{})
-    if result.get('status')!='error' and run.get('stage_repair_attempts',{}).get('format_reviewer',0)<5 and repairable(store,state,'format_reviewer'):
+    if result.get('status')!='error' and stage_under_budget(run,'format_reviewer') and repairable(store,state,'format_reviewer'):
         run['repair_stage']='format_reviewer';store.put_task(state,state.revision);return 'revise'
     # Forward the draft to content review, preserving every format finding. This never
     # converts an unresolved format review into a pass. `reason` distinguishes an actual
     # repair-budget limit from a writer decline or a reviewer error.
     if result.get('status')=='error':reason='error'
-    elif run.get('stage_repair_attempts',{}).get('format_reviewer',0)>=5:reason='limit'
+    elif not stage_under_budget(run,'format_reviewer'):reason='limit'
     else:reason='declined'
     run['format_limit_reached']=True;run['format_fallback_hash']=draft['content_hash'];run['format_stage_concluded']=True;run['format_forward_reason']=reason
     store.put_task(state,state.revision)
@@ -98,7 +103,7 @@ def begin_run(store,task_id,review_only=False):
         'stage_repair_attempts':prior.get('stage_repair_attempts',{}) if same else {},'stage_rounds':prior.get('stage_rounds',{}) if same else {},
         'review_only':review_only,'finished':False,'style_refs':prior.get('style_refs',[]) if same else [],'profile':profile}
     # Reset per-run routing transient flags; re-runs must start the format→content→final_format sequence fresh.
-    # Stage budget is enforced by stage_repair_attempts<5 / stage_rounds<5 (5 repair attempts per stage).
+    # Stage budget is enforced by stage_under_budget (STAGE_REVIEW_MAX_ROUNDS reviewer calls per stage).
     for key in ('repair_stage','retry_reviewer','format_stage_concluded','format_limit_reached','format_fallback_hash','format_forward_reason'):
         state.metadata['writing_review_run'].pop(key,None)
     store.put_task(state,state.revision)
@@ -266,7 +271,7 @@ def review_route(store,task_id):
     report=state.metadata.get('review_report',{})
     if report.get('reviewers',{}).get('content_reviewer',{}).get('status')=='error':return 'finish'
     run=state.metadata['writing_review_run']
-    if run.get('stage_rounds',{}).get('content_reviewer',0)<5 and run.get('stage_repair_attempts',{}).get('content_reviewer',0)<5 and repairable(store,state,'content_reviewer'):
+    if stage_under_budget(run,'content_reviewer') and repairable(store,state,'content_reviewer'):
         run['repair_stage']='content_reviewer';store.put_task(state,state.revision);return 'revise'
     # Content stage done (passed, round/repair budget exhausted, or nothing repairable):
     # run one final format check before handing to human review.

@@ -17,7 +17,7 @@ from .export import export_docx
 from .report_validation import validate_draft
 from .api_views.approval import approval_gate
 from .api_views.data_review import apply_event_settings
-from .api_views.task_resume import resume_plan,display_name
+from .api_views.task_resume import resume_plan,display_name,template_display_index
 from .api_views.template import apply_definition_patch,confirm_candidate,definition_with_charts
 from .api_views.template import apply_top10_rule_preserving,resolve_template_name,template_name_from_request
 from .upload_names import remember as remember_upload_name
@@ -39,7 +39,7 @@ app.include_router(packages_router)
 # 手动定义草稿的三个接口（选区→选择题→占位符/字段 JSON），刻意不进 OpenAPI：
 # 见 app/template_draft_api.py 与 docs/模板字段手动定义设计.md。
 app.include_router(manual_definition_router)
-app.include_router(template_delete_router)  # 模板任务软删除（标记不删文件），同样刻意不进 OpenAPI：见 app/template_delete_api.py
+app.include_router(template_delete_router)  # 模板任务硬删除（任务与未引用工件一并删除），同样刻意不进 OpenAPI：见 app/template_delete_api.py
 app.include_router(template_field_api_router)  # 模板候选字段的人工编辑（显示名称/字段语义/归属），同样不进 OpenAPI：见 app/template_field_api.py
 # 终稿人工审核页（A4 渲染模型 / 保存人工覆盖 / 修改日志 / 还原），同样刻意不进 OpenAPI：
 # 见 app/final_document.py 与 app/final_document_api.py。
@@ -159,7 +159,7 @@ def report_parameter_suggestions(template_ref:str,report_month:str):
 
 @app.get('/api/tasks')
 def tasks():
-    index={item['id']:item for item in templates()}
+    index=template_display_index(store, templates())
     return [{'id':task.id,'display_name':display_name(task,index),'kind':task.kind,'phase':task.phase,'revision':task.revision,'created_at':task.created_at,'draft':bool(task.draft_ref),'report_month':task.metadata.get('report_month'),
              'metadata':{'simulation':task.metadata.get('simulation',False)}} for task in store.list_tasks()]
 @app.get('/api/tasks/{task_id}')

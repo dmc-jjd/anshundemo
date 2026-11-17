@@ -159,13 +159,13 @@ def test_review_loop_reproduces_writing_edge_set():
     assert plan_edges | set(CALLER_EDGES) == set(WRITING_EDGES)
 
 
-# --- 审校循环：预算默认 5（钉住 ReviewerSpec.max_rounds=2 的坑） -------------
+# --- 审校循环：预算默认 3（钉住 ReviewerSpec.max_rounds=2 的坑） -------------
 
 
-def test_review_loop_budget_default_is_five():
+def test_review_loop_budget_default_is_three():
     plan = review_loop.build_review_loop(reviewers=REVIEWERS, actions=LOOP_ACTIONS)
     assert isinstance(plan.budgets, review_loop.ReviewBudgets)
-    assert plan.budgets.max_rounds == 5
+    assert plan.budgets.max_rounds == 3
     # 未被消费的声明值：默认 2，不许拿它当默认预算
     assert REVIEWERS[0].max_rounds == 2
 

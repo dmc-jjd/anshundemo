@@ -204,3 +204,4 @@ def test_confirmed_template_preview_has_no_llm_advice_button():
     assert 'LLM审核' not in js and '/advice' not in js
     assert 'human_review_items' in js and 'mountHumanReview' in js
     assert '这些是模型的参考意见，可忽略' in js
+    assert 'locateHumanReviewField' in js and 'td-advice-locate' in js

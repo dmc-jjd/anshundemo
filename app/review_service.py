@@ -62,15 +62,25 @@ def draft_view(store,task_id):
     from .reviewers import review_ready,active_issues
     ready=bool(content_hash) and review_ready(state,content_hash)
     pending={}
+    missing=list(state.metadata.get('missing_fields',[]) or [])
+    pending_charts=int(state.metadata.get('pending_charts') or 0)
+    preview_only=bool(state.metadata.get('preview_only'))
+    if definition:
+        from .structured_writer import preview_status
+        status=preview_status(definition, draft.get('slot_values'), draft.get('chart_refs'))
+        missing=status['missing_fields']
+        pending_charts=status['pending_charts']
+        preview_only=status['preview_only']
     for field_id,ref in state.metadata.get('writer_pending_sources',{}).items():
-        if field_id not in state.metadata.get('missing_fields',[]):continue
+        if field_id not in missing:continue
         item=store.get_artifact(ref)
         if item.get('fact_ref')==state.fact_ref and item.get('template_ref')==state.template_ref:pending[field_id]=item
-    return {'draft':draft,'definition':definition,'missing':state.metadata.get('missing_fields',[]),
+    return {'draft':draft,'definition':definition,'missing':missing,
             'draft_hash':content_hash,'draft_schema_outdated':content_hash is None,
             'detail':None if content_hash else DRAFT_SCHEMA_OUTDATED_DETAIL,
             'pending_sources':pending,
-            'issues':state.metadata.get('writer_issues',[]),'pending_charts':state.metadata.get('pending_charts',0),
+            'issues':state.metadata.get('writer_issues',[]),'pending_charts':pending_charts,
+            'preview_only':preview_only,
             'report_parameters':state.metadata.get('report_parameters',{}),
             'writing_review':state.metadata.get('review_report'),'review_issues':active_issues(state),'review_ready':ready,
-            'can_approve':state.phase=='awaiting_final_review' and not state.metadata.get('preview_only') and ready}
+            'can_approve':state.phase=='awaiting_final_review' and not preview_only and ready}

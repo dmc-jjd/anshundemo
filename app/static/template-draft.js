@@ -371,11 +371,72 @@
   // 三轮模板语义研判的最后一轮意见随候选工件一起返回（human_review_items）：
   // 第二轮完美时是第二轮意见，否则是第三轮意见。全部 advisory——只展示，
   // 没有「接受/应用」动作，不阻塞「确认并保存模板」；要改仍走手动定义或重新研判。
-  const H = { taskId: null, definition: null };
+  const H = { taskId: null, definition: null, container: null, pendingLocate: undefined, locateTimer: null };
 
   function humanReviewFieldLabel(fieldId) {
     const field = (H.definition?.fields || []).find(item => item.id === fieldId);
     return field ? (field.display_name || field.id) : (fieldId || '整份模板');
+  }
+
+  function reviewTarget(root, fieldId) {
+    if (!root) return null;
+    if (fieldId) {
+      const chip = Array.from(root.querySelectorAll('.field-chip')).find(el => el.dataset.field === fieldId);
+      if (chip) return chip;
+      const blocks = H.definition?.blocks || S.definition?.blocks || [];
+      const block = blocks.find(item => (item.parts || []).some(part => part.field === fieldId));
+      if (block) return root.querySelector('[data-block="' + String(block.index) + '"]');
+      return null;
+    }
+    return root.querySelector('.report-paper');
+  }
+
+  function clearLocateHighlight(root) {
+    (root || document).querySelectorAll('.td-chip-locate').forEach(el => el.classList.remove('td-chip-locate'));
+  }
+
+  function applyLocate(target) {
+    const root = H.container || S.container;
+    clearLocateHighlight(root);
+    target.classList.add('td-chip-locate');
+    target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+    if (H.locateTimer) clearTimeout(H.locateTimer);
+    H.locateTimer = setTimeout(() => target.classList.remove('td-chip-locate'), 2600);
+  }
+
+  function flushPendingLocate() {
+    if (H.pendingLocate === undefined) return;
+    const fieldId = H.pendingLocate;
+    H.pendingLocate = undefined;
+    const root = H.container || S.container;
+    const target = reviewTarget(root, fieldId);
+    if (target) applyLocate(target);
+    else toast(fieldId ? '正文里没有找到这个字段的位置。' : '当前页没有模板正文，请先打开模型研判后的模板再定位。');
+  }
+
+  function locateHumanReviewField(fieldId) {
+    const root = H.container || S.container;
+    const target = reviewTarget(root, fieldId);
+    if (target) {
+      H.pendingLocate = undefined;
+      applyLocate(target);
+      return;
+    }
+    const paper = root && root.querySelector('.report-paper');
+    const onCandidatePreview = !!(paper && (root.querySelector('.field-chip') || root.querySelector('[data-block]')));
+    if (onCandidatePreview) {
+      toast(fieldId ? '正文里没有找到这个字段的位置。' : '当前页没有模板正文，请先打开模型研判后的模板再定位。');
+      return;
+    }
+    const tabBar = root && root.previousElementSibling;
+    const firstTab = tabBar && tabBar.classList.contains('review-tabs') ? tabBar.querySelector('button') : null;
+    if (firstTab && H.pendingLocate === undefined) {
+      H.pendingLocate = fieldId || '';
+      firstTab.click();
+      return;
+    }
+    H.pendingLocate = undefined;
+    toast(fieldId ? '正文里没有找到这个字段的位置。' : '当前页没有模板正文，请先打开模型研判后的模板再定位。');
   }
 
   function renderHumanReview(host, container, definition) {
@@ -401,7 +462,13 @@
         const li = node('li');
         if (item.checklist) li.append(node('span', item.checklist, { class: 'td-advice-field' }));
         li.append(node('p', item.message || '', { class: 'td-advice-msg' }));
-        li.append(node('span', humanReviewFieldLabel(item.field_id), { class: 'td-advice-field' }));
+        const row = node('div', null, { class: 'td-advice-locate-row' });
+        row.append(node('span', humanReviewFieldLabel(item.field_id), { class: 'td-advice-field' }));
+        const locate = node('button', '定位', { type: 'button', class: 'td-advice-locate' });
+        locate.setAttribute('aria-label', '定位到正文中的「' + humanReviewFieldLabel(item.field_id) + '」');
+        locate.onclick = () => locateHumanReviewField(item.field_id);
+        row.append(locate);
+        li.append(row);
         if (item.evidence) li.append(node('blockquote', '原文依据：' + item.evidence, { class: 'td-advice-evidence' }));
         list.append(li);
       }
@@ -410,10 +477,12 @@
     }
     // 紧跟模板预览之后，renderPaper() 的 container.replaceChildren() 不会清掉它。
     host.insertBefore(panel, container.nextSibling);
+    flushPendingLocate();
   }
 
   async function mountHumanReview({ taskId, container }) {
     H.taskId = taskId;
+    H.container = container;
     // 面板作为 container 的兄弟节点，renderPaper() 的 container.replaceChildren() 不会清掉它。
     const host = container.parentElement || container;
     try {

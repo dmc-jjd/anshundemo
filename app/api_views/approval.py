@@ -13,8 +13,18 @@ def approval_gate(store, state, req, *, validate_draft, export_docx):
     if state.phase in ACTIVE_PHASES:return (409,'writing_in_progress'),None
     if not state.fact_ref:return (409,'data_review_required'),None
     if not state.draft_ref:return (409,'draft_missing'),None
-    if state.metadata.get('preview_only'):return (409,'preview_cannot_be_approved'),None
     draft=store.get_artifact(state.draft_ref)
+    preview_only=bool(state.metadata.get('preview_only'))
+    status=None
+    if draft.get('structured_template_ref'):
+        from ..structured_template import load_confirmed_template
+        from ..structured_writer import preview_status
+        status=preview_status(load_confirmed_template(store,state.template_ref), draft.get('slot_values'), draft.get('chart_refs'))
+        preview_only=status['preview_only']
+    if preview_only:
+        if status and status.get('pending_charts'):
+            return (409,'missing_current_chart'),None
+        return (409,'preview_cannot_be_approved'),None
     if state.template_ref=='anshun-monthly-colored':
         from ..slot_writer import writer_slot_ids
         unfilled=[slot_id for slot_id in sorted(writer_slot_ids()) if not (draft.get('slot_values',{}).get(slot_id) or {}).get('value')]
