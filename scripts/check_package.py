@@ -2,7 +2,7 @@
 """PKG-CHECK 客户包接入自检：把「新客户包能不能跑」变成机械判定。
 
 为什么需要：
-    `core/prompts/base/接入新客户.md` 第七章的自检命令此前是「check_package.py 待建」，
+    `.dsh/skills/onboard-client-package/SKILL.md` 第七章的自检命令此前是「check_package.py 待建」，
     新客户接入的最后一步只能靠人看。本脚本用七段判据
     （FILES / MANIFEST / TEMPLATE / PROMPTS / ROLES / AGENTS / LOAD）逐项判定，
     失败给可定位的句子，通过给一行 PKG-OK。

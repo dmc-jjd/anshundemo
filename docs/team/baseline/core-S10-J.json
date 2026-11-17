@@ -1,6 +1,6 @@
 {
-  "core_files": 98,
-  "core_hash": "4c7c8d27f4a820796d54403097cf18124cf458398586008d30e74a522600db6c",
+  "core_files": 97,
+  "core_hash": "7a30a72fabf56d0d60ab48d21d078663a805bbb186e83aa9afd603be079aae66",
   "core_files_detail": {
     "core/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "core/agent.py": "7e56e5f9b45fa3f30e258accb81b2779a23fe21abcc57a382344d576dc45ea99",
@@ -32,7 +32,7 @@
     "core/paths.py": "6c5d260420227baf1c130293162960cfebb06d119ce66fa51fcd68865746c15a",
     "core/ports.py": "02f247c495a5d3ba4b7c02befc80196c87b38e05912c8bcb742b4e3be6dca3ab",
     "core/prompts/__init__.py": "01dfb36fe34d5ade60323342511c1d73896733e11aac7e544aa3db613e5cf64a",
-    "core/prompts/base/README-提示词对照表.md": "3a463534525cff690babcbff5a2e5dd131cc9546ad5d43d686f877d76020f8e6",
+    "core/prompts/base/README-提示词对照表.md": "e1830b6e7475a0278b0f4aa9c969aaeadc6325c7506e197a35b06e7b9850716b",
     "core/prompts/base/agent/content_reviewer.review.md": "903961af83626d7b888343cae71e1f8952435eed8dfec29ca8bfaac760b56a39",
     "core/prompts/base/agent/data_processor.next_tool.md": "a47ec13839976a1ba9f91c57518428b2478e7531630f5e90ce575783f2174428",
     "core/prompts/base/agent/event_classifier.classify.md": "3360fb31f0676941783722ab2c1ccb7e7935d3168bd87d5e61d3894bbf75a501",
@@ -67,7 +67,6 @@
     "core/prompts/base/agent/writer.slot.themes.md": "4904b7547b7eb497dde6eb021087251716add2a7eb31dc5e006e8de81efa924b",
     "core/prompts/base/agent/writer.slot.titles.md": "33fba58b3e8f686447982d454a2191f608075cac0616b2b9efe5b1584c72826f",
     "core/prompts/base/agent/writer.source_binding.md": "9cfb7b5aaae3d0012568cd55ac548f317d6d9cffd0da629d233277779080d510",
-    "core/prompts/base/接入新客户.md": "3753364ccbc731e2ae221403b37f8b53fc5f541a46ad39d53c0850ebe5bf761b",
     "core/prompts/registry.py": "60c448ad5ef6f80515ac8e9d476d1b38a2692f2ac765c56d0134bd0e57456c63",
     "core/schemas.py": "ce9dd6437b098480d477c574e5cba5c8e52686d6fb1a7421379f7349c4ee50ce",
     "core/section_schema.py": "4e47bab534f745aca12cd1956678c35b48a7a07f2458dc90f41a785b1f5068bf",
@@ -176,5 +175,5 @@
     "app/writing_review.py": "c11a4cccaf78e032298f9e0b8d0ed9d47626020b78a49b87b87c1f62cf09f47d"
   },
   "python": "3.13.18",
-  "recorded_at": "2026-11-17T00:47:16+08:00"
+  "recorded_at": "2026-11-17T08:58:47+08:00"
 }

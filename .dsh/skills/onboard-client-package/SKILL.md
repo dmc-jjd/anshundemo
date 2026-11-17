@@ -1,3 +1,8 @@
+---
+name: onboard-client-package
+description: "接一个新客户时的完整操作流程：建包骨架 → 人工确认模板 → 写提示词。当用户要求接入新客户、新建客户包、建模板、写客户提示词、或问『怎么加一个客户』时使用。"
+---
+
 # 接入新客户（agent 操作手册）
 
 > 读者是 **agent**，不是人。读完这一份就能在 `packages/<新包>/` 建出整套文件，判断 34 条提示词里哪些要改写、哪些沿用基座，并跑出一份能让人签字的对比报告。
@@ -76,9 +81,10 @@
 
 ## 一·五、三阶段全链路（骨架 → 人工确认 → 提示词）
 
-> **本文档同时适用于两种部署架构。** 涉及「切包」的步骤会先给判定方法：
-> `GET /api/packages` 返回 200 且有客户包列表 → 多包架构；返回 404 → 单包架构。
-> 不要凭记忆判断，要实际请求一次。
+> **当前只有多包架构（单包架构已不存在）。** `GET /api/packages` 恒返回客户包列表
+> （`[{package,name,report_type,version,usable,status,error}]`），每个任务创建时绑定
+> `package`，包配置按需加载（键 = 包 + 指纹）。**不存在「服务当前是哪个包」**：
+> 接客户不切环境变量、不重启服务，只在建任务时选客户（见 1.5.4 ① 与 1.5.7）。
 
 这一节把一次客户接入切成三段，**段与段之间默认停下来**。第二到第十一章讲的是「每段内部怎么做」，这一节只讲「段和段怎么交接」。
 
@@ -283,7 +289,7 @@ PKG-CHECK anshun_monthly（摘录）
 >
 > 接下来需要你操作（我在这里等）：
 >
-> ① 若 `GET /api/packages` 返回 404（单包架构）：设置 `REPORT_PACKAGE=<新包>` 并重启服务；若返回 200（多包架构）：跳过，直接在界面选客户。
+> ① 确认 `GET /api/packages` 里有你的新包且 `usable: true`（不在列表里就是包还没建好：先跑 10.2 自查；坏包会 `usable:false` 并带 `error` 原因）。
 > ② 去「02 模板确认」上传 2 份历史报告，走完模型研判（实测约 268 秒）。
 > ③ 在「预览并确认模板」里确认。
 >
@@ -297,24 +303,14 @@ PKG-CHECK anshun_monthly（摘录）
 
 ### 1.5.4 阶段 2：人工做什么（agent 只等，不代办）
 
-#### ① 切包（**仅单包架构下需要**）
+#### ① 新建任务时选客户（不需要切包、不需要重启）
 
-先判定当下是哪种架构，不要凭记忆：
+「02 模板确认」页有 `#templatePackage` 选择器，「03 数据处理」页有 `#reportPackage` 选择器（`app/static/app.js` 的 `loadPackages`）。两处数据都来自 `GET /api/packages`，**只列 `usable:true`** 的包；只有一个可用包时默认选中并 `disabled`（不制造多余交互）。
 
-```powershell
-# 返回 200 = 多包架构；返回 404 = 单包架构
-(Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8765/api/packages).StatusCode
-```
-
-- 返回 **200**（有客户包列表）→ 多包架构，**跳过本步**。
-- 返回 **404** → 单包架构，执行下面两步：
-  a. 设置环境变量 `REPORT_PACKAGE=<新包>`；
-  b. 重启服务（`python -m uvicorn app.main:app --host 127.0.0.1 --port 8765`）。
-- 请求失败（连接被拒）→ 服务没起，判不了架构；按单包架构处理（反正要重启）。
-
-**单包架构为什么必须先切**：模板确认时要把客户包的 features 快照进 `template_version`（`app/workflow.py` 的 `_template_features` / `task_feature_snapshot`）。服务还跑旧包，快照的就是旧包的 features —— **建了包等于没建，而且不报错**。
-
-**多包架构为什么不用切**：任务创建时就绑定 `package`，每个任务自带包标识，配置按需加载（键 = 包 + 指纹），不存在「进程当前是哪个包」，也不需要环境变量和重启。
+- 上传与建任务请求都带 **`X-Report-Package: <包名>`** 头：`POST /api/files`、`POST /api/template-tasks`、`POST /api/report-tasks`（`app/static/app.js` 的 `packageHeaders`）。
+- 服务端解析在 `app/packages_api.py` 的 `resolve_package`：包名未登记 → **404 `package_not_found:<包>`**；登记了但不可用 → **422 `package_unavailable:<包>:<原因>`**；**空 = 部署默认包**（`REPORT_PACKAGE`）。
+- **没带这个头不会报错**：请求落到部署默认包，文件与任务一起落错客户——这是最常见的静默错误，比 404 难查（见 10.2 第 4 条）。
+- 模板确认时会把**这个包的** features 快照进 `template_version`（`app/workflow.py` 的 `_template_features` / `task_feature_snapshot`）。选错客户 = 快照的是别的客户的开关，而报告里不会报错：所以选完客户先核一次 `TaskState.package`（10.2 第 2 条）。
 
 #### ② 上传至少 2 份历史报告（docx）
 
@@ -378,6 +374,22 @@ for h in hits: print(h)
 3. 按第九章测试对比、第十章六条自检、第十一章交接定稿。
 
 写之前先把 `template.json` 的 `writer_slots` 按已确认模板的 `writer_schema` 补齐（骨架阶段留的是 `[]`），并把 2.7 的三条命令输出贴进 `接入记录.md` 的「输入」段。
+
+### 1.5.7 客户包目录 ↔ 数据根（建包前先认清落点）
+
+代码与数据分两棵树，**别把产物写到代码树里**：
+
+```text
+代码：packages/<包>/            （manifest.yaml / template.json / prompts/ / templates/）
+数据：data/packages/<包>/       （demo.sqlite3 / artifacts/ / uploads/ / hotspot/）
+共享：data/shared/              （token-pricing.json 价目表，部署级，不按包）
+```
+
+- 三个出口都在 `core/paths.py`：`package_dir(<包>)` → `packages/<包>/`；`data_root(<包>)` → `<数据基根>/packages/<包>/`；`shared_data_root()` → `<数据基根>/shared/`。数据基根由 `configure_data_root()` 注入（来自 `REPORT_DEMO_DATA`，缺省 `<repo>/data`）。
+- **隔离口径**：每个客户的任务、产物、上传、热点索引全部落在各自的包根下（`app/packages_api.py` 的 `uploads_for` / `files_for` / `root_for` / `connect_for` 都按任务的包解析）；非默认包**永远不回落**到别的包根。
+- **旧单根布局只回落一次**：`<基根>/packages/<默认包>/` 里没有非空 `demo.sqlite3`、而 `<基根>/demo.sqlite3` 还在时，默认包按旧根解析并打一次 `legacy_data_root_in_use` warning（`core/paths.py` 的 `resolve_data_root`）。判据是「包里有没有非空 db」，不是「包目录在不在」——迁移失败残留的空目录不算已迁移（按目录判会把「迁移失败」误判成「已迁移」，用户视角就是数据全丢）。
+- **迁移脚本**：`scripts/migrate_data_packages.py`（默认 dry-run，只打印计划；`--apply` 执行；`--apply --rollback` 回退，要求台账 `status=done`）。
+- **不需要重启**：包配置按需加载（键 = 包 + 指纹），改客户包文件（`manifest.yaml` / `template.json` / 提示词）后按需重读即生效；**只有改基座代码（`core/` / `app/`）才需要重启服务**。
 
 ## 二、输入准备（读什么、怎么读）
 
@@ -694,7 +706,7 @@ $py = 'D:\智能分析报告重构版V5\.conda\JJDreport\python.exe'
 | 24 | `event_summarizer.summary` | 必写·节点（待定） | `top10=false` 不跑 | 同上 |
 | 25 | `event_judge.pairs` | 必写·节点（待定） | `dedup=false` → 节点根本不进 `analyse_events` | 同上 |
 | 26 | `event_judge.repair` | 可省·条件 | 只在 TOP10 结构化校验失败的重试轮读 | `core/event_analysis.py` 的 `analyse_events` |
-| 27 | `template_analyst.batch` | 必写·节点 | 分批结构审查必读 | `app/template_execution.py` |
+| 27 | `template_analyst.batch` | 必写·节点 | 整份结构审查必读 | `app/template_execution.py` |
 | 28 | `template_analyst.repair` | 可省·条件 | 只在前一轮 invalid 时读 | 同上 |
 | 29 | `data_processor.next_tool` | 可省·条件 | 只在任务 `metadata['mode']=='dynamic'` 时读；`fallback` 模式从不读 | `app/workflow.py` 的 `_process_records` |
 | 30 | `template_analyst.charts` | 必写·节点 | `make_input` 拼提示词必读 | `app/template_review.py` |
@@ -753,6 +765,7 @@ $py = 'D:\智能分析报告重构版V5\.conda\JJDreport\python.exe'
 | `first_warning=false` | **0 条** | 只停口径产物与模板段落（不再写 `first_section_warning_event_count`；`app/api_views/template.py` 的 `PROCESSING_FEATURES`）。没有任何 prompt 以它为条件 |
 
 > 「0 条」不等于「可以关」：`classification=false` 会少掉主题分布段，`first_warning=false` 会少掉第一部分预警句。它们影响产物，不影响提示词条数。
+> 「关掉」是**正常配置**，不是 legacy 降级（3.13）：关掉的功能不产段落，但已产出的段落照常要审。
 >
 > `dedup=false` 的「节点不进」有一个运行期例外：带旧 `group_events` 产物重跑（`reprocess_events` 分支）时门禁可能仍满足，`analyse_events` 仍会跑。这是脏数据/重跑路径，不是正常新任务。
 
@@ -915,6 +928,35 @@ $py = 'D:\智能分析报告重构版V5\.conda\JJDreport\python.exe'
 | 登记位置 | `NOT_USED.md` | `接入记录.md` 的提示词清单：状态 `仅说明（占位）` + 条件 |
 | 内容要求 | 无文件 | 一句说明 + 「启用须重写」 |
 
+### 3.12 能力开关矩阵（建包时必须问客户，实测结论）
+
+四个开关都写在 `manifest.features`（客户级硬开关，3.1），与模板级 `rules.features` 相与成生效值。**关掉任何一个都不报错**，所以建包时要把连带影响讲给客户听再定：
+
+| 关掉什么 | 连带影响 |
+|---|---|
+| 事件去重 `dedup` | 没有事件归组 → 事件研判不发生 → **TOP10 也不产出**（即使 `top10` 开着） |
+| 自动分类 `event_classification` | 事件研判照常，但没有记录级分类/主题聚类；**5 条事件提示词一条不少**（`analyse_events` 不读该开关） |
+| 第一部分重点预警 `first_warning` | 只停口径产物与模板段落，不影响提示词文件是否存在 |
+| TOP10 `top10` | 报告里没有 TOP10 段落，工具清单裁掉 `select_materials` |
+
+**四个全关也能走通完整流程**（建任务 → 数据审核 → 确认 → 写作 → 出报告，实测出 37~38 KB docx）。
+
+问客户按「关之前先知道代价」问（5.1.2 第 5 条）：说清关掉后报告里少什么、哪些提示词仍要写、以及为什么「关掉」不等于「省文件」（3.2、3.3、3.4）。
+
+### 3.13 术语：「legacy（旧格式工件）」≠「功能关闭」
+
+两者在报告里的表现可能都是「这段没有」，**处置完全不同**：
+
+| | legacy（旧格式工件 / 旧数据） | 功能关闭（正常状态） |
+|---|---|---|
+| 是什么 | 迁移前留下的旧格式数据或产物（旧单根 `data/demo.sqlite3`、旧 `group_events` 产物、`writer.slot.*` 的 legacy 槽位路径） | 客户正常选择不启用某项能力（`features.X.enabled: false`） |
+| 前端表现 | **降级**：按旧口径读，可能整块不显示 | 正常：该段本来就不生成 |
+| 要不要审核 | 要：旧工件仍可能进报告，必须能审核、能追溯来源 | 要：关掉的功能不产段落，已产出的段落照常审核 |
+| 处置 | 迁移（`scripts/migrate_data_packages.py`）或按 3.9 注「勿承诺 legacy 路径可用」 | 按 3.6.1 / 3.12 的连带表确认代价，登记进 `接入记录.md` |
+| 报告里怎么判 | 数据里有旧格式工件（旧 db / 旧 `group_events` 产物） | `manifest.features` / `rules.features` 的生效值是 `false` |
+
+**不要写「因为是 legacy 所以不用审核」，也不要写「功能关了所以这段是坏数据」**：前者放过该审的旧产物，后者把正常配置当故障。
+
 ## 四、34 条逐条差异分析（核心）
 
 ### 4.1 先约定证据位点
@@ -971,7 +1013,7 @@ $py = 'D:\智能分析报告重构版V5\.conda\JJDreport\python.exe'
 | `event_summarizer.summary` | 事件梗概 15~35 字，一句话，只写谁/哪里 + 发生什么 + 有依据后果 | 看 `T.rules.summary_min_chars/max_chars`；看 S1~S4 表1 事件标题长度/风格；看模板 summary 字段 | 客户梗概字数不同才改阈值（**措辞/规则**）；数量来自 template/rules |
 | `event_judge.pairs` | 逐项判两组代表记录是否同一具体事件（same/different/uncertain） | 看 S1~S4 表1 是否有「（重复发布）」/同事件多篇；看数据重复程度；看 `human_distinct_pairs` | 通常不改；「同主题算不算同事件」是判断类，客户口径不同才改判据（**措辞**），且要问 |
 | `event_judge.repair` | 修正前次覆盖/分组错误，返回完整结果 | 看上轮校验错误；看 S1~S4 事件边界 | 通常不改 |
-| `template_analyst.batch` | 分批输出 `target_blocks`，程序汇总；逐项修复错误不改正确字段 | 看模板块数/批次；看 S1~S4 报告长度（3.4k~3.9k 字） | 通常不改 |
+| `template_analyst.batch` | 一次性输出全部 `target_blocks`；程序不再分批汇总（`app/template_execution.py` 的 `FULL_TEMPLATE_KEY` 单批）；逐项修复错误不改正确字段 | 看模板块总数；看 S1~S4 报告长度（3.4k~3.9k 字） | 通常不改 |
 | `template_analyst.repair` | 一轮研判失败后的整体修复；owner 冲突时重判用途 | 看校验错误；看模板候选 | 通常不改 |
 | `data_processor.next_tool` | 每轮只选一个工具：导入→筛选→属地→候选→去重→分类→聚类→选材 | 看 `manifest.tools.allow`/`capabilities.require`/`features`；看 S1~S4 需要的图/表/TOP10/属地产物；看 T.rules | 客户关能力时白名单裁剪；prompt 步骤描述可能要同步（**措辞**），但不要用 prompt 绕过白名单（**取数/工具**） |
 | `template_analyst.charts` | 图表规则：调性/平台饼图、分类纵向柱状、日趋势折线 | 看 `P.charts` 的 `family`/`style`（A 包 5 张）；看 S1~S4 图1~5 类型；看客户是否要不同图 | 客户图表类型不同才改规则/模板 charts（**取数/样式**）；prompt 通常不改 |
@@ -1381,6 +1423,8 @@ agents:
 $env:REPORT_PACKAGE='<新包>'; & $py -c "import app"
 ```
 
+这里的 `REPORT_PACKAGE` 只决定**进程的部署默认包**是谁（`core/packages/context.py` 的 `default_package`）——设成新包是为了让子进程去加载它（`scripts/check_package.py` 的 LOAD 段同样这么做：`env['REPORT_PACKAGE'] = c.name`）。**它不是切客户手段**；接客户靠建任务时选客户（1.5.4 ①）。
+
 `exit 0` 且**无任何输出** = 声明合法；否则异常里带具体错误码（`manifest_unknown_agent:` / `manifest_agents_unverifiable:` / `manifest_missing_keys:` / `prompt_index_missing_keys:` …）。
 
 ## 八、答案落到哪个文件（逐项对应表）
@@ -1493,7 +1537,7 @@ $env:REPORT_PACKAGE='<新包>'; & $py -c "import app"
 
 ## 十、建完自检（六条，逐条可执行）
 
-六条全绿、原始输出贴进 `接入记录.md`，才算建完。
+六条全绿、原始输出贴进 `接入记录.md`，才算建完。**建包之后先跑 10.2 的包归属四条**（新包可用、任务绑对包、产物落对根），再回来跑这六条。
 
 **1. 基座提示词是否仍然客户无关**
 
@@ -1524,6 +1568,8 @@ $env:REPORT_PACKAGE='<新包>'; & $py -c "import app"
 ```powershell
 $env:REPORT_PACKAGE='<新包>'; & $py -c "import app"
 ```
+
+（同第七章验证：这里 `REPORT_PACKAGE` 只当「让子进程加载哪个包」用，不是切客户。）
 
 期望：`exit 0` 且**无输出**。这一步会一次性跑完四个注册表的 configure，报错码直接指向包里的错处。
 
@@ -1562,14 +1608,28 @@ print(sorted(k for k, v in agent.provenance().items() if v == 'package'))
 | 动作 | `docs/team/baseline/prompts-S5.json` | `docs/team/baseline/core-S10-*.json` | `gate_prompt_neutral` |
 |---|---|---|---|
 | 只写 `.conda/docs/` | 不动 | 不动 | 不动 |
-| 改 `core/prompts/base/接入新客户.md`（本文件） | **不动**（它不在 `agent_prompts` 里，也不是 `agent/<key>.md`） | **会动，需重录** | 不动（不扫 `base/*.md`） |
+| 改本手册 `.dsh/skills/onboard-client-package/SKILL.md`（旧位置 `core/prompts/base/接入新客户.md` 已删除） | **不动**（不在 `agent_prompts` 里） | **不动**（不在 `core/` 或 `app/` 下） | 不动（不扫 `base/*.md`） |
 | 改 34 条中任意一条 | 会动，需重录 | 会动 | 基座改动会扫；包内覆盖不扫 |
 
 三条依据：
 
-- `scripts/gate_prompts.py` 不哈希文件，哈希的是四个数据对象：`BASELINE`（`prompts-S5.json`）与 `BUNDLE_KEYS = ("AGENT_PROMPTS", "AGENT_DEFINITIONS", "TEMPLATE_POLICY", "REPORT_PROMPT_PROFILES")`，由同一文件的 `bundle()` 组装。`AGENT_PROMPTS` 来自 `core/agent.py` 的 `_registry.prompts()`，只遍历 `index.yaml` 的 `agent_prompts`。换 `REPORT_PACKAGE` 会改变 `AGENT_PROMPTS`，所以 `prompts-S5.json` 只对默认包 `anshun_monthly` 有意义，不能给新客户当基线。
-- `scripts/gate_prompt_neutral.py` 的扫描面是 `core/prompts/base/agent/**/*.md`（34 条提示词正文），docstring 明写不扫 `core/prompts/base/*.md`：那些是对照表与接入说明。
-- `scripts/gate_core_iso.py` 的 `observe()` 用 `tree_hash(core_root, "*")` 把 `core/` 下所有文件（含 `.md`）算进 `CORE-HASH`。所以本文件一改，`CORE-HASH` 必变，`--baseline docs/team/baseline/core-S10-J.json` 会 FAIL；那是预期行为，按团队当前的 core 基线规则处理，**不要随手录基线**。
+- `scripts/gate_prompts.py` 不哈希文件，哈希的是四个数据对象：`BASELINE`（`prompts-S5.json`）与 `BUNDLE_KEYS = ("AGENT_PROMPTS", "AGENT_DEFINITIONS", "TEMPLATE_POLICY", "REPORT_PROMPT_PROFILES")`，由同一文件的 `bundle()` 组装。`AGENT_PROMPTS` 来自 `core/agent.py` 的 `_registry.prompts()`，只遍历 `index.yaml` 的 `agent_prompts`。改部署默认包（`REPORT_PACKAGE`）会改变 `AGENT_PROMPTS`，所以 `prompts-S5.json` 只对默认包 `anshun_monthly` 有意义，不能给新客户当基线。
+- `scripts/gate_prompt_neutral.py` 的扫描面是 `core/prompts/base/agent/**/*.md`（34 条提示词正文），docstring 明写不扫 `core/prompts/base/*.md`：那些是对照表（接入说明已移出 core，见本手册）。
+- `scripts/gate_core_iso.py` 的 `observe()` 用 `tree_hash(core_root, "*")` 把 `core/` 下所有文件（含 `.md`）算进 `CORE-HASH`。本手册原来就放在 `core/prompts/base/` 下，移出到 `.dsh/skills/` 后 `CORE-FILES` 少一个、`CORE-HASH` 必变，`--baseline docs/team/baseline/core-S10-J.json` 会 FAIL；那是预期行为，按团队当前的 core 基线规则处理，**不要随手录基线**。
+
+### 10.2 包归属自检（建包之后、写提示词之前跑）
+
+```powershell
+# 1 新包在列表里且 usable:true（坏包会 usable:false 且带 error 原因）
+(Invoke-RestMethod http://127.0.0.1:8765/api/packages) | Where-Object { $_.package -eq '<新包>' } | Format-List package,usable,error
+```
+
+四条判据，每条都要看到证据，看不到就别往下写提示词：
+
+1. `GET /api/packages` → 新包在列表里且 **`usable: true`**；`usable:false` 时 `error` 就是原因（多半是 manifest / template / 提示词某一环坏了，跑 `check_package.py` 定位）。
+2. 建一个任务 → `TaskState.package` 等于新包名（看 `GET /api/tasks/{task_id}` 的整份 state；`GET /api/tasks` 的 `metadata` 是白名单，看不到）。
+3. 看产物落在 `data/packages/<新包>/`（`artifacts/` / `uploads/`），**不是**默认包根。
+4. 若请求没带 `X-Report-Package`：去默认包根看有没有多出来的任务或文件——这是最常见的静默错误（1.5.4 ①）。
 
 ## 十一、交接与定稿
 
@@ -1608,7 +1668,7 @@ $py = 'D:\智能分析报告重构版V5\.conda\JJDreport\python.exe'
 # 1 包级契约（七段；PROMPTS 段显示 n keys: base + overrides）
 & $py scripts\check_package.py --package <pkg>
 
-# 2 包能被加载（exit 0 且无输出）
+# 2 包能被加载（exit 0 且无输出；REPORT_PACKAGE 只指定「加载哪个包」，不是切客户）
 $env:REPORT_PACKAGE='<pkg>'; & $py -c "import app"
 
 # 3 覆盖可见性：改写的 key 应该是 package，其余 base
