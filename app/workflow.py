@@ -586,8 +586,13 @@ async def run_template(deps:Dependencies,task_id:str):
         if state.metadata.get('template_input_hash')!=input_hash:state.metadata['template_batches']={}
         state.metadata.update(template_input_hash=input_hash,template_review_checkpoints=checkpoints)
         save('template_model_reviewing')
-        combined,review_refs=await review_batches(store,state,ctx,packet,comparison_res.data_ref)
-        candidate=compile_review(combined,packet,comparison_res.data_ref)
+        combined,review_refs,round_meta=await review_batches(store,state,ctx,packet,comparison_res.data_ref)
+        from .template_execution import template_part_for_compile
+        candidate=compile_review(template_part_for_compile(combined),packet,comparison_res.data_ref)
+        # 终审意见（第二轮完美时为第二轮意见，否则为第三轮意见）：全部 advisory，
+        # 只展示、不阻塞确认；确认接口不要求逐条处理。
+        candidate['human_review_items']=round_meta.get('human_review_items',[])
+        candidate['semantic_final_round']=round_meta.get('final_round')
         candidate_ref=store.put_artifact(task_id,'structured_template_candidate',candidate)
         validated=TemplateCandidateState(policy_version=POLICY_VERSION,input_ref=state.metadata['template_input_ref'],
             input_hash=input_hash,review_refs=review_refs,candidate_ref=candidate_ref,candidate_hash=digest(candidate),validation='passed')
@@ -597,7 +602,9 @@ async def run_template(deps:Dependencies,task_id:str):
         for question in candidate['review_items']:
             state.review_items.append(_item('template_business_question',question['question'],True,question))
         state.review_items.append(_item('template_candidate','请查看模型研判后的完整模板并整体确认。'))
-        store.append_event(task_id,{'type':'structured_template_candidate','artifact':candidate_ref,'source_count':len(documents),'fields':len(candidate['fields']),'semantic_review':True})
+        store.append_event(task_id,{'type':'structured_template_candidate','artifact':candidate_ref,'source_count':len(documents),'fields':len(candidate['fields']),'semantic_review':True,
+            'final_round':round_meta.get('final_round'),'quality_incident':bool(round_meta.get('quality_incident')),
+            'human_review_items':len(candidate['human_review_items'])})
         save('awaiting_template_confirmation')
     except Exception as exc:
         # A failed request is never reclassified as a human semantic decision.

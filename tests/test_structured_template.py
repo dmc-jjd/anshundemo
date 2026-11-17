@@ -31,7 +31,16 @@ async def semantic_analyst(role,payload):
         fields.append({'id':fid,'display_name':'本月分析','owner':'writer','kind':'analysis','source_type':'analysis',
             'semantic':'本月重点领域分析','rule':'只使用本月证据','format':'完整句子','missing_policy':'block','reason':'相同类别仍随月份变化','binding':None,
             'sources':[{**s,'text':d['blocks'][position]['text']} for s,d in zip(sources,payload['source_reports'])]})
-    return {'summary':'按语义重划字段','blocks':blocks,'fields':fields,'unresolved_items':[]}
+    result={'summary':'按语义重划字段','blocks':blocks,'fields':fields,'unresolved_items':[]}
+    # 作为 run_template 的模型适配器时（有 semantic_round）：三轮研判桩默认每轮都结构无误、
+    # 零意见；第二轮对第一轮意见（默认零条）回执空列表，使第二轮判为完美、两次调用收尾。
+    stage=payload.get('semantic_round')
+    if stage is not None:
+        result['review_items']=[]
+        if stage['round']==2:
+            prior=stage.get('prior_round',{}).get('review_items') or []
+            result['prior_opinion_resolved']=[{'opinion_index':i,'resolved':True,'note':'已处理'} for i in range(len(prior))]
+    return result
 
 def test_two_reports_generate_schema_and_render_preserves_fixed_words(tmp_path):
     docs=pair(tmp_path);template=build_structured_template(docs,'comparison')

@@ -1,8 +1,8 @@
 {
   "canon": "sha256(json.dumps(obj,ensure_ascii=False,sort_keys=True,default=str).encode())",
-  "prompts_sha256": "f61698b4ca01b4f45fb051590ea2d72d1a0f38203a9df842b67f90e6eb347dfb",
+  "prompts_sha256": "4132ccd29bb9ad7cf3089cf108f3ae7b1399bbaf656765f2b9467eb470f14d27",
   "parts": {
-    "AGENT_PROMPTS": "3d464ceebc7f61f185ec0faee56fad04e9378731371a18f2b356ce31b32a8a0f",
+    "AGENT_PROMPTS": "0eb8838f1e3ce141100bdae982697cc814a9ad2b75616cfa6f4232b28e1be809",
     "AGENT_DEFINITIONS": "5b0fb66e64f3ed6bcfb67ccf4b7a9d05f36e32ac3f04cfbf6dc5ff7fdad138dc",
     "TEMPLATE_POLICY": "490a038d93987ad41c3a0f006b3a49d1d5c37c93a458420e9764e2e4d4902d18",
     "REPORT_PROMPT_PROFILES": "b4df32af7e6c8600b2200ac9575e745a8d02b76f90271bba23b0414166e060a9"
@@ -16,7 +16,7 @@
   },
   "order": {
     "policy_sha256_unsorted": "9ddd5dc5fe2da8a634fe6167a7080c1e33107313345666870339fc137f316c65",
-    "all_sha256_unsorted": "72bf8a5069ec241b25bf58b41b5afa244e9a30eeb899f75a96f3b8239b469b46",
+    "all_sha256_unsorted": "c9c225440bb016f80dde3dfb4b7d9cc7d9a6731236f89b7d3994973366db63b6",
     "prompt_keys": [
       "style.application",
       "format_reviewer.review",
@@ -100,5 +100,5 @@
   "review_policy": "7d8c8cb58258441760b687e7d835db450f384f063ff3f8b27beda4ca8d8a35b7",
   "skill_sha256": "11fb295225e5a8df37d6109c0a7c19f37efe4cf694bcee7cd0da99b4ca3d468f",
   "python": "3.13.18",
-  "recorded_at": "2026-11-16T19:02:54+08:00"
+  "recorded_at": "2026-11-17T13:19:38+08:00"
 }

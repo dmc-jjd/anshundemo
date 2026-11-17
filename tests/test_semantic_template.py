@@ -87,25 +87,26 @@ def test_upload_three_reports_rejects_duplicate_and_old_candidate_confirmation(t
         assert client.post(f'/api/templates/{state.id}/confirm',json=request).status_code==200
 
 
-def test_retry_after_transport_failure_resends_the_whole_template_with_full_context(tmp_path):
-    """三块分批取消后没有按批断点：传输失败后整份重发，上下文仍是全部报告正文。"""
+def test_retry_after_transport_failure_restarts_the_whole_three_round_review(tmp_path):
+    """传输失败不写半成品：恢复后三轮研判整份重跑（r1+r2），上下文仍是全部报告正文。"""
     docs=[docx(tmp_path/f'{i}.docx',f'报告{i}首段。</w:t></w:r></w:p><w:p><w:r><w:t>二段。</w:t></w:r></w:p><w:p><w:r><w:t>三段。</w:t></w:r></w:p><w:p><w:r><w:t>四段。') for i in range(3)]
     store=Store(tmp_path/'store');store.put_task(TaskState(id='t',kind='template',phase='queued',metadata={'paths':[d['path'] for d in docs]}))
     calls=[]
     async def fails(role,payload):
-        calls.append(payload['target_blocks'])
+        calls.append(payload)
         assert all(len(d['blocks'])==4 for d in payload['source_reports'])
         assert payload['target_blocks']==[0,1,2,3]
         raise TimeoutError('test timeout')
     failed=asyncio.run(run_template(Dependencies(store,fails),'t'))
     assert failed.phase=='template_review_failed' and failed.metadata['template_review_checkpoints']=={}
-    assert calls==[[0,1,2,3]]
+    assert [c['target_blocks'] for c in calls]==[[0,1,2,3]]
     calls.clear()
     async def resume(role,payload):
-        calls.append(payload['target_blocks']);return await semantic_analyst(role,payload)
+        calls.append(payload);return await semantic_analyst(role,payload)
     ready=asyncio.run(run_template(Dependencies(store,resume),'t'))
     assert ready.phase=='awaiting_template_confirmation',ready.metadata.get('template_error')
-    assert calls==[[0,1,2,3]]                       # 整份重发，不是续跑某一批
+    # 失败发生在 r1 完成前：恢复后 r1、r2 都重跑，不是续跑某一批。
+    assert [c['semantic_round']['round'] for c in calls]==[1,2]
 
 
 def test_business_question_has_visible_evidence_and_blocks_confirmation(tmp_path,monkeypatch):

@@ -23,7 +23,6 @@ from .api_views.template import apply_top10_rule_preserving,resolve_template_nam
 from .upload_names import remember as remember_upload_name
 from .template_draft_api import router as manual_definition_router
 from .template_field_api import router as template_field_api_router
-from .template_advice_api import router as template_advice_router
 from .template_delete_api import router as template_delete_router
 from .final_document_api import router as final_document_router
 from .hotspot_api import router as hotspot_router
@@ -40,9 +39,6 @@ app.include_router(packages_router)
 # 手动定义草稿的三个接口（选区→选择题→占位符/字段 JSON），刻意不进 OpenAPI：
 # 见 app/template_draft_api.py 与 docs/模板字段手动定义设计.md。
 app.include_router(manual_definition_router)
-# 确认后的只读 LLM 审核（只提修改意见、不改模板），同样刻意不进 OpenAPI：
-# 见 app/template_advice.py 与 app/template_advice_api.py。
-app.include_router(template_advice_router)
 app.include_router(template_delete_router)  # 模板任务软删除（标记不删文件），同样刻意不进 OpenAPI：见 app/template_delete_api.py
 app.include_router(template_field_api_router)  # 模板候选字段的人工编辑（显示名称/字段语义/归属），同样不进 OpenAPI：见 app/template_field_api.py
 # 终稿人工审核页（A4 渲染模型 / 保存人工覆盖 / 修改日志 / 还原），同样刻意不进 OpenAPI：

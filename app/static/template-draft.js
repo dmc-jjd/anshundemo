@@ -29,11 +29,7 @@
     custom_semantic_required: '请用一句话说明这个字段的含义（告诉 Writer 这个字段怎么填）。',
     custom_semantic_too_long: '字段含义请控制在 200 字以内。',
     custom_owner_invalid: '请选择这个字段由谁来填。',
-    custom_data_note_too_long: '数据来源说明请控制在 200 字以内。',
-    confirmed_template_required: '模板还没有确认，先确认模板再来审核。',
-    advice_not_structured: '模型返回的意见不是约定的 JSON，请重试。',
-    model_not_configured: '尚未配置模型接口，暂时不能审核。',
-    task_paused: '任务已暂停，模型调用已停止。'
+    custom_data_note_too_long: '数据来源说明请控制在 200 字以内。'
   };
 
   const S = {
@@ -371,116 +367,70 @@
     }
   }
 
-  /* ---------------------------------------------------------------- 只读审核 */
-  // 确认后的第二次模型研判：只返回修改意见。页面没有「应用」「接受」按钮——
-  // 意见不写回模板，要改仍走「手动定义 → 重新确认」这条人工路径。
-  const A = { taskId: null, panel: null, definition: null, running: false };
+  /* ------------------------------------------------- 三轮研判终审参考意见 */
+  // 三轮模板语义研判的最后一轮意见随候选工件一起返回（human_review_items）：
+  // 第二轮完美时是第二轮意见，否则是第三轮意见。全部 advisory——只展示，
+  // 没有「接受/应用」动作，不阻塞「确认并保存模板」；要改仍走手动定义或重新研判。
+  const H = { taskId: null, definition: null };
 
-  function adviceFieldLabel(fieldId) {
-    const field = (A.definition?.fields || []).find(item => item.id === fieldId);
+  function humanReviewFieldLabel(fieldId) {
+    const field = (H.definition?.fields || []).find(item => item.id === fieldId);
     return field ? (field.display_name || field.id) : (fieldId || '整份模板');
   }
 
-  function renderAdvice(result) {
-    if (!A.panel) return;
-    A.panel.replaceChildren();
-    if (!result) {
-      A.panel.append(node('p', '还没有审核意见。点击上方「LLM审核」让模型再审一遍：只返回修改意见，不改模板。',
-        { class: 'td-advice-empty' }));
-      return;
-    }
-    const items = Array.isArray(result.items) ? result.items : [];
+  function renderHumanReview(host, container, definition) {
+    host.querySelectorAll(':scope > .td-human-review').forEach(element => element.remove());
+    const items = Array.isArray(definition?.human_review_items) ? definition.human_review_items : [];
+    if (!items.length) return;
+    const panel = node('div', null, { class: 'td-advice td-human-review' });
     const head = node('div', null, { class: 'td-advice-head' });
-    head.append(node('strong', `模型修改意见 ${items.length} 条`));
-    if (result.created_at) {
-      const at = new Date(result.created_at);
-      if (!Number.isNaN(at.getTime())) head.append(node('span', at.toLocaleString('zh-CN'), { class: 'td-advice-time' }));
-    }
-    head.append(node('span', '只读展示：不接受、不应用。', { class: 'td-advice-readonly' }));
-    A.panel.append(head);
-    if (!items.length) {
-      A.panel.append(node('p', '模型这次没有提出修改意见。', { class: 'td-advice-empty' }));
-      return;
-    }
-    // 只分两级：重要（红）/ 建议（灰）。模型自创的级别一律并入「建议」，不新增颜色。
+    head.append(node('strong', `模型终审参考意见 ${items.length} 条`));
+    head.append(node('span', '这些是模型的参考意见，可忽略，不要求逐条处理。', { class: 'td-advice-readonly' }));
+    panel.append(head);
+    // 只分两级展示：重要（仅供参考，红）/ 建议（灰）。
     const groups = [
-      { severity: '重要', cls: 'td-important', items: items.filter(item => item.severity === '重要') },
-      { severity: '建议', cls: 'td-suggest', items: items.filter(item => item.severity !== '重要') }
+      { label: '重要（仅供参考）', cls: 'td-important', items: items.filter(item => item.severity === '重要') },
+      { label: '建议', cls: 'td-suggest', items: items.filter(item => item.severity !== '重要') }
     ];
     for (const group of groups) {
       if (!group.items.length) continue;
       const section = node('div', null, { class: 'td-advice-group ' + group.cls });
-      section.append(node('h4', `${group.severity}（${group.items.length}）`));
+      section.append(node('h4', `${group.label}（${group.items.length}）`));
       const list = node('ul');
       for (const item of group.items) {
         const li = node('li');
-        li.append(node('span', adviceFieldLabel(item.field_id), { class: 'td-advice-field' }));
+        if (item.checklist) li.append(node('span', item.checklist, { class: 'td-advice-field' }));
         li.append(node('p', item.message || '', { class: 'td-advice-msg' }));
+        li.append(node('span', humanReviewFieldLabel(item.field_id), { class: 'td-advice-field' }));
         if (item.evidence) li.append(node('blockquote', '原文依据：' + item.evidence, { class: 'td-advice-evidence' }));
         list.append(li);
       }
       section.append(list);
-      A.panel.append(section);
+      panel.append(section);
     }
+    // 紧跟模板预览之后，renderPaper() 的 container.replaceChildren() 不会清掉它。
+    host.insertBefore(panel, container.nextSibling);
   }
 
-  async function runAdvice(trigger) {
-    if (A.running) return;
-    A.running = true;
-    const label = trigger.textContent;
-    trigger.disabled = true;
-    trigger.textContent = '模型审阅中…';
-    if (A.panel) {
-      A.panel.replaceChildren(node('p', '模型正在按字段审阅已确认模板，通常需要 30—90 秒，请不要关闭窗口。',
-        { class: 'td-advice-empty' }));
-    }
+  async function mountHumanReview({ taskId, container }) {
+    H.taskId = taskId;
+    // 面板作为 container 的兄弟节点，renderPaper() 的 container.replaceChildren() 不会清掉它。
+    const host = container.parentElement || container;
     try {
-      const data = await call(`/api/templates/${A.taskId}/advice`, { method: 'POST' });
-      renderAdvice(data);
-      toast(`模型修改意见已返回 ${(data.items || []).length} 条（只读，不改模板）。`);
-    } catch (error) {
-      const message = error?.message || '审核未完成。';
-      if (A.panel) A.panel.replaceChildren(node('p', '审核未完成：' + message, { class: 'td-advice-error' }));
-      toast('审核未完成：' + message);
-    } finally {
-      A.running = false;
-      trigger.disabled = false;
-      trigger.textContent = label;
-    }
-  }
-
-  async function mountAdvice({ taskId, container }) {
-    A.taskId = taskId;
-    container.querySelectorAll('.td-advice-bar,.td-advice').forEach(element => element.remove());
-    try {
-      A.definition = (await api(`/api/templates/${taskId}/definition`)).definition;
+      H.definition = (await api(`/api/templates/${taskId}/definition`)).definition;
     } catch {
-      A.definition = null;
+      H.definition = null;
+      return;
     }
-    const bar = node('div', null, { class: 'td-bar td-advice-bar' });
-    bar.append(node('b', '模板已确认，只读。'));
-    bar.append(node('span', '可让模型再审一遍：只返回修改意见，不改模板与字段。', { class: 'td-count' }));
-    const run = node('button', 'LLM审核', { type: 'button' });
-    run.onclick = () => runAdvice(run);
-    bar.append(node('span', null, { class: 'td-spacer' }), run);
-    A.panel = node('div', null, { class: 'td-advice' });
-    container.prepend(bar);
-    container.append(A.panel);
-    renderAdvice(null);
-    try {
-      const last = await api(`/api/templates/${taskId}/advice`);
-      if (last && last.available) renderAdvice(last);
-    } catch {
-      // 读不回上次结果时保持空态，不阻塞预览。
-    }
+    renderHumanReview(host, container, H.definition);
   }
 
   /* ---------------------------------------------------------------- 挂载 */
   async function mount({ taskId, container, onField, onRevision, confirmed } = {}) {
     if (!taskId || !container) return;
     if (confirmed) {
-      // 已确认模板不可再手动定义，只提供只读审核入口。
-      await mountAdvice({ taskId, container });
+      // 已确认模板不可再手动定义：只只读展示三轮研判的终审参考意见。
+      await mountHumanReview({ taskId, container });
       return;
     }
     if (S.container && S.container !== container) hideCard();
@@ -513,6 +463,8 @@
       });
     }
     renderPaper();
+    // 终审参考意见随候选工件返回：只读展示在预览下方，不阻塞确认按钮。
+    void mountHumanReview({ taskId, container });
   }
 
   window.TemplateDraft = { mount, canonText, canonOffset, choices: () => S.choices };

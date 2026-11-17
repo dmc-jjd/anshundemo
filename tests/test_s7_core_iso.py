@@ -23,6 +23,13 @@ S10-K 起本文件改指 `core-S10-K.json`：该档 `core/` 逐字节未变（`c
 （`app/template_draft.py`、`app/template_draft_api.py`），模板任务软删除（新增
 `app/api_views/template_library.py`、`app/template_delete_api.py`，`app/main.py` 净减到 602 行），
 故 `app_hash` 前进；`core-S10-J.json` 及更早各档保留、不覆盖。
+
+S10-L 起本文件改指 `core-S10-L.json`：模板语义研判改成三轮（r1 初稿不判定 / r2 六条清单自审 /
+r3 终审交人工），改了 `core/prompts/base/agent/` 下 template_analyst 的 batch/repair/advice 三个
+提示词（故 `core_hash` 前进），以及 `app/template_execution.py`、`app/workflow.py`、
+`app/template_exceptions.py`、`app/main.py`（净减至 600 行）；删除只读后审
+（`app/template_advice.py`、`app/template_advice_api.py`），故 `app_hash` 前进；
+`CORE-DEP` 仍 0/0。`core-S10-K.json` 及更早各档保留、不覆盖。
 """
 
 import importlib
@@ -34,7 +41,7 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts"))
 import gate_core_iso  # noqa: E402
 
-BASELINE = REPO / "docs" / "team" / "baseline" / "core-S10-K.json"
+BASELINE = REPO / "docs" / "team" / "baseline" / "core-S10-L.json"
 
 
 def _baseline() -> dict:

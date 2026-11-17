@@ -7,9 +7,10 @@
     4 白名单：**同一份样本、同一个 build_table 调用**，A 包下放行、B 包下 `tool_not_allowed`
       （负向对照；一个"永远拒绝"的门禁和一个"正确拒绝"的门禁是两件事）；
     5 基座：`CORE-HASH` 与 `APP-HASH` 与当前层基线逐字符相等（P7 最硬的一条；S8 起每层一档，
-       S10-K 起现指 `core-S10-K.json`——该档 `core/` 逐字节未变（`core_hash` 与 S10-J 相同），
-       变化全在 `app/`：模板字段弹窗新增「自定义字段」、模板任务软删除，`main.py` 净减到 602 行，
-       故 `app_hash` 前进、`CORE-DEP` 仍 0/0；`core-S10-J.json` 及更早各档保留、不覆盖）。
+       S10-L 起现指 `core-S10-L.json`——该档对应模板三轮研判改造：template_analyst 三个提示词
+       （batch/repair/advice）改写故 `core_hash` 前进；`app/` 改 template_execution/workflow/
+       template_exceptions/main 并删除 template_advice* 两个只读后审文件，故 `app_hash` 前进；
+       `CORE-DEP` 仍 0/0；`core-S10-K.json` 及更早各档保留、不覆盖）。
 
 两个必须遵守的隔离约束：
     * B 的加载验证**只能在子进程**：四个注册表都是 module-global（`core/tools/vocabulary.py:16`
@@ -36,7 +37,7 @@ from app.schemas import TaskState, ToolCall  # noqa: E402
 from app.storage import Store  # noqa: E402
 from app.tool_executor import RunContext, execute_tool  # noqa: E402
 
-BASELINE = REPO / "docs" / "team" / "baseline" / "core-S10-K.json"
+BASELINE = REPO / "docs" / "team" / "baseline" / "core-S10-L.json"
 SMOKE = REPO / "scripts" / "smoke_package_b.py"
 
 PROMPT_KEYS = {

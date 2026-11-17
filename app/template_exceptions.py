@@ -24,7 +24,10 @@ def correct_batch(store,state,key,raw,reason):
         raise ValueError('template_exception_not_open')
     if not reason.strip():raise ValueError('template_correction_reason_required')
     packet=store.get_artifact(state.metadata['template_input_ref'])
-    issues=collect_errors(raw,packet,state.metadata['comparison_ref'],None if key=='all' else batch['targets'])
+    # 三轮研判的模型响应工件带 review_items 等研判扩展键，结构模型 extra=forbid；
+    # 人工修正页回贴的是完整响应，校验与后续编译只认四个模板契约键。
+    from .template_execution import template_part_for_compile
+    issues=collect_errors(template_part_for_compile(raw),packet,state.metadata['comparison_ref'],None if key=='all' else batch['targets'])
     if issues:return issues
     ref=store.put_artifact(state.id,'template_human_correction',raw)
     batch.update(status='human_corrected',human_correction={'response_ref':ref,'reason':reason,'at':stamp(),'actor':'local-operator'})
