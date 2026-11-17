@@ -21,6 +21,14 @@ from .template_draft import DraftError, append_selection, undo_selection, view
 router = APIRouter(include_in_schema=False)
 
 
+class DraftCustomDefinition(BaseModel):
+    # 卡片内小表单：显示名/语义必填，owner 只允许 writer/data；data_note 仅 data 型可填、可留空。
+    display_name: str | None = None
+    semantic: str | None = None
+    owner: str | None = None
+    data_note: str | None = None
+
+
 class DraftSelectionRequest(BaseModel):
     expected_revision: int
     block: int
@@ -28,6 +36,7 @@ class DraftSelectionRequest(BaseModel):
     choice: str
     start: int = 0
     display_name: str | None = None
+    custom: DraftCustomDefinition | None = None
 
 
 class DraftUndoRequest(BaseModel):
@@ -64,9 +73,11 @@ def add_template_draft_selection(task_id: str, req: DraftSelectionRequest):
     if state.revision != req.expected_revision:
         raise HTTPException(409, 'stale_template_revision')
     try:
+        custom = req.custom.model_dump() if req.custom is not None else None
         return append_selection(store, state, ref, base, block=req.block,
                                 selected_text=req.selected_text, choice=req.choice,
-                                start=req.start, display_name=req.display_name)
+                                start=req.start, display_name=req.display_name,
+                                custom=custom)
     except DraftError as exc:
         raise HTTPException(exc.status, exc.code)
 

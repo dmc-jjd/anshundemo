@@ -11,12 +11,17 @@ const post=(url,data,headers={})=>api(url,{method:'POST',headers:{'Content-Type'
 // 客户包：新建任务/上传的目标客户（数据来自 GET /api/packages，只列 usable:true）。
 // 只有一个可用包时默认选中且不可选（不制造多余交互）；请求统一带 X-Report-Package。
 let packageCatalog=null;
+// 下拉文案：`<name 或 report_type> · <包代号>`。两套同名包（两个「舆情月报」）只能靠包代号区分，
+// 否则用户选不出目标客户，任务会落进别的包的数据根；value 仍是包代号（提交要带 X-Report-Package）。
+const packageLabel=p=>`${p.name||p.report_type||p.package} · ${p.package}`;
+// 只让 ASCII 包代号呈等宽：ui-monospace 没有中文字形，中文名按常规字体回退。
+const packageCodeStyle='font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.02em';
 async function loadPackages(){
   if(packageCatalog)return packageCatalog;
   let items=[];
   try{items=(await api('/api/packages')).filter(x=>x.usable)}catch(e){items=[]}
   packageCatalog=items;
-  for(const id of ['#templatePackage','#reportPackage']){const sel=$(id);if(!sel)continue;sel.replaceChildren();for(const p of items)sel.append(node('option',p.name||p.package,{value:p.package}));if(items.length){sel.value=items[0].package;sel.disabled=items.length<=1}}
+  for(const id of ['#templatePackage','#reportPackage']){const sel=$(id);if(!sel)continue;sel.replaceChildren();for(const p of items){const o=node('option',packageLabel(p),{value:p.package});o.style.cssText=packageCodeStyle;sel.append(o)}if(items.length){sel.value=items[0].package;sel.disabled=items.length<=1}}
   return items;
 }
 const packageValue=id=>{const el=$(id);return el&&el.value?el.value:''};
@@ -40,7 +45,69 @@ function stageTrack(t){const names=stageStepNames(t.kind),current=stageStepIndex
  item.append(dot,label);track.append(item)});return track}
 function tab(name){const target=viewStages[name]?name:'overview';document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x.id===target));viewedStage=viewStages[target];paintStages();const here=document.getElementById('crumbHere');if(here)here.textContent=viewNames[target];if(target==='tasks')return refresh();if(target==='report')return Promise.all([loadPackages(),loadTemplates()]);if(target==='template'){loadPackages();loadTemplateStats();return loadTemplateLibrary()}}
 async function loadTemplateStats(){try{const m=await api('/api/template-manifest'),status={candidate_requires_review:'待审',confirmed_by_human:'已确认',confirmed:'已确认'};const set=(id,text)=>{const el=$(id);if(el)el.textContent=text};set('#tplPlaceholders',(m.placeholders||[]).length||0);set('#tplReviewItems',(m.review_items||[]).length||0);set('#tplStatus',status[m.status]||'待审')}catch(e){}}
-async function loadTemplateLibrary(){const body=$('#templateLibrary'),meta=$('#templateLibraryMeta');if(!body)return;const empty=()=>{const tr=node('tr'),td=()=>node('td','—',{class:'aux'});tr.append(td(),td(),td(),td());body.replaceChildren(tr);if(meta)meta.textContent='—'};try{const items=await api('/api/templates');if(!items.length)return empty();body.replaceChildren();for(const t of items){const usable=!!t.usable_for_final||t.status==='confirmed_by_human',tr=node('tr'),name=node('td',t.name||t.id,{class:'t-main'}),version=node('td','v'+(t.version||1),{class:'num'}),status=node('td'),pill=node('span',usable?'可用于成稿':'待确认',{class:'pill '+(usable?'ok':'warn')});if(t.reason)pill.title=t.reason;status.append(pill);const action=node('td',null,{class:'r'}),edit=node('button','编辑',{type:'button',class:'btn ghost sm'});edit.onclick=()=>busy(edit,()=>editTemplateFromLibrary(t));action.append(edit);tr.append(name,version,status,action);body.append(tr)}if(meta)meta.textContent=items.length+' 个模板'}catch(e){empty()}}
+async function loadTemplateLibrary(){
+  const body=$('#templateLibrary'),meta=$('#templateLibraryMeta');if(!body)return;
+  const empty=()=>{const tr=node('tr'),td=()=>node('td','—',{class:'aux'});tr.append(td(),td(),td(),td());body.replaceChildren(tr);if(meta)meta.textContent='—'};
+  try{
+    const items=await api('/api/templates');
+    if(!items.length)return empty();
+    body.replaceChildren();
+    for(const t of items){
+      const usable=!!t.usable_for_final||t.status==='confirmed_by_human',
+        tr=node('tr'),
+        name=node('td',t.name||t.id,{class:'t-main'}),
+        version=node('td','v'+(t.version||1),{class:'num'}),
+        status=node('td'),
+        pill=node('span',usable?'可用于成稿':'待确认',{class:'pill '+(usable?'ok':'warn')});
+      if(t.reason)pill.title=t.reason;
+      status.append(pill);
+      const action=node('td',null,{class:'r'});
+      // 内置基线模板没有 task_id，不提供编辑/删除；任务模板（已确认与待确认）都可删。
+      if(t.task_id){
+        const edit=node('button',t.status==='confirmed_by_human'?'查看模板':'预览并确认',{type:'button',class:'btn ghost sm'});
+        // 任务模板的编辑/查看入口 = 模板预览弹窗（待确认可在其中确认），不是内置基线的清单详情。
+        edit.onclick=()=>openTemplate(t.task_id);
+        const del=node('button','删除',{type:'button',class:'btn ghost sm'});
+        del.style.color='var(--amb,#9b3a2c)';
+        del.onclick=()=>deleteTemplateTask(t,del);
+        action.append(edit,del);
+      }
+      tr.append(name,version,status,action);
+      body.append(tr);
+    }
+    if(meta)meta.textContent=items.length+' 个模板';
+  }catch(e){empty()}
+}
+// 模板任务软删除（文件保留）：被报告任务引用时先拒绝、二次确认后带 force 重试。
+async function deleteTemplateTask(t,trigger){
+  const message='确定软删除模板「'+(t.name||t.id)+'」吗？\n\n'
+    +'· 这是软删除：只标记任务为已删除，模板文件与历史报告全部保留；\n'
+    +'· 删除后它不再出现在模板库和新建报告的模板下拉；\n'
+    +'· 删除后可以用相同名称重新创建并确认模板。';
+  if(!window.confirm(message))return;
+  trigger.disabled=true;
+  try{
+    const doDelete=async(force)=>{
+      const r=await fetch(`/api/template-tasks/${encodeURIComponent(t.task_id)}`+(force?'?force=true':''),{method:'DELETE'});
+      const raw=await r.text();let data;try{data=JSON.parse(raw)}catch{data={detail:raw}}
+      if(!r.ok){
+        if(r.status===409&&data.detail==='template_in_use'){
+          const n=Number(data.references||0);
+          if(window.confirm(`该模板已被 ${n} 个报告任务引用。\n\n仍要软删除吗？报告任务本身不受影响（template_ref 保留，仍可按工件查看），删除后该模板不再出现在模板库与下拉。`)){
+            return doDelete(true);
+          }
+          return null;
+        }
+        throw Error(errors[data.detail]||(typeof data.detail==='string'?data.detail:'删除未完成，请稍后重试。'));
+      }
+      return data;
+    };
+    const result=await doDelete(false);
+    if(!result)return;
+    toast('已软删除模板「'+(t.name||t.id)+'」，文件保留；同名模板现在可以重新创建。');
+    await Promise.all([loadTemplateLibrary(),loadTemplates(),refresh()]);
+  }finally{trigger.disabled=false}
+}
 async function editTemplateFromLibrary(t){const host=$('#templateDetail');if(!host)return;await tab('template');if(templateDetailId===t.id&&!host.hidden){host.hidden=true;templateDetailId=null;detailPrimary(false);return}templateDetailId=t.id;if(!templateManifest)templateManifest=await api('/api/template-manifest');renderTemplateDetail(host,t,templateManifest||{});host.hidden=false;detailPrimary(true)}
 function detailPrimary(on){const start=$('#startTemplate');if(start)start.className=on?'ghost':'primary'}
 function renderTemplateDetail(host,t,manifest){const placeholders=manifest.placeholders||[],computed=placeholders.filter(p=>p.color==='red').length,fromSource=placeholders.length-computed,statusText=t.usable_for_final?'可用于成稿':'待确认';const head=node('div',null,{class:'tpl-detail-head'});head.append(node('strong','当前模板：'+(t.name||t.id)),node('span',`v${t.version||1} · ${statusText}`,{class:'tpl-detail-ver'}));const meta=node('p',`占位符 ${placeholders.length} · 计算数据 ${computed} / 原文与表格 ${fromSource} · 状态 ${statusText}`,{class:'tpl-detail-meta'});const scroll=node('div',null,{class:'tpl-detail-scroll'}),table=node('table',null,{class:'tpl-detail-table'}),thead=node('thead'),headRow=node('tr');['序号','字段 ID','类型','颜色含义','原文'].forEach(v=>headRow.append(node('th',v)));thead.append(headRow);table.append(thead);const tbody=node('tbody');placeholders.forEach((p,index)=>{const tr=node('tr');tr.append(node('td',String(index+1),{class:'num'}),node('td',p.id||'',{class:'mono'}),node('td',p.slot_type||''),node('td',p.color_meaning||''),node('td',p.original_text||'',{class:'tpl-orig'}));tbody.append(tr)});table.append(tbody);scroll.append(table);const foot=node('div',null,{class:'tpl-detail-foot'}),primary=node('button','以此模板为基准新建比对',{type:'button',class:'primary'});primary.onclick=()=>{host.hidden=true;templateDetailId=null;detailPrimary(false);const files=$('#templateFiles');if(files)files.focus()};foot.append(primary);host.replaceChildren(head,meta,scroll,foot)}
@@ -49,7 +116,8 @@ $('#clock').textContent=new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai
 function openDialog(title){$('#dialogTitle').textContent=title;$('#dialogBody').replaceChildren();$('#dialogActions').replaceChildren();$('#dialogNotice').textContent='';if(!$('#reviewDialog').open)$('#reviewDialog').showModal()}
 $('#closeDialog').onclick=()=>$('#reviewDialog').close();
 async function uploadFiles(files,package=''){const ids=[];for(const file of files){const fd=new FormData();fd.append('file',file);ids.push((await api('/api/files',{method:'POST',headers:packageHeaders(package),body:fd})).id)}return ids}
-async function loadTemplates(){const items=await api('/api/templates'),s=$('#reportTemplate'),current=s.value;s.replaceChildren(node('option','请选择已确认的模板版本',{value:''}));for(const t of items.filter(x=>x.status==='confirmed_by_human'))s.append(node('option',t.name,{value:t.id}));const legacy=node('optgroup',null,{label:'历史流程测试'});for(const t of items.filter(x=>x.status!=='confirmed_by_human'))legacy.append(node('option',t.name+'（历史预览）',{value:t.id}));s.append(legacy);if([...s.options].some(o=>o.value===current))s.value=current}
+async function loadTemplates(){const items=await api('/api/templates'),s=$('#reportTemplate'),current=s.value;s.replaceChildren(node('option','请选择已确认的模板版本',{value:''}));for(const t of items.filter(x=>x.status==='confirmed_by_human'))s.append(node('option',t.name,{value:t.id}));const legacy=node('optgroup',null,{label:'历史流程测试'});// 待确认的模板任务（有 task_id）不能用于成稿：不进下拉；只有内置基线留在「历史预览」。
+for(const t of items.filter(x=>x.status!=='confirmed_by_human'&&!x.task_id))legacy.append(node('option',t.name+'（历史预览）',{value:t.id}));s.append(legacy);if([...s.options].some(o=>o.value===current))s.value=current}
 async function status(){const x=await api('/api/status');modelReady=x.model_configured;await Promise.all([loadTemplates(),loadPackages()])}
 const recentTools={import_records:'导入明细',calculate_metrics:'计算统计',filter_records:'筛选记录',group_events:'自动归并事件',cluster_event_themes:'生成分类',resolve_locality:'识别属地',render_chart:'绘制图表',parse_report_document:'读取历史报告',compare_report_structures:'比对历史报告'};
 function scopeValue(selector,value,unit){const el=$(selector);if(!el)return;const text=value===undefined||value===null||value===''?'—':(typeof value==='number'?value.toLocaleString():String(value));el.replaceChildren(document.createTextNode(text),node('small',unit))}
@@ -61,7 +129,10 @@ async function loadWorkbench(){const name=$('#wbTaskName'),meta=$('#wbNowMeta'),
 window.addEventListener('load',()=>{const p=$('#parameterSuggestion');if(p&&p.textContent==='选择模板后识别期号；成文日期默认今天，可修改。')p.textContent=''});
 const templateDefaultName=file=>String(file?.name||'').replace(/\.(docx|doc|xlsx)$/i,'').trim();
 const templateNameValue=()=>$('#templateName')?.value.trim()||templateDefaultName($('#templateFiles')?.files?.[0]);
-$('#templateFiles').onchange=()=>{const name=templateDefaultName($('#templateFiles').files[0]);if(name)$('#templateName').value=name};
+// .doc 只能读文字，写作阶段取版式里的图片位置只认 zip（.docx），.doc 会在此抛 BadZipFile 出不了稿。
+// 不阻止上传（模板确认阶段 .doc 仍可用），只把限制显性化：常态提示 + 命中 .doc 时的行内警示。
+function paintDocWarning(files=[]){const hint=$('#docHint'),warn=$('#docWarning');if(!hint&&!warn)return;const hasDoc=[...files].some(f=>/\.doc$/i.test(f.name||''));if(warn)warn.hidden=!hasDoc;if(hint)hint.hidden=hasDoc}
+$('#templateFiles').onchange=()=>{const files=[...($('#templateFiles').files||[])];const name=templateDefaultName(files[0]);if(name)$('#templateName').value=name;paintDocWarning(files)};
 $('#startTemplate').onclick=()=>busy($('#startTemplate'),async()=>{const files=$('#templateFiles').files;if(files.length<2)throw Error('请选择至少两份不同的 DOCX 报告。');$('#templateMsg').textContent='正在上传并比对…';const package=packageValue('#templatePackage');const t=await post('/api/template-tasks',{file_ids:await uploadFiles(files,package),template_name:templateNameValue()},packageHeaders(package));selected=t.id;shownRevision=null;tab('tasks')});
 $('#startReport').onclick=()=>busy($('#startReport'),async()=>{const file=$('#reportFile').files[0];if(!file)throw Error('请选择全量 Excel。');if(!$('#reportTemplate').value)throw Error('未选择模板版本。');$('#reportMsg').textContent='正在上传数据…';const package=packageValue('#reportPackage');const t=await post('/api/report-tasks',{file_ids:await uploadFiles([file],package),report_month:$('#reportMonth').value,sheet_index:Number($('#sheetIndex').value),template_ref:$('#reportTemplate').value,mode:modelReady?'dynamic':'fallback',issue_number:Number($('#reportIssue').value)||null,publication_date:$('#reportDate').value||null},packageHeaders(package));selected=t.id;shownRevision=null;tab('tasks')});
 $('#refreshTasks').onclick=()=>refresh(true);

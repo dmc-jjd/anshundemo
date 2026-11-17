@@ -16,11 +16,22 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import re
 from datetime import datetime, timezone
 
 from .structured_template import _schema
 
 DRAFT_KIND = 'manual_definition_draft'
+
+# ---------------------------------------------------------------- 自定义字段
+# 预设类型覆盖不到的定性措辞（如「较稳定」「波浪型」）：用户自己起名、写语义，
+# 并指定由 Writer 按本期证据写、还是程序按数据算（后者未配绑定时照常进待填）。
+CUSTOM_CHOICE_ID = 'custom_text'
+CUSTOM_OWNERS = ('writer', 'data')
+CUSTOM_NAME_MAX = 20
+CUSTOM_SEMANTIC_MAX = 200
+CUSTOM_DATA_NOTE_MAX = 200
+CUSTOM_ID_TAIL = re.compile(r'custom_field_(\d+)$')
 
 
 class DraftError(Exception):
@@ -41,6 +52,14 @@ CHOICES = [
         'id': 'fixed', 'label': '固定文字（每月都一样）', 'group': '不动', 'scope': 'selection',
         'description': '这段是固定表述，不生成占位符；若它原本是字段，会还原成原文字。',
         'owner': None, 'kind': None,
+    },
+    {
+        # 定性措辞等预设类型覆盖不到的内容：定义由用户在卡片内小表单填写（owner/语义动态），
+        # 故这里只给分组与渲染口径，真正的字段 spec 由 _custom_spec() 校验后生成。
+        'id': CUSTOM_CHOICE_ID, 'label': '自定义：我自己定义这个字段', 'group': '动态字段',
+        'scope': 'selection', 'custom': True, 'owner': None, 'kind': None,
+        'description': '预设类型覆盖不到的定性措辞（如「较稳定」「波浪型」）：自己起字段名、写含义，'
+                       '再指定 Writer 按证据写或程序按数据算。',
     },
     {
         'id': 'text', 'label': '动态文字：人名 / 地名 / 机构 / 标题', 'group': '动态字段', 'scope': 'selection',
@@ -117,7 +136,9 @@ CHOICES = [
 ]
 CHOICE_BY_ID = {choice['id']: choice for choice in CHOICES}
 
-FIELD_ID_TAIL = __import__('re').compile(r'_field_(\d+)$')
+# 只认预设命名空间 `block_<块>_field_<序号>`；自定义字段 `custom_field_<序号>` 走独立计数器，
+# 两套序号互不挪用（旧正则 `_field_(\d+)$` 会把 custom_field_3 也算进预设序号）。
+FIELD_ID_TAIL = re.compile(r'block_\d+_field_(\d+)$')
 
 
 # ---------------------------------------------------------------- 文本与定位
@@ -171,6 +192,59 @@ def _next_field_id(definition: dict, block_index: int) -> str:
     return f'block_{block_index}_field_{highest + 1}'
 
 
+def _next_custom_field_id(definition: dict) -> str:
+    """`custom_field_<全表递增序号>`：与预设 `block_*_field_*` 命名空间分开，互不冲突。"""
+    highest = 0
+    for field in definition['fields']:
+        found = CUSTOM_ID_TAIL.search(field['id'])
+        if found:
+            highest = max(highest, int(found.group(1)))
+    return f'custom_field_{highest + 1}'
+
+
+def _custom_spec(entry: dict) -> dict:
+    """校验卡片内小表单提交的自定义定义，生成一份完整 choice spec。
+
+    与预设 CHOICES 条目同构（后续 `_apply_range` / `_make_field` 不用分叉），
+    只是 owner / display_name / semantic 来自本次提交。校验失败一律 DraftError(422, 明确错误码)，
+    由路由层转人话，绝不 500。
+    """
+    payload = entry.get('custom')
+    if not isinstance(payload, dict):
+        raise DraftError(422, 'custom_definition_required')
+    name = str(payload.get('display_name') or '').strip()
+    if not name:
+        raise DraftError(422, 'custom_display_name_required')
+    if len(name) > CUSTOM_NAME_MAX:
+        raise DraftError(422, 'custom_display_name_too_long')
+    semantic = str(payload.get('semantic') or '').strip()
+    if not semantic:
+        raise DraftError(422, 'custom_semantic_required')
+    if len(semantic) > CUSTOM_SEMANTIC_MAX:
+        raise DraftError(422, 'custom_semantic_too_long')
+    owner = payload.get('owner')
+    if owner not in CUSTOM_OWNERS:
+        raise DraftError(422, 'custom_owner_invalid')
+    data_note = str(payload.get('data_note') or '').strip()
+    if len(data_note) > CUSTOM_DATA_NOTE_MAX:
+        raise DraftError(422, 'custom_data_note_too_long')
+    # data_note 只属于「程序按数据算」型：切回 writer 后前端残留的说明必须丢弃。
+    if owner != 'data':
+        data_note = ''
+    return {
+        'id': CUSTOM_CHOICE_ID, 'label': CHOICE_BY_ID[CUSTOM_CHOICE_ID]['label'],
+        'group': '动态字段', 'scope': 'selection', 'custom': True,
+        'owner': owner,
+        # 定性措辞一律按自由字符串值：writer 型给 Writer 写；data 型没有模式约束，
+        # 未配数据来源时与其他 data 字段一样进 needs_binding 待填。
+        'kind': 'text',
+        'display_name': name,
+        'semantic': semantic,
+        'value_schema': {'type': 'string', 'minLength': 1},
+        'data_note': data_note,
+    }
+
+
 def _source(definition: dict, block_index: int, text: str) -> dict:
     reports = definition.get('source_reports') or [{'path': '', 'sha256': ''}]
     return {'file': reports[0]['path'], 'sha256': reports[0]['sha256'],
@@ -184,7 +258,7 @@ def _make_field(definition: dict, block: dict, spec: dict, field_id: str,
         headers = block.get('headers') or []
         schema = {'type': 'array', 'items': {'type': 'array', 'items': {'type': 'string'},
                                              'minItems': len(headers), 'maxItems': len(headers)}}
-    return {
+    field = {
         'id': field_id,
         'owner': spec['owner'],
         'kind': spec['kind'],
@@ -198,6 +272,10 @@ def _make_field(definition: dict, block: dict, spec: dict, field_id: str,
         'sources': [_source(definition, block['index'], selected_text)],
         'origin': origin,
     }
+    # 自定义 data 字段可附一句数据来源说明（选填）；只在真填了时落键，不污染预设字段。
+    if spec.get('custom') and spec.get('data_note'):
+        field['data_note'] = spec['data_note']
+    return field
 
 
 def _apply_range(definition: dict, block: dict, spec: dict, selected_text: str,
@@ -250,7 +328,8 @@ def _apply_range(definition: dict, block: dict, spec: dict, selected_text: str,
                'removed_fields': covered_fields, 'occurrences': occurrences}
         return result, None, log
 
-    field_id = _next_field_id(definition, block['index'])
+    field_id = (_next_custom_field_id(definition) if spec.get('custom')
+                else _next_field_id(definition, block['index']))
     parts, inserted = [], False
     for low, high, part in spans:
         if high <= start or low >= end:
@@ -276,6 +355,10 @@ def _apply_range(definition: dict, block: dict, spec: dict, selected_text: str,
     log = {'block': block['index'], 'start': start, 'end': end, 'choice': spec['id'],
            'selected_text': text[start:end], 'display_text': human, 'field_id': field_id,
            'removed_fields': covered_fields, 'occurrences': occurrences}
+    if spec.get('custom'):
+        # 自定义定义必须随日志落盘：草稿 = 基线 + 重放日志，刷新/撤销都靠它重建 spec。
+        log['custom'] = {'display_name': spec['display_name'], 'semantic': spec['semantic'],
+                         'owner': spec['owner'], 'data_note': spec.get('data_note') or ''}
     return result, field, log
 
 
@@ -309,6 +392,9 @@ def apply_selection(definition: dict, entry: dict) -> tuple[dict, dict | None, d
     spec = CHOICE_BY_ID.get(entry.get('choice'))
     if spec is None:
         raise DraftError(422, 'unknown_choice')
+    if spec.get('custom'):
+        # owner/语义/显示名来自卡片内小表单；这里校验并生成完整 spec（可能抛 422 人话错误）。
+        spec = _custom_spec(entry)
     block = next((b for b in definition['blocks'] if b['index'] == entry.get('block')), None)
     if block is None:
         raise DraftError(422, 'unknown_block')
@@ -397,7 +483,8 @@ def current_draft(store, state) -> dict | None:
 def _log_entries(draft: dict | None) -> list[dict]:
     if not draft:
         return []
-    return [{key: entry[key] for key in ('block', 'start', 'end', 'selected_text', 'choice', 'display_name')
+    return [{key: entry[key]
+             for key in ('block', 'start', 'end', 'selected_text', 'choice', 'display_name', 'custom')
              if key in entry} for entry in draft.get('selection_log', [])]
 
 
@@ -411,11 +498,16 @@ def _save(store, state, base_ref: str, base_definition: dict, log: list[dict]) -
 
 def append_selection(store, state, base_ref: str, base_definition: dict, *, block: int,
                      selected_text: str, choice: str, start: int = 0,
-                     display_name: str | None = None) -> dict:
+                     display_name: str | None = None,
+                     custom: dict | None = None) -> dict:
     """追加一条选区决定。回显用的字段片段一律取自落盘后的草稿，避免与重放分叉。"""
     log = _log_entries(current_draft(store, state))
-    log.append({'block': block, 'start': start, 'selected_text': selected_text,
-                'choice': choice, 'display_name': display_name})
+    entry = {'block': block, 'start': start, 'selected_text': selected_text,
+             'choice': choice, 'display_name': display_name}
+    if choice == CUSTOM_CHOICE_ID:
+        # None / 缺键都要原样落日志：重放时由 _custom_spec 报 custom_definition_required。
+        entry['custom'] = custom
+    log.append(entry)
     draft = _save(store, state, base_ref, base_definition, log)
     ref = state.metadata['manual_template_draft_ref']
     applied = draft['selection_log'][-1]

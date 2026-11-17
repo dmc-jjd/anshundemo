@@ -81,6 +81,8 @@
         <div class="card-h"><h2>新建比对任务</h2><span class="hint">≥ 2 份 · 第一份为排版基准</span></div>
         <label>客户<select id="templatePackage"></select></label>
         <label>历史报告 Word<input type="file" id="templateFiles" accept=".doc,.docx" multiple></label>
+        <p id="docHint" style="margin:-4px 0 10px;font-size:11px;line-height:1.5;letter-spacing:.01em;color:var(--red)">请优先上传 .docx。.doc 能读文字，但写作阶段无法取图表位置，会出不了稿。</p>
+        <p id="docWarning" role="status" style="margin:-4px 0 10px;font-size:11px;line-height:1.5;font-weight:600;color:var(--red)" hidden>已选 .doc 文件：能读取文字，但写作阶段无法取图表位置。建议另存为 .docx 后重新上传。</p>
         <label>模板名称<input type="text" id="templateName" autocomplete="off"></label>
         <div class="row row-end"><button class="primary" id="startTemplate" type="button">上传并比对</button></div>
         <div id="templateMsg" class="message"></div>
@@ -169,4 +171,4 @@ window.PRODUCT = { name: '康奈', subname: '洞研智台', tagline: '舆情洞�
   fill('[data-product-full]', full);
 })();
 </script>
-<script src="/static/review-tools.js?v=20261113-v32"></script><script src="/static/data-review-tools.js?v=20261108-mixed-risk"></script><script src="/static/app.js?v=20261116-m3-package-picker"></script><script src="/static/template-draft.js?v=20261113-redesign"></script><script src="/static/insights.js?v=20261108-numbered-sources"></script><script src="/static/report-parameters.js?v=20261108-mixed-risk"></script><script src="/static/writing-review.js?v=20261109-resolved-findings"></script><script src="/static/hotspot.js?v=20261116-hotspot-tabs2"></script></body></html>
+<script src="/static/review-tools.js?v=20261113-v32"></script><script src="/static/data-review-tools.js?v=20261108-mixed-risk"></script><script src="/static/app.js?v=20261117-w86-package-label-doc-hint"></script><script src="/static/template-draft.js?v=20261113-redesign"></script><script src="/static/insights.js?v=20261108-numbered-sources"></script><script src="/static/report-parameters.js?v=20261108-mixed-risk"></script><script src="/static/writing-review.js?v=20261109-resolved-findings"></script><script src="/static/hotspot.js?v=20261116-hotspot-tabs2"></script></body></html>

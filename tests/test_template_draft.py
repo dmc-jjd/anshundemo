@@ -56,7 +56,8 @@ def test_draft_view_offers_choices_and_starts_empty(tmp_path, monkeypatch):
         assert view.status_code == 200
         body = view.json()
         assert body['has_draft'] is False and body['draft'] is None
-        assert [c['id'] for c in body['choices']][:3] == ['fixed', 'text', 'number']
+        # 自定义字段放在「动态字段」组最上面（紧随「不动」的 fixed）。
+        assert [c['id'] for c in body['choices']][:3] == ['fixed', 'custom_text', 'text']
         assert {c['scope'] for c in body['choices']} == {'selection', 'block'}
         assert body['definition']['blocks'], '预览需要能渲染的 blocks'
 

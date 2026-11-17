@@ -23,6 +23,13 @@
     structured_template_missing: '模板候选尚未生成，先完成模型语义研判。',
     draft_empty: '还没有可撤销的定义。',
     not_template_task: '这不是模板任务。',
+    custom_definition_required: '请先填写自定义字段的定义。',
+    custom_display_name_required: '请填写字段显示名（1~20 字）。',
+    custom_display_name_too_long: '字段显示名最多 20 个字。',
+    custom_semantic_required: '请用一句话说明这个字段的含义（告诉 Writer 这个字段怎么填）。',
+    custom_semantic_too_long: '字段含义请控制在 200 字以内。',
+    custom_owner_invalid: '请选择这个字段由谁来填。',
+    custom_data_note_too_long: '数据来源说明请控制在 200 字以内。',
     confirmed_template_required: '模板还没有确认，先确认模板再来审核。',
     advice_not_structured: '模型返回的意见不是约定的 JSON，请重试。',
     model_not_configured: '尚未配置模型接口，暂时不能审核。',
@@ -217,7 +224,11 @@
       const option = node('button', null, { type: 'button', class: 'td-opt' });
       option.append(node('b', choice.label), node('small', choice.description));
       option.disabled = !enabled;
-      option.onclick = () => busy(option, () => submit(block, payloadText, start, choice.id));
+      option.onclick = () => {
+        // 自定义字段不跳页：在卡片内展开小表单，填完定义再生成占位符。
+        if (choice.id === 'custom_text') openCustomForm(card, block, payloadText, start);
+        else busy(option, () => submit(block, payloadText, start, choice.id));
+      };
       group.append(option);
     }
     card.append(groups);
@@ -225,18 +236,97 @@
     return card;
   }
 
+  /* ------------------------------------------------------ 自定义字段小表单 */
+  function openCustomForm(card, block, text, start) {
+    card.querySelector('.td-custom-form')?.remove();
+    // 已选定「自定义」：收起类型列表与页脚，把卡片空间让给小表单（取消再恢复）。
+    const groups = card.querySelector('.td-groups');
+    const foot = card.querySelector('.td-foot');
+    if (groups) groups.style.display = 'none';
+    if (foot) foot.style.display = 'none';
+    const form = node('div', null, { class: 'td-custom-form' });
+    form.style.cssText =
+      'padding:9px 12px 11px;border-top:1px solid var(--line-soft,#e7e1da);display:flex;flex-direction:column;gap:7px';
+
+    const nameInput = node('input', null, {
+      type: 'text', maxlength: '20', autocomplete: 'off',
+      placeholder: '字段显示名（必填，1~20 字），如：整体态势措辞', 'aria-label': '字段显示名'
+    });
+    const semanticInput = node('textarea', null, {
+      rows: '2', maxlength: '200',
+      placeholder: '字段含义（必填，一句话告诉 Writer 这个字段怎么填）', 'aria-label': '字段含义'
+    });
+
+    // 谁来填：两个单选项；选「程序按数据算」时才展开可选的数据来源说明。
+    const ownerLine = node('div', null, { class: 'td-custom-owner' });
+    ownerLine.style.cssText = 'display:flex;gap:14px;flex-wrap:wrap';
+    const ownerWriter = node('input', null, { type: 'radio', name: 'td-custom-owner', value: 'writer' });
+    const ownerData = node('input', null, { type: 'radio', name: 'td-custom-owner', value: 'data' });
+    ownerWriter.checked = true;
+    const writerLabel = node('label');
+    writerLabel.style.cssText = 'display:inline-flex;gap:5px;align-items:center;font-size:12px';
+    writerLabel.append(ownerWriter, document.createTextNode('Writer 按本期证据写'));
+    const dataLabel = node('label');
+    dataLabel.style.cssText = 'display:inline-flex;gap:5px;align-items:center;font-size:12px';
+    dataLabel.append(ownerData, document.createTextNode('程序按数据算'));
+    ownerLine.append(writerLabel, dataLabel);
+
+    const dataLine = node('div', null, { class: 'td-custom-data' });
+    dataLine.style.cssText = 'display:none;flex-direction:column;gap:4px';
+    const dataNote = node('input', null, {
+      type: 'text', maxlength: '200', autocomplete: 'off',
+      placeholder: '数据来源说明（可选，可留空），如：来自月度统计表第 3 列', 'aria-label': '数据来源说明'
+    });
+    dataLine.append(node('small', '数据型字段未配置取数来源前会进入「待配数据来源」清单。'), dataNote);
+    const toggleOwner = () => { dataLine.style.display = ownerData.checked ? 'flex' : 'none'; };
+    ownerWriter.onchange = toggleOwner;
+    ownerData.onchange = toggleOwner;
+
+    const actions = node('div', null, { class: 'td-custom-actions' });
+    actions.style.cssText = 'display:flex;gap:8px;justify-content:flex;margin-top:2px';
+    const confirm = node('button', '生成自定义字段', { type: 'button', class: 'primary' });
+    const cancel = node('button', '取消', { type: 'button' });
+    cancel.onclick = () => { form.remove(); if (groups) groups.style.display = ''; if (foot) foot.style.display = ''; };
+    confirm.onclick = () => busy(confirm, async () => {
+      const displayName = nameInput.value.trim();
+      const semantic = semanticInput.value.trim();
+      if (!displayName) throw Error('请填写字段显示名（1~20 字）。');
+      if (displayName.length > 20) throw Error('字段显示名最多 20 个字。');
+      if (!semantic) throw Error('请用一句话说明这个字段的含义（告诉 Writer 这个字段怎么填）。');
+      const owner = ownerData.checked ? 'data' : 'writer';
+      // data_note 只随「程序按数据算」提交；切回 writer 不带（后端也会再丢弃一次）。
+      const definition = { display_name: displayName, semantic, owner };
+      if (owner === 'data') definition.data_note = dataNote.value.trim();
+      await submit(block, text, start, 'custom_text', definition);
+    });
+    actions.append(cancel, confirm);
+
+    form.append(node('label', '字段显示名', { style: 'font-size:11px;color:var(--muted)' }), nameInput,
+      node('label', '字段含义 / 语义', { style: 'font-size:11px;color:var(--muted)' }), semanticInput,
+      ownerLine, dataLine, actions);
+    card.append(form);
+    // 展开表单后卡片可能超出视口底部：重新定位，保持整卡在屏内。
+    requestAnimationFrame(() => {
+      card.style.top = Math.max(8, Math.min(parseInt(card.style.top || '0', 10),
+        window.innerHeight - card.offsetHeight - 8)) + 'px';
+      nameInput.focus();
+    });
+  }
+
   /* ---------------------------------------------------------------- 提交 */
-  async function submit(block, text, start, choice) {
+  async function submit(block, text, start, choice, custom) {
+    const payload = {
+      expected_revision: S.revision,
+      block: Number(block.index),
+      selected_text: text || '',
+      start: start || 0,
+      choice
+    };
+    if (custom) payload.custom = custom;
     const data = await call(`/api/templates/${S.taskId}/draft/selection`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        expected_revision: S.revision,
-        block: Number(block.index),
-        selected_text: text || '',
-        start: start || 0,
-        choice
-      })
+      body: JSON.stringify(payload)
     });
     applyState(data);
     hideCard();

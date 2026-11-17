@@ -17,6 +17,12 @@ payload `categories`）；`core_files` 仍 92（新增门禁脚本在 `scripts/`
 S10-J 起本文件改指 `core-S10-J.json`：该档只新增 `core/tools/doc97.py`（`.doc`，Word 97-2003
 读取器，dochan 可选依赖），`core_files` 93→94、`core_hash` 前进；`app/main.py` 两处上传白名单
 放行 `.doc`，`app_hash` 同步前进；`CORE-DEP` 仍 0/0。`core-S10-I.json` 及更早各档保留、不覆盖。
+
+S10-K 起本文件改指 `core-S10-K.json`：该档 `core/` 逐字节未变（`core_hash` 与 S10-J 相同、
+`core_files` 仍 97、`CORE-DEP` 0/0），变化全部在 `app/`——模板字段弹窗新增「自定义字段」
+（`app/template_draft.py`、`app/template_draft_api.py`），模板任务软删除（新增
+`app/api_views/template_library.py`、`app/template_delete_api.py`，`app/main.py` 净减到 602 行），
+故 `app_hash` 前进；`core-S10-J.json` 及更早各档保留、不覆盖。
 """
 
 import importlib
@@ -28,7 +34,7 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts"))
 import gate_core_iso  # noqa: E402
 
-BASELINE = REPO / "docs" / "team" / "baseline" / "core-S10-J.json"
+BASELINE = REPO / "docs" / "team" / "baseline" / "core-S10-K.json"
 
 
 def _baseline() -> dict:

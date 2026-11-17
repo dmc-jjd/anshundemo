@@ -24,6 +24,7 @@ from .upload_names import remember as remember_upload_name
 from .template_draft_api import router as manual_definition_router
 from .template_field_api import router as template_field_api_router
 from .template_advice_api import router as template_advice_router
+from .template_delete_api import router as template_delete_router
 from .final_document_api import router as final_document_router
 from .hotspot_api import router as hotspot_router
 from .editor_api import router as editor_router
@@ -42,6 +43,7 @@ app.include_router(manual_definition_router)
 # 确认后的只读 LLM 审核（只提修改意见、不改模板），同样刻意不进 OpenAPI：
 # 见 app/template_advice.py 与 app/template_advice_api.py。
 app.include_router(template_advice_router)
+app.include_router(template_delete_router)  # 模板任务软删除（标记不删文件），同样刻意不进 OpenAPI：见 app/template_delete_api.py
 app.include_router(template_field_api_router)  # 模板候选字段的人工编辑（显示名称/字段语义/归属），同样不进 OpenAPI：见 app/template_field_api.py
 # 终稿人工审核页（A4 渲染模型 / 保存人工覆盖 / 修改日志 / 还原），同样刻意不进 OpenAPI：
 # 见 app/final_document.py 与 app/final_document_api.py。
@@ -85,15 +87,8 @@ async def upload(request:Request,file:UploadFile=File(...)):
 
 @app.get('/api/templates')
 def templates():
-    items=[{'id':'anshun-monthly-colored','name':'安顺月报 · 五色逐项占位模板','version':1,'status':'candidate_requires_review','usable_for_final':False,'reason':'8 月标色 Word 已取得，颜色疑点与占位符口径待人工确认','manifest_url':'/api/template-manifest'}]
-    for task in store.list_tasks():
-        if task.kind=='template' and task.metadata.get('confirmed_template_ref') and not task.metadata.get('simulation'):
-            try: artifact=store.get_artifact(task.metadata['confirmed_template_ref'])
-            except (KeyError,FileNotFoundError,ValueError,OSError): continue
-            if not artifact.get('writer_schema'): continue
-            count=len(artifact.get('source_reports',[]))
-            items.append({'id':task.metadata['confirmed_template_ref'],'name':str(artifact.get('name') or '').strip() or f'{count} 份报告生成的结构化模板','version':1,'status':'confirmed_by_human','usable_for_final':False,'reason':'结构与 Schema 已确认；尚缺数据绑定的字段保留待填'})
-    return items
+    from .api_views.template_library import list_templates
+    return list_templates(store)
 
 @app.get('/api/template-manifest')
 def template_manifest():
