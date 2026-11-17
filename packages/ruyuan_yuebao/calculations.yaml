@@ -50,4 +50,7 @@ b30_positive_events_table:
   metric: record_table
   sentiment: 正面
   include_day_suffix: true
-  limit: 6
+  limit: 7
+
+b45_month:
+  metric: next_month

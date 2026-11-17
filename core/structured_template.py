@@ -362,6 +362,25 @@ def render_structured_docx(template:dict,values:dict,allowed_refs:set[str],requi
                         if entry is tail_node:break
                         if active:entry.text=''
                         if entry is node:active=True
+        insert_cursors={}
+        for block in template['blocks']:
+            after=block.get('insert_after_index')
+            if after is not None and block['index'] not in original:
+                style_from=block.get('style_from_index', after)
+                if style_from not in original:
+                    raise ValueError('missing_insert_style_block:'+str(style_from))
+                style_el=original[style_from]
+                if style_el.tag!=W+'p':
+                    raise ValueError('insert_style_must_be_paragraph:'+str(style_from))
+                anchor=insert_cursors.get(after, original.get(after))
+                if anchor is None:
+                    raise ValueError('missing_insert_after_block:'+str(after))
+                new_el=copy.deepcopy(style_el)
+                set_text(new_el,'')
+                parent=anchor.getparent()
+                parent.insert(parent.index(anchor)+1,new_el)
+                original[block['index']]=new_el
+                insert_cursors[after]=new_el
         for block in template['blocks']:
             element=original[block['index']]
             if block.get('unmatched'):
@@ -397,6 +416,19 @@ def render_structured_docx(template:dict,values:dict,allowed_refs:set[str],requi
                     element.append(row)
             elif block.get('unmatched'):
                 set_text(element,'{{UNMATCHED_BLOCK_'+str(block['index'])+'}}')
+            elif block.get('insert_after_index') is not None:
+                chunks=[];missing=False
+                for part in block['parts']:
+                    if 'text' in part:chunks.append(part['text']);continue
+                    key=part['field']
+                    if key in values:chunks.append(str(values[key]['value']))
+                    elif block.get('optional'):missing=True;break
+                    else:chunks.append('{{'+key+'}}')
+                if missing:
+                    parent=element.getparent()
+                    if parent is not None:parent.remove(element)
+                else:
+                    set_text(element,''.join(chunks))
             else:
                 cursor=0;spans=[];field_map={f['id']:f for f in template['fields']}
                 for part in block['parts']:

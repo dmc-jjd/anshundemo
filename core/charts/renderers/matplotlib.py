@@ -23,6 +23,17 @@ def configure_report_factory(factory):
     global _report_factory
     _report_factory=factory
 
+def _daily_tick_label(label,chart):
+    text=str(label or '')
+    if chart.get('date_label')=='md_zh':
+        raw=text[5:] if len(text)>=10 and text[4]=='-' else text
+        parts=raw.split('-')
+        if len(parts)==2 and parts[0].isdigit() and parts[1].isdigit():
+            return f'{int(parts[0])}月{int(parts[1])}日'
+    if len(text)>=10 and text[4]=='-':
+        return text[5:]
+    return text
+
 def chart_payload(report,kind,style=None):
     from matplotlib.figure import Figure
     from matplotlib.backends.backend_agg import FigureCanvasAgg
@@ -49,6 +60,10 @@ def chart_payload(report,kind,style=None):
             raise KeyError(_artifact)
     except KeyError:raise ValueError('unknown_chart_source') from None
     if not values:raise ValueError('chart_data_missing:'+kind)
+    if chart.get('label_groups'):
+        from core.charts.label_groups import apply_label_groups
+        values=apply_label_groups(values,chart.get('label_groups'))
+        if not values:raise ValueError('chart_data_missing:'+kind)
     unit=chart['unit']
     fontpath=Path('C:/Windows/Fonts/msyh.ttc')
     font=FontProperties(fname=str(fontpath),size=12) if fontpath.exists() else FontProperties(family='DejaVu Sans',size=12)
@@ -64,15 +79,24 @@ def chart_payload(report,kind,style=None):
         else:
             fig=Figure(figsize=(10,4.8),dpi=160,layout='constrained');FigureCanvasAgg(fig);ax=fig.subplots()
             if style=='line':
-                ax.plot(range(len(labels)),counts,color='#16748c',linewidth=2)
-                step=max(1,len(labels)//8);ticks=list(range(0,len(labels),step));ax.set_xticks(ticks,[labels[i][5:] for i in ticks])
+                ax.plot(range(len(labels)),counts,color='#16748c',linewidth=2,marker='o' if chart.get('show_point_labels') else None,markersize=4)
+                tick_labels=[_daily_tick_label(label,chart) for label in labels]
+                step=max(1,len(labels)//8);ticks=list(range(0,len(labels),step))
+                if chart.get('date_label')=='md_zh':
+                    ax.set_xticks(ticks,[tick_labels[i] for i in ticks],fontproperties=font,rotation=40,ha='right')
+                else:
+                    ax.set_xticks(ticks,[tick_labels[i] for i in ticks])
+                if chart.get('show_point_labels'):
+                    for index,count in enumerate(counts):
+                        ax.annotate(str(int(count) if float(count).is_integer() else count),(index,count),textcoords='offset points',xytext=(0,6),ha='center',va='bottom',fontsize=8,fontproperties=font)
             elif style=='barh':
                 bars=ax.barh(range(len(labels)),counts,color='#16748c');ax.set_yticks(range(len(labels)),labels,fontproperties=font);ax.invert_yaxis()
                 ax.bar_label(bars,padding=3,fontsize=10);ax.margins(x=.16)
             else:
                 bars=ax.bar(range(len(labels)),counts,color='#16748c');ax.set_xticks(range(len(labels)),[x[5:] if family=='daily' else x for x in labels],fontproperties=font,rotation=40,ha='right')
                 ax.bar_label(bars,padding=3,fontsize=10);ax.margins(y=.15)
-        ax.set_title(chart_title(chart),fontproperties=font)
+        if chart.get('show_title',True):
+            ax.set_title(chart_title(chart),fontproperties=font)
         if style!='pie':
             ax.set_xlabel('数量（'+unit+'）' if style=='barh' else '日期' if family=='daily' else chart.get('axis_label') or '类别',fontproperties=font)
             if style!='barh':ax.set_ylabel('数量（'+unit+'）',fontproperties=font)

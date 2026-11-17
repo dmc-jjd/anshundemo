@@ -6,6 +6,7 @@
     "b7_netizen_opinions",
     "b12_peak_event",
     "numbered_items_1",
+    "b31_positive_event_analysis",
     "b32_overall_suggestion",
     "b33_case_title",
     "b34_case_description",
@@ -22,7 +23,8 @@
     "b46_risk_tip_1",
     "b47_risk_tip_2",
     "b48_risk_tip_3",
-    "b49_risk_tip_4"
+    "b49_risk_tip_4",
+    "b50_risk_tip_5"
   ],
   "data_contract": {
     "sheet_index": 1,
@@ -204,7 +206,45 @@
       "scope": "all_records",
       "title": "全网信源分布",
       "final_title": "全网信源分布",
-      "unit": "条"
+      "unit": "条",
+      "show_title": false,
+      "label_groups": {
+        "groups": [
+          {
+            "label": "媒体报道",
+            "platforms": [
+              "移动客户端",
+              "纸媒",
+              "电视"
+            ]
+          },
+          {
+            "label": "微信公众号",
+            "platforms": [
+              "微信公众号"
+            ]
+          },
+          {
+            "label": "网页",
+            "platforms": [
+              "网站"
+            ]
+          },
+          {
+            "label": "微博",
+            "platforms": [
+              "微博"
+            ]
+          },
+          {
+            "label": "视频",
+            "platforms": [
+              "视频"
+            ]
+          }
+        ],
+        "other_label": "其他"
+      }
     },
     {
       "id": "daily",
@@ -218,7 +258,10 @@
       "scope": "negative_warning_events",
       "title": "负面预警传播趋势",
       "final_title": "负面预警传播趋势",
-      "unit": "条"
+      "unit": "条",
+      "show_title": false,
+      "date_label": "md_zh",
+      "show_point_labels": true
     },
     {
       "id": "platform_warning",
@@ -232,7 +275,8 @@
       "scope": "negative_warning_events",
       "title": "负面预警信源分布",
       "final_title": "负面预警信源分布",
-      "unit": "条"
+      "unit": "条",
+      "show_title": false
     },
     {
       "id": "theme",
@@ -246,7 +290,8 @@
       "scope": "negative_warning_events",
       "title": "负面预警内容分类",
       "final_title": "负面预警内容分类",
-      "unit": "件"
+      "unit": "条",
+      "show_title": false
     }
   ],
   "section_two": {
@@ -255,17 +300,20 @@
       "b46_risk_tip_1": "outlook",
       "b47_risk_tip_2": "outlook",
       "b48_risk_tip_3": "outlook",
-      "b49_risk_tip_4": "outlook"
+      "b49_risk_tip_4": "outlook",
+      "b50_risk_tip_5": "outlook",
+      "b31_positive_event_analysis": "general"
     },
     "outlook_fields": [
       "b46_risk_tip_1",
       "b47_risk_tip_2",
       "b48_risk_tip_3",
-      "b49_risk_tip_4"
+      "b49_risk_tip_4",
+      "b50_risk_tip_5"
     ],
     "outlook_item_count": {
       "min": 4,
-      "max": 4
+      "max": 5
     },
     "locality_evidence": {
       "from_vocabulary": true,

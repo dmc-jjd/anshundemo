@@ -23,7 +23,7 @@ class Calculation(BaseModel):
     metric:Literal['count','scaled_count','sentiment_count','sentiment_percentage','warning_percentage','peak_date',
                    'category_names','category_statistics','leading_category','platform_names','platform_statistics',
                    'platform_count','platform_source_detail','period_start','period_end','record_table',
-                   'county_statistics','report_month','report_year','issue_number','publish_month','publish_day','publish_year','top10','constant']
+                   'county_statistics','report_month','report_year','next_month','issue_number','publish_month','publish_day','publish_year','top10','constant']
     scope:Literal['all_records','confirmed_events','warning_events','negative_warning_events']='all_records'
     sentiment:Literal['正面','中性','负面']|None=None
     limit:int=Field(default=6,ge=1,le=20)
@@ -48,6 +48,7 @@ CALCULATION_CATALOG={
  'platform_statistics':'全量记录中实际平台、条数、占比的完整条目',
  'county_statistics':'指定事件范围按冻结属地识别结果计数；跨区/不明单列，分母为该范围全部事件',
  'report_month':'任务报告统计月份', 'report_year':'任务报告统计年份',
+ 'next_month':'任务报告统计月份的下一个月，12 月之后为 1 月',
  'issue_number':'任务显式提供的期号，不从历史报告猜测',
  'publish_month':'任务显式成文日期的月份','publish_day':'任务显式成文日期的日','publish_year':'任务显式成文日期的年份',
  'top10':'冻结的负面且预警事件TOP10，事件内符合条件记录数，不是星级',
@@ -182,9 +183,12 @@ class FrozenReport:
         if m.startswith('publish_'):
             if not p.get('publication_date'):raise MissingReportInput('缺少报告成文日期，请在报告参数中填写。')
             day=date.fromisoformat(p['publication_date']);value=str(getattr(day,{'publish_year':'year','publish_month':'month','publish_day':'day'}[m]))
-        elif m in ('report_month','report_year'):
+        elif m in ('report_month','report_year','next_month'):
             if not p.get('report_month'):raise MissingReportInput('缺少报告统计月份。')
-            year,month=p['report_month'].split('-');value=str(int(month)) if m=='report_month' else year
+            year,month=p['report_month'].split('-')
+            if m=='report_year':value=year
+            elif m=='report_month':value=str(int(month))
+            else:value='1' if int(month)==12 else str(int(month)+1)
         elif m=='issue_number':
             if p.get('issue_number') is None:raise MissingReportInput('缺少报告期号，请在报告参数中填写。')
             value=str(p['issue_number'])
