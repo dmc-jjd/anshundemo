@@ -1,0 +1,48 @@
+# 数据槽计算绑定：字段 id → 基座 Calculation 目录中的通用运算。
+# 这些绑定只属于本客户包，不写进基座 KNOWN。
+
+b1_video:
+  metric: platform_count
+  platforms: [视频]
+b1_media:
+  metric: platform_count
+  platforms: [移动客户端, 纸媒, 电视]
+b1_wechat:
+  metric: platform_count
+  platforms: [微信公众号]
+b1_weibo:
+  metric: platform_count
+  platforms: [微博]
+b1_web:
+  metric: platform_count
+  platforms: [网站]
+b1_other:
+  metric: platform_count
+  exclude_platforms: [视频, 移动客户端, 纸媒, 电视, 微信公众号, 微博, 网站]
+
+b9_period_start:
+  metric: period_start
+  include_year: true
+  include_day_suffix: true
+b9_period_end:
+  metric: period_end
+  include_year: true
+  include_day_suffix: true
+
+b12_peak_date_full:
+  metric: peak_date
+  include_year: true
+  include_day_suffix: true
+
+b14_platform_list:
+  metric: platform_names
+  sentiment: 负面
+b15_platform_detail:
+  metric: platform_source_detail
+  limit: 3
+
+b30_positive_events_table:
+  metric: record_table
+  sentiment: 正面
+  include_day_suffix: true
+  limit: 6

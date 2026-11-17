@@ -15,6 +15,131 @@ STYLE_BASIS_TEMPLATE='用户确认的月报图形规则，可在模板审核时�
 STYLE_BASIS_HUMAN='人工选择'
 DEFINITION_KEYS=('id','drawing_index','title','style','style_basis','scope','unit')
 
+DEFAULT_DRAWING_IDS=('sentiment','daily','platform','theme','locality')
+FAMILY_STYLES={
+    'sentiment':('pie','bar','barh'),
+    'daily':('line','bar'),
+    'platform':('pie','bar','barh'),
+    'theme':('pie','bar','barh'),
+    'locality':('pie','bar','barh'),
+}
+
+# Existing client packages historically stored the style name (pie/line/bar/barh)
+# in `family`. New instances may set `family` to the chart kind so two platform
+# (or daily) drawings can share palette/axis rules under different ids.
+DEFAULT_BINDINGS={
+    'sentiment':{'source':'metrics.sentiment'},
+    'daily':{'source':'metrics.daily_count'},
+    'platform':{'source':'metrics.platform'},
+    'theme':{'source':'theme_clusters.groups'},
+    'locality':{'source':'locality.items'},
+}
+
+def family_of(chart):
+    kind=str(chart.get('id') or '')
+    raw=str(chart.get('family') or '')
+    if raw in FAMILY_STYLES:
+        return raw
+    if raw in STYLE_NAMES:
+        if kind in FAMILY_STYLES:
+            return kind
+        for name in FAMILY_STYLES:
+            if kind==name or kind.startswith(name+'_'):
+                return name
+        return kind or raw
+    if kind in FAMILY_STYLES:
+        return kind
+    for name in FAMILY_STYLES:
+        if kind==name or kind.startswith(name+'_'):
+            return name
+    return raw or kind
+
+
+def chart_title(chart):
+    return chart.get('final_title') or chart.get('title') or chart.get('draft_title') or ''
+
+def resolve_chart(kind,template=None,package=None):
+    """Merge package registry defaults with a confirmed-template instance."""
+    pack={item['id']:dict(item) for item in registry.charts(package)}
+    inst={}
+    for item in (template or {}).get('charts') or []:
+        if item.get('id')==kind:
+            inst=dict(item)
+            break
+    if kind not in pack and not inst:
+        raise ValueError('unknown_chart_type')
+    merged={**pack.get(kind,{}),**inst}
+    merged['id']=kind
+    if not merged.get('family'):
+        merged['family']=family_of(merged)
+    if not (merged.get('binding') or {}).get('source'):
+        family=family_of(merged)
+        for item in pack.values():
+            if family_of(item)==family and (item.get('binding') or {}).get('source'):
+                merged['binding']=item['binding']
+                break
+        else:
+            if family in DEFAULT_BINDINGS:
+                merged['binding']=dict(DEFAULT_BINDINGS[family])
+    return merged
+
+def declared_ids(template=None,package=None):
+    ids=[]
+    seen=set()
+    for item in list(registry.charts(package))+list((template or {}).get('charts') or []):
+        key=item.get('id')
+        if key and key not in seen:
+            seen.add(key)
+            ids.append(key)
+    return ids
+
+def ordered_template_charts(template):
+    """Charts from a confirmed or package template, in drawing order."""
+    declared=list((template or {}).get('charts') or [])
+    if not declared:
+        return []
+    decorated=[]
+    for index,item in enumerate(declared):
+        order=item.get('drawing_index')
+        decorated.append((int(order) if order else index+1,index,dict(item)))
+    decorated.sort()
+    result=[]
+    for order,_,item in decorated:
+        item.setdefault('drawing_index',order)
+        result.append(item)
+    return result
+
+def drawing_ids(template,data_root:Path|None=None):
+    """Map 1-based drawing_index to chart instance id.
+
+    Declared template charts win. Otherwise use the package registry
+    (same order the writer uses), then the built-in default drawing list.
+    """
+    declared=ordered_template_charts(template)
+    if declared:
+        return {int(item['drawing_index']):item['id'] for item in declared if item.get('id')}
+    root=data_root
+    if root is None:
+        try:
+            from core import paths
+            root=paths.data_root()
+        except Exception:
+            root=None
+    if template and root is not None:
+        try:
+            generated=definitions(template,root)
+        except Exception:
+            generated=[]
+        if generated:
+            return {int(item['drawing_index']):item['id'] for item in generated}
+    ids=registry.ids() or list(DEFAULT_DRAWING_IDS)
+    return {index+1:name for index,name in enumerate(ids)}
+
+def allowed_styles(chart):
+    family=family_of(chart)
+    return FAMILY_STYLES.get(family,('pie','line','bar','barh'))
+
+
 class ChartStyles(BaseModel):
     # 与 S2 的 core/tools/registry.BASE_ARGUMENTS 同口径：这 5 个 id 是基座枚举，具体实例数据在客户包
     model_config=ConfigDict(extra='forbid')
@@ -64,20 +189,39 @@ def definitions(template,data_root:Path):
             for i,item in enumerate(registry.charts()[:len(drawings)])]
 
 def styles_for(template,overrides=None,*,data_root:Path):
-    values={**{c['id']:c['style'] for c in registry.charts()},
-            **{c['id']:c['style'] for c in definitions(template,data_root)},
-            **(overrides or {})}
-    return ChartStyles.model_validate(values).model_dump()
+    declared={c['id']:c for c in registry.charts()}
+    for item in definitions(template,data_root):
+        declared[item['id']]=item
+    values={**{key:ChartStyles().model_dump()[key] for key in ChartStyles.model_fields},
+            **{key:item['style'] for key,item in declared.items()}}
+    for key,style in (overrides or {}).items():
+        if key not in declared and key not in ChartStyles.model_fields:
+            raise ValueError('unknown_chart_style:'+str(key))
+        values[key]=style
+    # Validate built-in families with the existing model (rejects e.g. daily=pie).
+    classic={key:value for key,value in values.items() if key in ChartStyles.model_fields}
+    ChartStyles.model_validate(classic)
+    for key,style in values.items():
+        if key in ChartStyles.model_fields:
+            continue
+        chart=declared.get(key) or {'id':key}
+        if style not in allowed_styles(chart):
+            raise ValueError('unsupported_chart_style:'+str(key))
+    return values
 
 def with_styles(template,styles,*,data_root:Path):
     import copy
     result=copy.deepcopy(template)
-    chosen=ChartStyles.model_validate({**styles_for(template,data_root=data_root),**styles}).model_dump()
+    chosen=styles_for(template,styles,data_root=data_root)
     result['charts']=[{**c,'style':chosen[c['id']],'style_basis':STYLE_BASIS_HUMAN} for c in definitions(template,data_root)]
     return result
 
 def source_image(template,kind,source_index=0,*,data_root:Path):
-    kinds=registry.ids()
+    kinds=[item['id'] for item in ordered_template_charts(template)]
+    if not kinds and template and template.get('layout_source'):
+        kinds=[item['id'] for item in definitions(template,data_root)]
+    if not kinds:
+        kinds=registry.ids()
     if kind not in kinds:raise ValueError('unknown_chart')
     source=template['source_reports'][source_index];path=Path(source['path'])
     if not path.exists() and (data_root/'uploads'/path.name).exists():path=data_root/'uploads'/path.name

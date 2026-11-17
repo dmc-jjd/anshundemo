@@ -142,3 +142,32 @@ def test_api_parameters_manual_fallback_and_final_chart_gate(tmp_path,monkeypatc
         state.draft_ref=s.put_artifact('r','broken_draft',draft);s.put_task(state,state.revision)
         denied=client.post('/api/tasks/r/approve',json={'draft_hash':draft['content_hash']})
         assert denied.status_code==409 and 'missing_current_chart' in denied.text
+
+
+def test_catalog_covers_period_platform_and_record_table(tmp_path):
+    s,t=fixture(tmp_path);r=FrozenReport(s,'r')
+    assert r.calculate({'metric':'peak_date'})['value']=='10月2'
+    assert r.calculate({'metric':'peak_date','include_day_suffix':True})['value']=='10月2日'
+    assert r.calculate({'metric':'peak_date','include_year':True,'include_day_suffix':True})['value']=='2026年10月2日'
+    assert r.calculate({'metric':'period_start','include_year':True,'include_day_suffix':True})['value']=='2026年10月2日'
+    assert r.calculate({'metric':'period_end','include_year':True,'include_day_suffix':True})['value']=='2026年10月2日'
+    assert r.calculate({'metric':'platform_count','platforms':['网站']})['value']=='4'
+    assert r.calculate({'metric':'platform_count','platforms':['视频']})['value']=='0'
+    assert r.calculate({'metric':'platform_count','platforms':['网站'],'sentiment':'正面'})['value']=='1'
+    assert r.calculate({'metric':'platform_count','exclude_platforms':['网站']})['value']=='0'
+    assert r.calculate({'metric':'platform_names','sentiment':'负面'})['value']=='网站'
+    assert r.calculate({'metric':'platform_source_detail'})['value']=='网站主要来源于省报'
+    table=r.calculate({'metric':'record_table','sentiment':'正面','include_day_suffix':True})['value']
+    assert table==[['1','10月2日','事件3','省报','']]
+
+def test_package_field_calculations_fill_unbound_data_fields(tmp_path):
+    from app.structured_writer import calculation_for
+    from core.field_calculations import load as load_field_calculations
+    binds=load_field_calculations('ruyuan_yuebao')
+    assert binds['b1_web']['metric']=='platform_count'
+    s,t=fixture(tmp_path);r=FrozenReport(s,'r')
+    field={'id':'b1_web','owner':'data','display_name':'网页条数','binding':None}
+    result=calculation_for(field,r,{},package='ruyuan_yuebao')
+    assert result['value']=='4'
+    full=calculation_for({'id':'b12_peak_date_full','owner':'data','display_name':'峰值日期全写','binding':None},r,{},package='ruyuan_yuebao')
+    assert full['value']=='2026年10月2日'

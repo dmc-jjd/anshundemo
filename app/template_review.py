@@ -15,14 +15,58 @@ def digest(value):
     return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 
-def make_input(documents, comparison, local):
-    # Only actual keys supported by the current metrics tool may be bound.
-    keys = ['record_count', 'warning_raw_count', 'negative_record_count',
-            'warning_record_count', 'negative_or_warning_record_count']
-    bindings = [{'tool': 'calculate_metrics', 'path': [key]} for key in keys]
-    for sentiment in ('正面', '中性', '负面'):
-        bindings.append({'tool': 'calculate_metrics', 'path': ['sentiment', sentiment]})
-    bindings.append({'tool': 'top10_events', 'path': []})
+LEGACY_BINDINGS = [
+    *[{'tool': 'calculate_metrics', 'path': [key]} for key in (
+        'record_count', 'warning_raw_count', 'negative_record_count',
+        'warning_record_count', 'negative_or_warning_record_count')],
+    *[{'tool': 'calculate_metrics', 'path': ['sentiment', sentiment]} for sentiment in ('正面', '中性', '负面')],
+    {'tool': 'top10_events', 'path': []},
+]
+
+
+def available_bindings(package=None):
+    """Template-confirm toolbox: legacy tool paths, catalog metrics, and package field bindings."""
+    from core.field_calculations import load as load_field_calculations
+    from core.frozen_report import CALCULATION_CATALOG
+    bindings = [dict(item) for item in LEGACY_BINDINGS]
+    for metric, description in CALCULATION_CATALOG.items():
+        bindings.append({'metric': metric, 'description': description})
+    for field_id, spec in load_field_calculations(package).items():
+        if isinstance(spec, dict) and spec.get('metric'):
+            bindings.append({'field_id': field_id, **spec})
+    return bindings
+
+
+def binding_payload(binding):
+    if binding is None:
+        return None
+    if hasattr(binding, 'model_dump'):
+        return binding.model_dump()
+    return dict(binding)
+
+
+def binding_allowed(binding, packet=None):
+    """Accept legacy tool/path entries and any valid catalog Calculation."""
+    from core.frozen_report import Calculation
+    data = binding_payload(binding)
+    if not data:
+        return True
+    if data.get('tool'):
+        key = {'tool': data['tool'], 'path': list(data.get('path') or [])}
+        listed = [item for item in (packet or {}).get('available_bindings') or LEGACY_BINDINGS if item.get('tool')]
+        listed = [{'tool': item['tool'], 'path': list(item.get('path') or [])} for item in listed]
+        return key in listed or key in LEGACY_BINDINGS
+    if data.get('metric'):
+        payload = {key: value for key, value in data.items() if key in Calculation.model_fields}
+        try:
+            Calculation.model_validate(payload)
+            return True
+        except (ValueError, TypeError, Exception):
+            return False
+    return False
+
+
+def make_input(documents, comparison, local, package=None):
     # The model needs the local hypothesis, not two redundant copies of generated
     # value schemas and source paragraphs already supplied in source_reports.
     def hypothesis(candidate):
@@ -39,7 +83,7 @@ def make_input(documents, comparison, local):
         policy={'version':POLICY_VERSION,**deepcopy(TEMPLATE_POLICY)},
         source_reports=[{'id': f'r{i+1}', **d} for i, d in enumerate(documents)],
         local_comparison=comparison_view, local_hypothesis=local_view,
-        available_bindings=bindings, instruction=get_prompt('template_analyst.template')+get_prompt('template_analyst.charts')).model_dump()
+        available_bindings=available_bindings(package), instruction=get_prompt('template_analyst.template')+get_prompt('template_analyst.charts')).model_dump()
 
 
 def compile_review(model_result, packet, comparison_ref, target_blocks=None):
@@ -95,7 +139,7 @@ def compile_review(model_result, packet, comparison_ref, target_blocks=None):
             if len(source) != 1:
                 raise ValueError('field_base_source_required_once')
             restored += source[0].text
-            if field.binding and (field.owner != 'data' or field.binding.model_dump() not in packet['available_bindings']):
+            if field.binding and (field.owner != 'data' or not binding_allowed(field.binding, packet)):
                 raise ValueError('unsupported_template_binding')
             if field.source_type == 'statistics' and field.owner != 'data':
                 raise ValueError(f'statistics_owned_by_data:{field.id}:source_type=statistics requires owner=data')

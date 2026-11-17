@@ -106,3 +106,16 @@ def test_empty_and_unchanged_edits_do_not_write(tmp_path,monkeypatch,replacement
     response=client.post('/api/tasks/r/writing-review/string/edit',json={'expected_hash':hash,'replacement':replacement})
     assert response.status_code==409 and response.json()['detail']==error
     assert store.get_artifact(store.get_task('r').draft_ref)['slot_values']==before
+
+
+def test_review_policy_uses_task_package_profile():
+    from app.reviewers import review_policy,review_ready
+    from app.schemas import TaskState
+    with pytest.raises(ValueError,match='unknown_writer_prompt_profile:ruyuan_yuebao'):
+        review_policy('ruyuan_yuebao')
+    digest=review_policy('ruyuan_yuebao',package='ruyuan_yuebao')
+    assert len(digest)==64
+    state=TaskState(id='r',kind='report',phase='awaiting_final_review',package='ruyuan_yuebao',
+                    metadata={'review_report':{'draft_hash':'abc','profile':'ruyuan_yuebao','policy_version':digest,
+                                              'reviewers':{'format_reviewer':{'status':'issues'},'content_reviewer':{'status':'issues'}}}})
+    assert review_ready(state,'abc') is True

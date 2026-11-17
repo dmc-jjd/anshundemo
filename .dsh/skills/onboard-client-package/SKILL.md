@@ -130,7 +130,7 @@ description: "接一个新客户时的完整操作流程：建包骨架 → 人�
 
 **问题：** 一句话说清在问什么。构建者不需要任何前置上下文就能读懂。
 
-**证据：** 从报告 / 数据里读到的**事实**，每条都要能追溯：哪份报告第几段、哪次实测输出。**必须包含「客户的做法与基座现有能力的差异」**——例如「客户报告有 3 张图（情绪、平台、区县），基座能画的是另外 5 类，其中没有『信源分布』」。**翻译成功能描述、最多 5 行**，不许出现函数名 / 字段名（见下面「『证据』是给决策用的，不是代码考古」）。
+**证据：** 从报告 / 数据里读到的**事实**，每条都要能追溯：哪份报告第几段、哪次实测输出。**必须包含「客户的做法与基座现有能力的差异」**——例如「客户报告有 3 张图（情绪、平台、区县），其中『信源分布』还要判断能不能复用已有的平台分布口径，还是要单独出图」。**翻译成功能描述、最多 5 行**，不许出现函数名 / 字段名（见下面「『证据』是给决策用的，不是代码考古」）。
 
 **有哪些选择：** 有几个写几个，**最多 3 个**。选项不要求互斥——可以同时做、可以叠加，也可以只做其中一个。每个一句话说清「做什么」。
 
@@ -321,7 +321,7 @@ tools:
 
 charts:
   pack: chart-core
-  use: [sentiment, daily, platform, theme, locality]   # 只能是基座这 5 个图 id
+  use: [sentiment, daily, platform, theme, locality]   # 必须与 template.json 的 charts[].id 同集合；不必限于这 5 个
 
 skills:
   pack: skill-core
@@ -343,7 +343,7 @@ features:
 - **必需 5 键**：`package / report_type / version / template / prompts`（`core/ports.py` 的 `REQUIRED_MANIFEST_KEYS`），且 `package` 值必须等于目录名。
 - **`agents` 的两种写法**：写列表 = 只有列出的角色参与（未列出的流程步骤整段裁掉，见 3.6.2）；**不写 = 全部角色参与**（`core/agent_steps.py` 的 `enabled_agents`）。写进列表的 id 必须存在于 `roles.yaml`。
 - **`tools`**：`allow` 是白名单，`phases.<阶段>` 与 `allow` **取并集**，`budgets` 按阶段给工具调用预算（缺省 `default: 40`）。
-- **`charts`**：`pack` 固定 `chart-core`；`use` 的值只能是基座 5 个图 id（`sentiment / daily / platform / theme / locality`），且必须与 `template.json` 的 `charts[].id` **同集合**（`tests/test_s3_chart_registry.py` 钉住）。
+- **`charts`**：`pack` 固定 `chart-core`；`use` 必须与 `template.json` 的 `charts[].id` **同集合**。id 可以是基座内建的 `sentiment / daily / platform / theme / locality`，也可以是客户包自行声明的 id。`scripts/check_package.py` 的 MANIFEST 段：模板已声明 id 时以声明为允许清单，未声明时才回退到基座 `ChartStyles` 的 5 个字段名；模板有但 `use` 未列也会报错。运行期出图读的是模板（及已确认模板）里的 `charts` 实例，不是 `ChartStyles` 的字段表。
 - **`skills`**：`pack` 固定 `skill-core`；`use` 用已注册技能（当前 `lieflat-less-ai-tone`、`source-binding`）；提示词里提到的技能必须在这里声明（`tests/test_s7_package_contract.py` 校验）。
 - **`capabilities.require`**：已注册 6 项 `records / metrics / locality / charts / events / documents`；不写 = 不剪枝，写全 = 行为与剪枝前一致。
 - **`features` 5 个键**：`locality / event_classification / dedup / first_warning / top10`，值形态是 `{enabled: true}`（注意是 `enabled`，写成 `enable` 会被专门报错 `features.X.enable 不是合法键（少一个 d，应为 enabled）`）；`event_classification` 可带 `stages` 有序降级链，每个 stage 必须有 `kind`。
@@ -373,7 +373,8 @@ features:
     "cluster_terms": {"<类目 1>": ["<数据里真实出现的说法>"]}
   },
   "charts": [
-    {"id": "sentiment", "title": "舆情调性分布", "family": "pie", "style": "pie",
+    {"id": "sentiment", "drawing_index": 1, "title": "舆情调性分布",
+     "family": "sentiment", "style": "pie",
      "binding": {"source": "metrics.sentiment"}, "unit": "条",
      "scope": "all_records", "axis_label": "调性"}
   ]
@@ -385,7 +386,7 @@ features:
 - **顶层 5 键必备**：`package / version / data_contract / vocabulary / charts`；`writer_slots` **可选**（`scripts/check_package.py` 的 `TEMPLATE_TOP_KEYS`）。
 - **`data_contract` 四键必备**：`sheet_index / required_columns / summary_columns / column_map`；`column_map` 必须含 `required_columns` 的每一列，否则报 `column_map 缺必需列映射`；`column_map` 的**键序就是 records 的字段序**（5.2 第 3 项）。`dedup` 四数不在价签上（TEMPLATE 段不校验），但运行期去重要用，骨架就按 5.2 第 8 项写全。
 - **`vocabulary.localities` / `cluster_terms` 必须非空**；`cluster_terms` 的 label 不得重复（重复键单独报 `cluster_terms label 重复`）；label 顺序 = 模型枚举序。
-- **`charts` 必须非空数组**；`charts[].id` 集合与 `manifest.charts.use` 同集合，id 只能是基座 5 个之一。
+- **`charts` 必须非空数组**；`charts[].id` 集合与 `manifest.charts.use` 同集合（TEMPLATE 段只要求数组非空，集合对齐在 MANIFEST 段检查）。id 不限于基座那 5 个。每条实例写清标题、`style`、`unit`、`scope`、`binding`，并用 `drawing_index`（从 1 起）对齐版式图位。`family` 建议写图族名（与内建 5 族之一相同，便于同一图族多实例共享样式和默认取数口）；历史包把样式名写在 `family` 里的写法运行期也能识别。`scope` 须是冻结事实已支持的口径（当前为 `all_records` / `confirmed_events` / `warning_events` / `negative_warning_events`）。
 - **`writer_slots` 骨架阶段写 `[]`**：模板确认后才拿得到 `writer_schema` 里的真实槽位，阶段 3 再补齐（见 1.5.6）。包内没有 `templates/<新包>/` 时，check_package 对 `writer_slots` 只提示「未机械核对」，不判错。
 
 #### ⑤ 建完自检
@@ -702,7 +703,7 @@ print([p['id'] for p in d['placeholders']][:10])
 - `owner=data`：统计/任务元信息，由程序或数据工具填；
 - `owner=writer`：需要按本期证据写的文字；
 - `kind`：`number`、`text`、`analysis`、`paragraph_list`、`table_rows` 等，决定这条字段走哪条提示词；
-- `binding`：取数绑定，只能来自 `available_bindings`，不明确的留 `null` 并写缺口。
+- `binding`：取数绑定，只能来自确认阶段的 `available_bindings`（兼容的 `{tool, path}`，或计算目录中的 `{metric, ...参数}`）。不明确的留 `null` 并在字段 `rule` 写缺口；不要猜造工具名或 metric。
 
 `rules` 的键（`app/review_service.py` 的 `check_rules` 归一校验）：
 
@@ -1373,7 +1374,7 @@ $py = 'D:\智能分析报告重构版V5\.conda\JJDreport\python.exe'
 | 6 | 区县清单 `localities` | 🔶 候选 / ❓ 范围 | 候选 = 2.5 数据里出现的行政区写法（噪声很大，见 5.3）；`resolve_locality` 只做词表子串匹配，要求**恰好命中 1 个**（`core/tools/locality.py`） | **辖区范围一律必须问**（见 5.3） |
 | 7 | 类目词典 `cluster_terms` | 🔶 候选 / ❓ 口径 | 候选 = 模板图注字段名 + 数据 `事件分类` 列取值分布；键序 = 枚举序（`core/tools/vocabulary.py` 的 `cluster_terms()`）；词典打分 = 词表成员在 `title + 摘要前300字` 的出现次数求和取最大（`core/classify/dictionary.py` 的 `DictionaryStage`） | **分类体系/类目口径一律必须问**（见 5.3） |
 | 8 | 去重参数（4 个） | 🔶 | `data_contract.dedup`：`threshold`、`candidate_floor_ratio` 必填无默认；`merge_rounds` 缺省 1、`merge_threshold` 缺省 0.5（`core/tools/vocabulary.py` 的 `dedup_threshold` / `dedup_candidate_floor` / `dedup_merge_rounds` / `dedup_merge_threshold`）。现成包实测均为 0.65 / 0.6 / 2 / 0.5 | 客户对「什么算同一事件」有明确口径且与 0.65 冲突 → 问 |
-| 9 | 图表清单 `charts` | 🔶 | 从模板图注推导 `id/family/style/binding/unit/scope/axis_label`；`manifest.charts.use` 必须与 `template.json` 的 `charts[].id` 同集合（`tests/test_s3_chart_registry.py` 钉住） | 模板里有图的位置但看不出画什么 → 问 |
+| 9 | 图表清单 `charts` | 🔶 | 从模板图注推导 `id/drawing_index/family/style/binding/unit/scope/axis_label`；`manifest.charts.use` 必须与 `template.json` 的 `charts[].id` 同集合。id 不限于基座 5 个；先判断能否复用已有图族与取数口，不能再考虑补取数 | 模板里有图的位置但看不出画什么，或口径能否复用已有统计判断不了 → 问 |
 | 10 | `agents:` 声明 | ❓ | 无证据可推 | **一律必须问**（见 5.3 与第七章） |
 | 11 | 提示词覆盖面 | 🔶/❓ | 先按 3.3 推导需求集：必写 30 条逐条判「改写 / 沿用基座」，4 条可省须按 3.4 前提登记。基座够用 = 「沿用基座 + 依据」，不是「不判断」 | 客户口径/口吻与基座冲突、且材料裁决不了 → 问（模板见 5.4 Q1/Q6/Q7） |
 | 12 | 报告月份/期号/成文日期来源 | 🔶 | 来自任务参数 `report_month` / `issue_number` / `publication_date`（`app/main.py` 的请求参数）；期号可从报告标题推出（`2026年第99期` → 99，`tests/test_report_parameters.py` 钉住） | 客户报告标题不含期号 → 问期号从哪来 |
@@ -1527,20 +1528,22 @@ print(c.most_common(30))
 
 **Q3 图 3「信源分布」怎么处理**
 
-> **问题：** 客户报告有信源分布图，基座没有这个图类型，怎么处理？
+> **问题：** 客户报告有信源分布图，要怎么处理？
 >
 > **证据：**
 > · 客户三份报告各有一张「信源分布」图（抖音 731 / 微信公众号 1079 / 今日头条 580…），数据取自表格「来源信息」列。
-> · 基座能画 5 类图：情绪分布、每日信息量、平台分布、主题分布、区县分布——没有「按信源」这一类。
-> · 基座的统计里也没有按来源聚合的指标；「平台」数的是媒体环节，不等于「信源」。
+> · 基座已经能画情绪分布、每日信息量、平台分布、主题分布、区县分布；客户包还可以按自己的图清单声明实例，不必先改基座的图类型表。
+> · 若「信源」与已有的「平台分布」是同一口径，只需在客户包里为这张图声明实例、对齐版式图位；若口径不同、现有统计又没有按来源聚合，才需要补取数。
 >
 > **有哪些选择：**
 > - A 本期只做现有两张图，信源分布以正文列表保留
-> - B 给基座新增「信源分布」这一类图
+> - B 口径能复用已有统计，在客户包里声明这张图
+> - C 口径确实是新的，再补取数并出图
 >
 > **不同的选择会有什么影响：**
 > - A 报告少一张图，不影响其它内容，不改代码，可随时补做
-> - B 要改绘图代码、版式得多留一个图位，改完须重跑该模板验证
+> - B 改动落在客户包的图清单和版式图位，不必改基座图类型表；改完要按该模板验证
+> - C 要补统计或绘图能力，版式也要留图位，改完须重跑该模板验证
 
 上述「证据」一条是四段式的**硬要求**：没有「客户的做法 vs 基座现有能力」这条差异，构建者就无法判断 A 究竟丢掉了什么、B 究竟改动了什么。
 
@@ -1836,13 +1839,14 @@ $env:REPORT_PACKAGE='<新包>'; & $py -c "import app"
 | 区县清单 | `template.json` | `vocabulary.localities`：键 = canonical，值 = **参与匹配的写法**（含别名） |
 | 类目词典 | `template.json` | `vocabulary.cluster_terms`：键 = 类目名（顺序 = 枚举序），值 = 词表成员 |
 | writer 槽位 | `template.json` | `writer_slots`：99 个占位符里由 writer 填的业务子集（A 包 9 个）。不写则回退到「按 `slot_type` 推出的 15 个」，比业务口径宽 |
-| 图表清单 | `template.json` + `manifest.yaml` | `charts[]`（`id/family/style/binding/unit/scope/axis_label`）+ `charts.use`（与前者同集合） |
+| 图表清单 | `template.json` + `manifest.yaml` | `charts[]`（`id/drawing_index/family/style/binding/unit/scope/axis_label`）+ `charts.use`（与前者同集合；id 不限于基座 5 个） |
 | 步骤声明 | `manifest.yaml` | `agents:` |
 | 角色定义 | `prompts/roles.yaml` | `角色 id → {responsibility, boundary, output}`（恰好三键，多一个少一个都 `prompt_role_invalid:<id>`） |
 | 提示词覆盖 | `prompts/agent/<key>.md` + `prompts/index.yaml` | 同名文件 + `agent_prompts` 里声明该 key |
 | 提示词取舍 | `packages/<新包>/接入记录.md` | 「提示词清单」段：`key | 改写/沿用基座/仅说明（占位）| 依据` |
 | 模板策略/画像 | `prompts/index.yaml` | `template_policy`、`report_prompt_profiles`、`default_prompt_profile` |
 | 工具白名单 | `manifest.yaml` | `tools.allow` / `tools.phases` / `tools.budgets`；`capabilities.require`（产物 → 反推可达工具）；`features.<能力>.enabled`（能力开关） |
+| 数据槽计算绑定 | `packages/<包>/calculations.yaml` | 字段 id → 基座 `CALCULATION_CATALOG` 中的通用运算及参数。目录里没有的算法才改基座 `Calculation`，不要把客户字段写进基座。 |
 | 缺口与问答 | `packages/<新包>/接入记录.md` | 见 5.6 |
 | 测试结论 | `packages/<新包>/对比报告-<期号>-<日期>.md` | 见 9.2 |
 
@@ -2141,43 +2145,47 @@ print(sorted(k for k, v in agent.provenance().items() if v == 'package'))
 | 报告里出现去年的数字/事件 | prompt 正文写了客户特有事实（地名、类目、数字、期号、示例原句），违反 6.3 | 把客户事实挪进 `template.json` / payload；prompt 只留通用方法论与引用方式 |
 | 承诺「legacy 槽位写作可用」后验收失败 | `writer.slot.*` 对应的 legacy 路径当前跑不通（`app/reviewers.py` 的 `begin_run` 传哨兵给 `core/storage.py` 的 `get_artifact` → `KeyError`） | 交付物与汇报里一律不承诺 legacy 路径；按 3.9 注处理 |
 | 以「这次模板关了 TOP10」为由不写 `event_judge.top10` | 模板级 `top10=false` 只决定这一次跑不跑，不决定文件要不要存在（3.2、3.6.2） | 照写，可从基座继承；不登记成可省 |
+| `charts.use 未注册: <id>`，或「模板有但 use 未列」 | `manifest.charts.use` 与 `template.json` 的 `charts[].id` 不是同一集合；或仍按「只能写基座 5 个 id」去写 `use` | 两边改成同一批 id；客户自有图 id 直接写入 `use`，不必先改 `ChartStyles` |
+| 写作阶段一读到客户自有图 id 就校验失败，界面只有笼统的「写作未完成」 | 工作台进程还是改代码之前启动的，仍按旧的样式表校验 | 重启工作台后再跑写作 |
 
 ## 十三、图表与工具：只读这几个文件（防通读全库）
 
 > 建包时最贵的一类浪费：为了回答「客户能不能多一张信源分布图」「这个工具该改哪里」，把 `app/`、`core/` 通读一遍。落点已经列全——按下面的表和清单读，**不要超过这个范围**。
 >
-> 本章给的是**路径与判据**。要不要这个问题、怎么问，见 5.4 Q3（信源分布那个范例就是按本章事实写的）。
+> 本章给的是**路径与判据**。要不要这个问题、怎么问，见 5.4 Q3（那个范例就是按本章事实写的）。
 
-### 13.1 图表：只有这 5 个文件相关
+### 13.1 图表：只读这些文件
 
-| 文件 | 行数 | 干什么的 |
-|---|---|---|
-| `core/charts/spec.py` | 109 | 定义**有哪些图类型**：`ChartStyles`（L18-25）是 5 个固定 `Literal` 字段（`sentiment/daily/platform/theme/locality`），`extra='forbid'` —— 多一个字段就报错 |
-| `core/charts/registry.py` | 69 | 读**某个客户用哪几张图**：从 `packages/<包>/template.json` 的 `charts` 段读实例，提供 `charts()` / `ids()` / `chart()` |
-| `core/charts/renderers/matplotlib.py` | 87 | 真正画图：`chart_payload(report, kind, style)`，按 `kind` 取数据、按 `style` 画（pie/line/bar/barh）；工具入口是 `plot_frozen_chart` |
-| `core/charts/renderers/pillow.py` | 74 | 另一个渲染后端：工具入口 `render_chart(args, ctx)`，自己从 metrics / 聚类 / 属地工件取数后直绘（**不是** `chart_payload` 的同构签名，别按同签名找它） |
-| `packages/<包>/template.json` 的 `charts` 段 | — | 只声明实例（`id` / `family` / `style` / `scope` / `unit` / 标题 `title`·`draft_title`·`final_title` / `binding`），**不定义类型** |
+| 文件 | 干什么的 |
+|---|---|
+| `core/charts/spec.py` | 图族、样式、实例投影与原图提取。基座内建 5 个图族（`sentiment / daily / platform / theme / locality`）的样式仍由 `ChartStyles` 校验；客户包在 `template.json` 或已确认模板里声明的其它 id，由 `styles_for` 按图族允许的样式校验，**不必**给 `ChartStyles` 加字段。 |
+| `core/charts/registry.py` | 读某个客户包 `template.json` 的 `charts` 实例，提供 `charts()` / `ids()` / `chart()` |
+| `core/charts/renderers/matplotlib.py` | 真正画图：`chart_payload` 按实例的 `family` / `scope` / `binding` 取数，按 `style` 画（pie/line/bar/barh）；工具入口是 `plot_frozen_chart` |
+| `core/charts/renderers/pillow.py` | 另一个渲染后端：工具入口 `render_chart(args, ctx)`，自己从 metrics / 聚类 / 属地工件取数后直绘（**不是** `chart_payload` 的同构签名，别按同签名找它） |
+| `packages/<包>/template.json` 的 `charts` 段 | 声明本包有哪些图（`id` / `drawing_index` / `family` / `style` / `scope` / `unit` / 标题 `title`·`draft_title`·`final_title` / `binding`）。运行期出图以这里以及已确认模板里的同结构为准。 |
 
-行数是 2026-11-17 实测，只用来判断「这条路径该不该点开」——它随代码漂移（4.1 的引用纪律同样不写行号）。**不要因为行数对不上就怀疑路径**。
+#### 13.1.1 客户要多一张图时怎么做
 
-#### 13.1.1 新增一个图类型的完整清单（缺一不可）
+先判断这张图能不能复用已有图族和取数口，再决定只改客户包还是要动基座。
 
 ```
-① core/charts/spec.py 的 ChartStyles 加字段，如 source: Literal['pie','bar','barh']
-② 版式 docx 里必须多一张图片位置
-   依据：spec.py 的 definitions() 用 registry.charts()[:len(drawings)] 按版式图片数截断；
-        source_image() 用 drawings[kinds.index(kind)] 按**序号**取图
-   → 版式里没有对应位置，新图就取不到原图 / 越界
-③ packages/<包>/template.json 的 charts 段加一条实例
-④ core/charts/renderers/ 里加该 kind 的数据取法（若它的数据源与现有几类不同）
+① 在 packages/<包>/template.json 的 charts 增加一条实例
+   （id、标题、style、unit、scope、binding；用 drawing_index 从 1 起对齐版式图位）
+② 把 manifest.yaml 的 charts.use 写成与 charts[].id 同一集合
+③ 版式 docx 里要有对应图位
+④ 取数能落到已有的 metrics.* / theme_clusters.* / locality.* 时，渲染器不用改
+⑤ 现有统计给不出这张图的数据时，才补 calculate_metrics 或渲染器取数
 ```
 
-第 ④ 步为什么带「若…不同」：两个渲染器都是先看 `binding.source` 的前缀再取数（`metrics` / `theme_clusters` / `locality`），`metrics` 是**按键透传**的。所以若新图的取数能落成 `metrics.<key>`（即在 `calculate_metrics` 里多产一个指标，`core/tools/metrics.py`），渲染器可以不动；否则第 ④ 步必做。
+说明：
 
-两条配套事实（都会让「只加了 spec.py 字段」看起来生效而实际不生效）：
-
-- 现有 5 个 id 的取数口是绑死的：`metrics.sentiment` / `metrics.daily_count` / `metrics.platform` / `theme_clusters.groups` / `locality.items`（`packages/anshun_monthly/template.json` 的 `charts[].binding.source`）；`calculate_metrics` 只产 `record_count / sentiment / platform / warning_raw_count / daily_count / peak_day`（外加可选的 `negative_count` / `confirmed_event_*` / `ratio`）。**没有现成的「按来源聚合」指标**。
-- `render_chart` 的入参 schema 里 `chart_type` 仍是 5 个 id 的字面串（`core/tools/registry.py` 的 `BASE_ARGUMENTS['render_chart']`）。新类型要同步这行描述，否则模型不知道能调它——**这只是描述串，不改不报错**，别把它当成门禁。
+- **不要为了多一个实例 id 去改 `ChartStyles`。** 那 5 个字段是基座内建图族的样式校验，不是客户图清单的封闭白名单。
+- id 与某图族同名，或使用「图族名 + 下划线 + 后缀」这种命名时，会继承该族的允许样式和默认取数口，便于同一图族出多张图（例如不同统计范围各一张）。不要把某个客户的 id 写进本手册当固定范例名。
+- `scope` 写这张图的统计范围，须是冻结事实已支持的口径（当前为 `all_records` / `confirmed_events` / `warning_events` / `negative_warning_events`）。
+- 模板已声明 `charts` 时，以声明为准，不再按基座默认图清单或版式图片数去截断实例。
+- 基座内建 5 个图族的默认取数口是 `metrics.sentiment` / `metrics.daily_count` / `metrics.platform` / `theme_clusters.groups` / `locality.items`。`calculate_metrics` 现产 `record_count / sentiment / platform / warning_raw_count / daily_count / peak_day`（外加可选的 `negative_count` / `confirmed_event_*` / `ratio`）。没有的口径要补指标，不是补 `ChartStyles` 字段。
+- `render_chart` 的入参 schema 里 `chart_type` 仍可能写着内建 id 的描述串（`core/tools/registry.py` 的 `BASE_ARGUMENTS['render_chart']`）。这只是给模型看的说明，**不改不报错**，别把它当成门禁；真正出图走的是 `plot_frozen_chart`。
+- 改了出图相关的基座代码后，必须重启工作台进程再验证；旧进程不会加载新逻辑。
 
 #### 13.1.2 必须写明的限制：`.doc` 不能从原文取图
 
@@ -2190,9 +2198,12 @@ print(sorted(k for k, v in agent.provenance().items() if v == 'package'))
 → True
 ```
 
-同一个 `.doc` 判断还管版式面：`layout_available()` 对 `.doc` 返回 `False`，`_drawings()` 直接返回 `[]`（不抛 `BadZipFile`）。后果是：**`.doc` 客户的图形数恒为 0**，`definitions()` 靠版式推不出任何图，图只能由 `template.json` 的 `charts` 实例定义——所以第 ③ 步对 `.doc` 客户不是「顺手加」，而是唯一来源。
+同一个 `.doc` 判断还管版式面：`layout_available()` 对 `.doc` 返回 `False`，`_drawings()` 直接返回 `[]`（不抛 `BadZipFile`）。后果是：**`.doc` 客户的图形数恒为 0**，靠版式推不出任何图，图只能由 `template.json` 的 `charts` 实例定义——所以 13.1.1 第 ① 步对 `.doc` 客户不是「顺手加」，而是唯一来源。
 
-### 13.2 工具：只有这 3 个位置相关
+### 13.2 运行时工具：只有这 3 个位置相关
+
+运行时工具是写作/数据处理时模型可以调用的函数（导入、统计、解析等），
+和下面 13.2.2 的「数据槽计算绑定」不是同一件事。
 
 | 文件 | 干什么的 |
 |---|---|
@@ -2213,6 +2224,25 @@ print(sorted(k for k, v in agent.provenance().items() if v == 'package'))
 
 ② 之后还有一步不能漏：在 `manifest.yaml` 的 `tools.allow` 里放行（或经 `capabilities.require` 让它可达）。白名单同时是门禁——没进白名单的工具，模型调了只会拿到 `tool_not_allowed`。
 
+#### 13.2.2 数据槽计算绑定：客户包绑定，基座只加通用能力
+
+模板确认和写作取数用的是另一套「计算工具箱」，不是 13.2 里那些运行时函数。
+模型在确认阶段只能从 `available_bindings` 里挑选绑定；写作阶段的规划器对照同一套计算目录补尚未绑定的数据槽。
+
+| 文件 | 干什么的 |
+|---|---|
+| `core/frozen_report.py` 的 `Calculation` / `CALCULATION_CATALOG` | 基座通用运算目录（条数、比例、峰值日期、平台集合计数、来源明细、周期起止、记录表等）。新算法若可复用，写在这里，名称和参数必须泛化，禁止出现某个客户或某张报告的字段 id、地名、渠道专名。 |
+| `core/field_calculations.py` | 读取包内绑定：`calculations.yaml`，以及 `template.json` / manifest 里的 `field_calculations`。后写覆盖先写。 |
+| `packages/<包>/calculations.yaml` | 本客户字段 id → 目录中已有运算，含该客户的平台集合、调性、范围、日期格式等参数。只属于客户包，不要写进基座 `KNOWN` 或目录。 |
+| `app/template_review.py` 的 `available_bindings()` | 确认阶段模型可选项：旧的 `{tool, path}`、计算目录全部 metric，以及当前包 `calculations.yaml` 里按字段给出的建议绑定。 |
+
+**建包时的分工（必须按这个顺序做）：**
+
+1. 先读占位符的 `semantic` / `rule` / `format`，对着 `CALCULATION_CATALOG` 找已有口径。能绑上就只改客户包的 `calculations.yaml`（或确认模板里的 `binding`），**不要新加工具**。
+2. 只有目录确实表达不了这种算法时，才向基座增加一条通用 `Calculation` metric，并同时把它纳入确认阶段工具箱（目录一经扩展，`available_bindings()` 会自动带上）。先说明缺口、复用方案和对已有报告的影响，确认后再改基座。
+3. 不要在客户包里实现一套不能复用的私有运算，也不要把客户字段 id、渠道专名或报告标题写进基座目录。
+4. 已确认模板上 `binding: null` 的数据槽，包内 `calculations.yaml` 在写作时仍可补上，不必为了补绑定而重做模板确认；新确认的模板则应直接绑到目录或包建议口径。
+
 ### 13.3 硬规矩
 
 **查图表/工具能力时只读上面列出的文件。**
@@ -2220,7 +2250,7 @@ print(sorted(k for k, v in agent.provenance().items() if v == 'package'))
 通读整个仓库既慢又容易把别的模块的假设套到当前客户身上。
 
 **本章的表、路径与命令是 agent 自己的查法，不是交给用户的作业。**
-「客户能不能多一张图」「这个工具该改哪里」「某个字段在哪定义」都由 agent 按上面的清单读完后，用结论 + 证据回答；不要把路径、命令或文件列表转给用户让他自己看（1.2 的自查表）。只有需要客户判断的取舍（例如「要不要为这张图改代码」）才进问题。
+「客户能不能多一张图」「这个工具该改哪里」「某个字段在哪定义」都由 agent 按上面的清单读完后，用结论 + 证据回答；不要把路径、命令或文件列表转给用户让他自己看（1.2 的自查表）。先判断客户包声明是否够用；只有取数口不存在、需要改基座时，才把「要不要为这张图改代码」问给客户。
 
 ## 附录 A：证据索引（排障时按图索骥）
 

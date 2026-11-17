@@ -10,7 +10,18 @@ PRICE_VERSION='deepseek-official-2026-11-08'
 PRICES={
  'deepseek-flash':{'off_peak':{'cached_input':.02,'input':1,'output':4},'peak':{'cached_input':.04,'input':2,'output':8}},
  'deepseek-v4-pro':{'off_peak':{'cached_input':.15,'input':4.5,'output':13.5},'peak':{'cached_input':.30,'input':9,'output':27}}}
-ALIASES={'deepseek-v4-flash':'deepseek-flash','deepseek-v4-flash-vision-exp':'deepseek-flash','DeepSeek-V4.1-Flash-1017':'deepseek-flash','DeepSeek-V4-Pro-0813':'deepseek-v4-pro'}
+ALIASES={'deepseek-v4-flash':'deepseek-flash','deepseek-v4-flash-vision-exp':'deepseek-flash','DeepSeek-V4.1-Flash-1017':'deepseek-flash','deepseek-v4-1-flash-261017':'deepseek-flash','DeepSeek-V4-Pro-0813':'deepseek-v4-pro'}
+
+def canonical_model(name):
+    """Map a provider model id to a tariff key. Unknown names stay unchanged."""
+    if not name:return name
+    if name in ALIASES:return ALIASES[name]
+    lowered={key.lower():value for key,value in ALIASES.items()}
+    if str(name).lower() in lowered:return lowered[str(name).lower()]
+    key=str(name).lower().replace('_','-')
+    if 'deepseek' in key and 'flash' in key:return 'deepseek-flash'
+    if 'deepseek' in key and 'pro' in key:return 'deepseek-v4-pro'
+    return name
 
 def _pricing_path(store):
     """价目表是**部署级**数据（M2：`data/shared/token-pricing.json`，不按包分）。
@@ -90,12 +101,10 @@ def band(at,mode):
     return ['off_peak','peak'] if t.weekday()<5 and (9<=hour<12 or 14<=hour<18) else ['off_peak']
 
 def estimate(item,config):
-    usage=item.get('usage');model=ALIASES.get(item.get('model'),item.get('model'))
+    usage=item.get('usage');model=canonical_model(item.get('model'))
     if model=='unknown_historical':model=config.get('historical_model')
     rates=config['models'].get(model)
-    official=item.get('provider_host')=='api.deepseek.com'
-    custom=config.get('version')=='user-configured'
-    if not usage or not rates or (not official and not custom):return None
+    if not usage or not rates:return None
     costs=[]
     for tariff in band(item.get('requested_at') or item['at'],config['mode']):
         rate=rates[tariff]

@@ -13,6 +13,7 @@ from .schemas import DraftVersion,ToolCall
 from .frozen_report import FrozenReport,Calculation,CALCULATION_CATALOG,query_materials
 from .writer_tools import native_tools,CHARTS,HANDLERS
 from .section_two import AnalysisPlan,OutlookItem,OutlookItemValidationError,role as second_role,policy_for,render_analysis,render_outlook_item,POLICY_VERSION
+from core import section_policy as _section_policy
 from .source_binding import SourceCatalog,NumberedAnswers,NumberedOutlookRepairAnswers,SourceBindingError,invoke_numbered_writer
 
 class StructuredAnswers(BaseModel):
@@ -43,8 +44,8 @@ for name,sentiment in [('positive','正面'),('neutral','中性'),('negative','�
 def compact_field(field):
     return {k:field[k] for k in ('id','display_name','owner','kind','semantic','rule','format','binding') if k in field}
 
-def field_prompt_fingerprint(field,profile):
-    kind=second_role(field)
+def field_prompt_fingerprint(field,profile,package=None):
+    kind=second_role(field,package=package)
     prefixes=('writer.analysis',) if kind=='analysis' else ('writer.outlook','historical_researcher.') if kind=='outlook' else ('writer.general',)
     base=prompt_fingerprint(profile,prefixes)
     if kind:
@@ -52,8 +53,15 @@ def field_prompt_fingerprint(field,profile):
         base=hashlib.sha256((base+skill_context()['sha256']+get_prompt('style.application',profile)).encode()).hexdigest()
     return base
 
-def calculation_for(field,report,plans):
-    spec=plans.get(field['id']) or KNOWN.get(field['id'])
+def field_calculation_spec(field,package=None):
+    binding=field.get('binding') or {}
+    if isinstance(binding,dict) and binding.get('metric'):
+        return binding
+    from core.field_calculations import load as load_field_calculations
+    return load_field_calculations(package).get(field['id'])
+
+def calculation_for(field,report,plans,package=None):
+    spec=plans.get(field['id']) or KNOWN.get(field['id']) or field_calculation_spec(field,package)
     if spec:
         spec=Calculation.model_validate(spec).model_dump()
         if field['id'] in ('b17_warning_count','b17_warning_ratio'):spec['scope']=report.warning_scope()
@@ -66,12 +74,12 @@ def calculation_for(field,report,plans):
         return {'value':str(value),'source_refs':[report.fact_ref],'calculation':binding}
     raise ValueError('缺少计算定义；请指定该字段的统计口径。')
 
-def data_values(template,report,plans=None):
+def data_values(template,report,plans=None,package=None):
     values={};issues=[]
     for field in template['fields']:
         if field['owner']!='data':continue
         try:
-            result=calculation_for(field,report,plans or {})
+            result=calculation_for(field,report,plans or {},package=package)
             value={k:result[k] for k in ('value','source_refs')}
             validate_values(template,{field['id']:value},{report.fact_ref,report.state.metadata.get('report_parameters_ref')})
             values[field['id']]=value
@@ -103,7 +111,18 @@ async def write_structured_preview(deps,task_id,agents=None):
     # 声明式调度：历史调研由角色声明决定，不再靠"模板里有没有 outlook 字段"猜。
     agents=frozenset(resolve_enabled_agents() if agents is None else agents)
     template=load_confirmed_template(store,state.template_ref);fields={f['id']:f for f in template['fields']}
-    profile=prompt_profile(state.metadata,template)
+    package=None
+    if hasattr(store,'package_of'):
+        try:package=store.package_of(task_id)
+        except Exception:package=None
+    if not package and callable(getattr(store,'package',None)):
+        try:package=store.package()
+        except Exception:package=None
+    if isinstance(package,str):package=package.strip() or None
+    section_cfg=_section_policy.load(package)
+    outlook_group=list(_section_policy.outlook_field_ids(section_cfg))
+    outlook_low,outlook_high=_section_policy.outlook_item_bounds(section_cfg)
+    profile=prompt_profile(state.metadata,template,package=package)
     fingerprint=prompt_fingerprint(profile)
     previous_fingerprint=state.metadata.get('writer_prompt_fingerprint')
     same_prompts=previous_fingerprint==fingerprint if previous_fingerprint else profile==DEFAULT_PROMPT_PROFILE
@@ -117,7 +136,7 @@ async def write_structured_preview(deps,task_id,agents=None):
     same=old.get('fact_ref')==state.fact_ref and old.get('template_ref')==state.template_ref
     previous=old.get('slot_values',{}) if same else {}
     if same:allowed.update(old.get('evidence_refs',[]))
-    unknown=[f for f in fields.values() if f['owner']=='data' and f['id'] not in KNOWN and not f.get('binding')]
+    unknown=[f for f in fields.values() if f['owner']=='data' and f['id'] not in KNOWN and not field_calculation_spec(f,package)]
     if unknown:
         errors=[]
         for attempt in range(3):
@@ -132,7 +151,7 @@ async def write_structured_preview(deps,task_id,agents=None):
                 for field in unknown:
                     if field['id'] not in plans:errors.append(field['id']+':缺少计算定义');continue
                     try:
-                        result=calculation_for(field,report,plans)
+                        result=calculation_for(field,report,plans,package=package)
                         validate_values(template,{field['id']:{k:result[k] for k in ('value','source_refs')}},{report.fact_ref,state.metadata.get('report_parameters_ref')})
                     except Exception as exc:
                         from .frozen_report import MissingReportInput
@@ -141,17 +160,19 @@ async def write_structured_preview(deps,task_id,agents=None):
                 break
             except Exception as exc:errors=[str(exc)[:1000]]
         if errors and not plans:plan_issues=[{'field_id':f['id'],'message':errors[-1]} for f in unknown]
-    store.put_artifact(task_id,'writer_calculation_plan',{'template_ref':state.template_ref,'fact_ref':state.fact_ref,'calculations':{**KNOWN,**plans}})
-    values,issues=data_values(template,report,plans);issues+=plan_issues
+    from core.field_calculations import load as load_field_calculations
+    package_plans=load_field_calculations(package)
+    store.put_artifact(task_id,'writer_calculation_plan',{'template_ref':state.template_ref,'fact_ref':state.fact_ref,'calculations':{**KNOWN,**package_plans,**plans}})
+    values,issues=data_values(template,report,plans,package=package);issues+=plan_issues
     for key,answer in previous.items():
-        current_policy=key in fields and (not second_role(fields[key]) or state.metadata.get('writer_policy_versions',{}).get(key)==policy_for(fields[key]))
+        current_policy=key in fields and (not second_role(fields[key],package=package) or state.metadata.get('writer_policy_versions',{}).get(key)==policy_for(fields[key],package=package))
         old_fp=state.metadata.get('writer_field_prompt_fingerprints',{}).get(key)
-        field_same=old_fp==field_prompt_fingerprint(fields[key],profile) if old_fp and key in fields else same_prompts or state.metadata.get('writer_prompt_profile_applied',DEFAULT_PROMPT_PROFILE)==profile
+        field_same=old_fp==field_prompt_fingerprint(fields[key],profile,package=package) if old_fp and key in fields else same_prompts or state.metadata.get('writer_prompt_profile_applied',DEFAULT_PROMPT_PROFILE)==profile
         if key in fields and fields[key]['owner']=='writer' and ('human_edit' in answer.get('source_refs',[]) or (field_same and state.metadata.get('structured_writer_version')==2 and current_policy)):
             try:validate_values(template,{key:answer},allowed,writer_only=True);values[key]=answer
             except Exception:pass
     history=None;history_ref=None;generated_policy={};pending_sources={}
-    if 'historical_researcher' in agents and any(second_role(f)=='outlook' and f['id'] not in values for f in fields.values()):
+    if 'historical_researcher' in agents and any(second_role(f,package=package)=='outlook' and f['id'] not in values for f in fields.values()):
         from .historical_research import prepare_history
         history_ref,history=await prepare_history(report,ctx,profile=profile);allowed.add(history_ref)
         allowed.update(c['page_ref'] for t in history['topics'] for c in t['evidence'])
@@ -175,15 +196,28 @@ async def write_structured_preview(deps,task_id,agents=None):
     path=Path(template['layout_source'])
     if not path.exists() and (DATA/'uploads'/path.name).exists():path=DATA/'uploads'/path.name
     with zipfile.ZipFile(path) as z:expected=len(ET.fromstring(z.read('word/document.xml')).xpath('//*[local-name()="drawing"]'))
-    for kind in CHARTS[:expected]:
-        from .chart_spec import styles_for
+    from .chart_spec import styles_for,definitions as _chart_definitions
+    planned=_chart_definitions(template)
+    planned=sorted(planned,key=lambda item:int(item.get('drawing_index') or 10**6))
+    planned=[item for item in planned if int(item.get('drawing_index') or 0)<=expected] or planned[:expected]
+    for item in planned:
+        kind=item['id']
         style=styles_for(template,state.metadata.get('chart_styles'))[kind]
         result=await writer_tool('plot_frozen_chart',{'chart_type':kind,'style':style})
         if result.get('error'):issues.append({'chart':kind,'message':str(result)})
+    outlook_group_started=False
     for block in template['blocks']:
         ids=list(dict.fromkeys(p['field'] for p in block['parts'] if p.get('field') in fields and fields[p['field']]['owner']=='writer' and p['field'] not in values))
+        if outlook_group:
+            grouped=[key for key in outlook_group if key in fields and fields[key]['owner']=='writer' and key not in values]
+            if any(key in outlook_group for key in ids):
+                if outlook_group_started:
+                    ids=[key for key in ids if key not in outlook_group]
+                else:
+                    ids=list(dict.fromkeys([*grouped,*ids]))
+                    outlook_group_started=True
         if not ids:continue
-        section_role=next((second_role(fields[key]) for key in ids if second_role(fields[key])),None)
+        section_role=next((second_role(fields[key],package=package) for key in ids if second_role(fields[key],package=package)),None)
         if section_role=='outlook' and (not history or history['status']!='ready'):
             issues.extend({'field_id':key,'semantic':fields[key].get('display_name',key),'error':'historical_evidence_insufficient','message':'未来风险的候选比较或依据核对未完成；允许历史、季节和地方活动组合选题。'+('；'.join(history.get('errors',[]))[:900] if history else '')} for key in ids)
             continue
@@ -225,7 +259,7 @@ async def write_structured_preview(deps,task_id,agents=None):
             payload['instruction']=get_prompt('writer.analysis',profile) if section_role=='analysis' else get_prompt('writer.outlook',profile)
             if section_role=='analysis':payload['instruction']+=get_prompt('writer.analysis_output',profile)
             if section_role=='analysis':payload['allowed_source_refs']=sorted(current_evidence_refs)
-            payload['policy_version']=policy_for(fields[ids[0]])
+            payload['policy_version']=policy_for(fields[ids[0]],package=package)
             if section_role=='outlook' and history:
                 payload['historical_research']={'window':history['window'],'topics':[{k:t.get(k) for k in ('category','basis_type','basis_label','frequency_supported','recurrence_supported','knowledge_basis','knowledge_ref','applies_to_months','evidence')} for t in history['topics']]}
                 payload['report_context']={'report_month':report.parameters()['report_month'],'forecast_window':history['window']}
@@ -283,7 +317,7 @@ async def write_structured_preview(deps,task_id,agents=None):
                             topic=next((t for t in history['topics'] if t['category']==item.category),None)
                             if topic:item.basis_type=topic.get('basis_type','historical')
                             try:
-                                text,item_refs=render_outlook_item(item,history['topics'],history['window'])
+                                text,item_refs=render_outlook_item(item,history['topics'],history['window'],package=package,policy=section_cfg)
                                 outlook_locked[item.category]={'item_index':index,'position':outlook_positions.get(item.category,index),
                                     'category':item.category,'item':item.model_dump(),'text':text,'refs':item_refs}
                                 outlook_invalid[:]=[entry for entry in outlook_invalid if entry['category']!=item.category]
@@ -292,7 +326,7 @@ async def write_structured_preview(deps,task_id,agents=None):
                                 invalid=invalid_outlook(raw_item,index,exc.code,str(exc),exc.allowed_refs)
                         invalid_items.append(invalid);outlook_invalid.append(invalid)
                     valid_items=sorted(outlook_locked.values(),key=lambda entry:entry['position'])
-                    if 4<=len(valid_items)<=5:
+                    if outlook_low<=len(valid_items)<=outlook_high:
                         max_items=fields[ids[0]].get('value_schema',{}).get('maxItems')
                         if max_items and len(valid_items)>max_items:
                             dropped_outlook_items=[{'category':e['category'],'text':e['text'],'position':e['position']} for e in valid_items[max_items:]]
@@ -300,7 +334,12 @@ async def write_structured_preview(deps,task_id,agents=None):
                         final_outlook_items=[OutlookItem.model_validate(entry['item']) for entry in valid_items]
                         rendered=[entry['text'] for entry in valid_items]
                         refs=sorted({ref for entry in valid_items for ref in entry['refs']})
-                        answer.values={ids[0]:{'value':rendered,'source_refs':refs}};outlook_repair=None
+                        split_ids=[key for key in ids if key in outlook_group] if outlook_group else []
+                        if split_ids and len(split_ids)==len(rendered):
+                            answer.values={key:{'value':text,'source_refs':refs} for key,text in zip(split_ids,rendered)}
+                        else:
+                            answer.values={ids[0]:{'value':rendered,'source_refs':refs}}
+                        outlook_repair=None
                     else:
                         repair_items=[]
                         for entry in outlook_invalid:
@@ -309,7 +348,7 @@ async def write_structured_preview(deps,task_id,agents=None):
                             repair_items.append({**entry,'message':message,'allowed_numbers':numbers})
                         outlook_repair={'invalid_items':repair_items}
                         errors=[entry['category']+'：'+entry['message']+'；允许资料编号：'+(','.join(map(str,entry['allowed_numbers'])) or '无') for entry in repair_items]
-                        if not errors:errors=['前瞻合格类别不足4类；请仅补充或替换尚未合格的类别。']
+                        if not errors:errors=[f'前瞻合格类别不足{outlook_low}类；请仅补充或替换尚未合格的类别。']
                 if set(answer.values)-set(ids):raise ValueError('unknown_or_protected_template_field')
                 for key,value in answer.values.items():
                     try:
@@ -317,9 +356,9 @@ async def write_structured_preview(deps,task_id,agents=None):
                         if key=='b40_analysis_paragraph' and not 300<=len(value['value'])<=500:raise ValueError(f'当前{len(value["value"])}字；必须300至500字。重写为约380字，仅列3项关键数字、2个风险和3项简短建议。不要罗列所有统计。')
                         values[key]=value
                         if section_role:
-                            generated_policy[key]=policy_for(fields[key])
+                            generated_policy[key]=policy_for(fields[key],package=package)
                             plan=answer.analysis_plan.model_dump() if section_role=='analysis' else [item.model_dump() for item in final_outlook_items]
-                            allowed.add(store.put_artifact(task_id,'second_section_plan',{'field_id':key,'policy_version':policy_for(fields[key]),'plan':plan,'fact_ref':report.fact_ref,'historical_research_ref':history_ref,'dropped_items':dropped_outlook_items}))
+                            allowed.add(store.put_artifact(task_id,'second_section_plan',{'field_id':key,'policy_version':policy_for(fields[key],package=package),'plan':plan,'fact_ref':report.fact_ref,'historical_research_ref':history_ref,'dropped_items':dropped_outlook_items}))
                     except Exception as exc:errors.append(key+': '+str(exc)[:500])
                 if section_role!='outlook':errors += [key+':未返回该字段，请补充只读查询并填写' for key in remaining if key not in values and key not in answer.values]
             except SourceBindingError as exc:
@@ -365,7 +404,9 @@ async def write_structured_preview(deps,task_id,agents=None):
                     from jsonschema import Draft202012Validator
                     if not Draft202012Validator(fields[key]['value_schema']).is_valid(preview):preview=None
                     if section_role=='analysis' and (not isinstance(preview,str) or len(preview)<300):preview=None
-                    if section_role=='outlook' and (not isinstance(preview,list) or not 4<=len(preview)<=5 or any(not isinstance(text,str) or not 180<=len(text)<=600 for text in preview)):preview=None
+                    if section_role=='outlook' and outlook_group and key in outlook_group:
+                        if not isinstance(preview,str) or not 180<=len(preview)<=600:preview=None
+                    elif section_role=='outlook' and (not isinstance(preview,list) or not outlook_low<=len(preview)<=outlook_high or any(not isinstance(text,str) or not 180<=len(text)<=600 for text in preview)):preview=None
                 if preview:
                     pending_sources[key]=store.put_artifact(task_id,'writer_pending_sources',{'field_id':key,'value':preview,'reason':'正文已生成，引用未能在限定轮次内绑定；待最终人工核对。','fact_ref':report.fact_ref,'template_ref':state.template_ref,'status':'pending_sources'})
                 issues.append({'field_id':key,'semantic':fields[key].get('display_name',key),'message':'正文已生成，引用待核对；候选正文已保留，可在终稿人审确认。' if preview else '；'.join(errors)[:1800],'error':'writer_source_pending' if preview else 'writer_unfilled'})
@@ -373,6 +414,6 @@ async def write_structured_preview(deps,task_id,agents=None):
     state.metadata.setdefault('writer_policy_versions',{}).update(generated_policy)
     state.metadata['writer_prompt_profile_applied']=profile
     state.metadata['writer_prompt_fingerprint']=fingerprint
-    state.metadata['writer_field_prompt_fingerprints']={key:field_prompt_fingerprint(fields[key],profile) for key in values if fields[key]['owner']=='writer'}
+    state.metadata['writer_field_prompt_fingerprints']={key:field_prompt_fingerprint(fields[key],profile,package=package) for key in values if fields[key]['owner']=='writer'}
     state.metadata['writer_pending_sources']=pending_sources
     return save_draft(store,state,template,values,allowed,charts,issues)

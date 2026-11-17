@@ -15,17 +15,23 @@ class Calculation(BaseModel):
             if value.get('metric') in ('warning_percentage','category_names','category_statistics','leading_category','county_statistics'):
                 value.setdefault('scope','confirmed_events')
                 if value['scope']=='all_records':raise ValueError('该运算按已确认去重事件统计，请选择事件范围。')
-            if value.get('metric') in ('sentiment_count','sentiment_percentage','scaled_count','peak_date','platform_names','platform_statistics') and value.get('scope','all_records')!='all_records':
+            if value.get('metric') in ('sentiment_count','sentiment_percentage','scaled_count','peak_date') and value.get('scope','all_records')!='all_records':
                 raise ValueError('该运算按全量原始记录统计，不能使用事件分母。')
+            if value.get('metric')=='platform_count' and not value.get('platforms') and not value.get('exclude_platforms'):
+                raise ValueError('platform_count 需要 platforms 或 exclude_platforms。')
         return value
     metric:Literal['count','scaled_count','sentiment_count','sentiment_percentage','warning_percentage','peak_date',
                    'category_names','category_statistics','leading_category','platform_names','platform_statistics',
+                   'platform_count','platform_source_detail','period_start','period_end','record_table',
                    'county_statistics','report_month','report_year','issue_number','publish_month','publish_day','publish_year','top10','constant']
     scope:Literal['all_records','confirmed_events','warning_events','negative_warning_events']='all_records'
     sentiment:Literal['正面','中性','负面']|None=None
     limit:int=Field(default=6,ge=1,le=20)
     precision:int=Field(default=2,ge=0,le=4)
     include_day_suffix:bool=False
+    include_year:bool=False
+    platforms:list[str]=Field(default_factory=list)
+    exclude_platforms:list[str]=Field(default_factory=list)
     value:str|None=None
 
 CALCULATION_CATALOG={
@@ -44,7 +50,13 @@ CALCULATION_CATALOG={
  'report_month':'任务报告统计月份', 'report_year':'任务报告统计年份',
  'issue_number':'任务显式提供的期号，不从历史报告猜测',
  'publish_month':'任务显式成文日期的月份','publish_day':'任务显式成文日期的日','publish_year':'任务显式成文日期的年份',
- 'top10':'冻结的负面且预警事件TOP10，事件内符合条件记录数，不是星级','constant':'固定值，用于表/图编号等结构性常量'}
+ 'top10':'冻结的负面且预警事件TOP10，事件内符合条件记录数，不是星级',
+ 'platform_count':'按记录统计指定平台（或排除名单之外的平台）的条数，可叠加调性和范围',
+ 'platform_source_detail':'按平台列出主要来源名称，分号分隔；可叠加调性和范围',
+ 'period_start':'统计周期起始日期；默认来自日统计，否则用报告月份的第一天',
+ 'period_end':'统计周期结束日期；默认来自日统计，否则用报告月份的最后一天',
+ 'record_table':'按调性筛选记录，输出序号、日期、标题、来源、热度的二维表；热度仅在记录本身有值时填写',
+ 'constant':'固定值，用于表/图编号等结构性常量'}
 
 class MissingReportInput(ValueError):pass
 
@@ -92,9 +104,76 @@ class FrozenReport:
             labels={name for rid in g['member_ids'] for name in self.localities.get(rid,[])}
             counts[next(iter(labels)) if len(labels)==1 else '跨区涉及' if labels else '属地不明']+=1
         return dict(sorted(counts.items(),key=lambda x:(-x[1],x[0])))
+    def records_for(self,scope='all_records'):
+        """Records included in a chart or count for the given statistical scope."""
+        if scope=='all_records':return list(self.records)
+        member_ids=[rid for g in self.events(scope) for rid in g['member_ids']]
+        rows=[self.by_id[rid] for rid in member_ids if rid in self.by_id]
+        if scope=='negative_warning_events':
+            return [r for r in rows if self.warned(r) and r.get('sentiment')=='负面']
+        if scope=='warning_events':
+            return [r for r in rows if self.warned(r)]
+        return rows
+
+    def metric_counts(self,key,scope='all_records'):
+        """Sentiment / platform / daily_count series, honoring chart scope."""
+        if scope=='all_records':
+            return dict(self.metrics.get(key) or {})
+        import re as _re
+        from datetime import datetime as _dt,timedelta as _td
+        rows=self.records_for(scope)
+        if key=='platform':
+            return dict(Counter(r.get('platform') or '未知' for r in rows))
+        if key=='sentiment':
+            return dict(Counter(r.get('sentiment') or '未知' for r in rows))
+        if key=='daily_count':
+            day=Counter()
+            for r in rows:
+                value=str(r.get('published',''))
+                try:
+                    if _re.fullmatch(r'\d+(?:\.\d+)?',value):
+                        item=(_dt(1899,12,30)+_td(days=float(value))).date().isoformat()
+                    else:
+                        item=value[:10]
+                    if item:day[item]+=1
+                except (ValueError,OverflowError):
+                    pass
+            return dict(sorted(day.items()))
+        raise ValueError('unknown_metric_series:'+str(key))
+
     def parameters(self):
         params=self.state.metadata.get('report_parameters',{})
         return {'report_month':self.facts.get('report_month') or self.state.metadata.get('report_month'),**params}
+    def _scoped_records(self,spec):
+        rows=self.records_for(spec.scope)
+        if spec.sentiment:
+            rows=[row for row in rows if row.get('sentiment')==spec.sentiment]
+        return rows
+    def _format_day(self,day,spec):
+        text=f'{day.month}月{day.day}'
+        if spec.include_year:text=f'{day.year}年'+text
+        if spec.include_day_suffix:text+='日'
+        return text
+    def _period_bounds(self):
+        days=sorted({str(key)[:10] for key in (self.metrics.get('daily_count') or {}) if str(key)[:10]})
+        valid=[]
+        for item in days:
+            try:valid.append(date.fromisoformat(item))
+            except ValueError:pass
+        if valid:return valid[0],valid[-1]
+        month=self.parameters().get('report_month')
+        if not month:raise MissingReportInput('缺少统计周期日期。')
+        import calendar
+        year,mon=map(int,str(month).split('-')[:2])
+        return date(year,mon,1),date(year,mon,calendar.monthrange(year,mon)[1])
+    def _parse_published(self,value):
+        raw=str(value or '').strip()
+        if not raw:return None
+        try:
+            if raw[:10].count('-')==2:return date.fromisoformat(raw[:10])
+        except ValueError:
+            return None
+        return None
     def calculate(self,spec):
         spec=Calculation.model_validate(spec);m=spec.metric;p=self.parameters();total=int(self.metrics.get('record_count',0))
         pct=lambda value,denom:format(value/denom*100,f'.{spec.precision}f')+'%' if denom else '0.'+'0'*spec.precision+'%'
@@ -115,11 +194,55 @@ class FrozenReport:
         elif m=='warning_percentage':value=pct(len(self.events(spec.scope)),total)
         elif m=='peak_date':
             if not self.metrics.get('peak_day'):raise MissingReportInput('冻结统计缺少峰值日期。')
-            day=date.fromisoformat(self.metrics['peak_day']);value=f'{day.month}月{day.day}'+('日' if spec.include_day_suffix else '')
+            value=self._format_day(date.fromisoformat(self.metrics['peak_day']),spec)
+        elif m in ('period_start','period_end'):
+            start,end=self._period_bounds();value=self._format_day(start if m=='period_start' else end,spec)
         elif m in ('platform_names','platform_statistics'):
-            counts=sorted(((name,n) for name,n in self.metrics.get('platform',{}).items() if n),key=lambda x:(-x[1],x[0]))
+            if spec.sentiment or spec.scope!='all_records':
+                tallies=Counter((row.get('platform') or '未知') for row in self._scoped_records(spec))
+                denom=sum(tallies.values())
+                counts=sorted(((name,n) for name,n in tallies.items() if n),key=lambda x:(-x[1],x[0]))
+            else:
+                denom=total
+                counts=sorted(((name,n) for name,n in self.metrics.get('platform',{}).items() if n),key=lambda x:(-x[1],x[0]))
             # All actual platforms remain consistent across the names and entries.
-            value='、'.join(name for name,n in counts) if m=='platform_names' else '；'.join(f'{name}{n}条，占{pct(n,total)}' for name,n in counts)
+            value='、'.join(name for name,n in counts) if m=='platform_names' else '；'.join(f'{name}{n}条，占{pct(n,denom)}' for name,n in counts)
+        elif m=='platform_count':
+            excluded=set(spec.exclude_platforms);wanted=set(spec.platforms)
+            def _platform(row):return row.get('platform') or '未知'
+            rows=self._scoped_records(spec)
+            if wanted:rows=[row for row in rows if _platform(row) in wanted]
+            elif excluded:rows=[row for row in rows if _platform(row) not in excluded]
+            else:raise ValueError('platforms_required')
+            value=str(len(rows))
+        elif m=='platform_source_detail':
+            from collections import defaultdict
+            grouped=defaultdict(Counter)
+            for row in self._scoped_records(spec):
+                source=str(row.get('source') or '').strip()
+                if source:grouped[row.get('platform') or '未知'][source]+=1
+            order=sorted(grouped,key=lambda name:(-sum(grouped[name].values()),name))
+            if spec.platforms:order=[name for name in order if name in set(spec.platforms)]
+            if spec.exclude_platforms:order=[name for name in order if name not in set(spec.exclude_platforms)]
+            parts=[f"{name}主要来源于{'、'.join(source for source,_ in grouped[name].most_common(spec.limit))}" for name in order if grouped[name]]
+            if not parts:raise MissingReportInput('缺少可用于平台来源说明的记录。')
+            value='；'.join(parts)
+        elif m=='record_table':
+            level_rank={'中央':0,'央级':0,'全国':1,'省级':2,'市级':3,'区县级':4}
+            unique=[];seen=set()
+            for row in self._scoped_records(spec):
+                title=str(row.get('title') or '').strip()
+                if not title or title in seen:continue
+                seen.add(title);unique.append(row)
+            unique.sort(key=lambda row:(level_rank.get(str(row.get('media_level') or ''),9),0 if self._parse_published(row.get('published')) else 1,
+                                        -(self._parse_published(row.get('published')) or date.min).toordinal(),str(row.get('id') or '')))
+            selected=unique[:spec.limit]
+            if not selected:raise MissingReportInput('缺少符合条件的记录表数据。')
+            value=[]
+            for index,row in enumerate(selected,1):
+                day=self._parse_published(row.get('published'))
+                heat=row.get('heat') or row.get('hot') or row.get('热度') or ''
+                value.append([str(index),self._format_day(day,spec) if day else '',str(row.get('title') or ''),str(row.get('source') or ''),str(heat)])
         elif m in ('category_names','category_statistics','leading_category'):
             counts=self.categories_for(spec.scope);denom=sum(counts.values())
             if not counts:raise MissingReportInput('缺少已确认的类别统计。')

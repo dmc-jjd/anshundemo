@@ -217,10 +217,11 @@ def render_structured_docx(template:dict,values:dict,allowed_refs:set[str],requi
         rel_path='word/_rels/document.xml.rels'
         rels=ET.fromstring(zin.read(rel_path)) if rel_path in zin.namelist() else ET.Element('{http://schemas.openxmlformats.org/package/2006/relationships}Relationships')
         content_types=ET.fromstring(zin.read('[Content_Types].xml')) if '[Content_Types].xml' in zin.namelist() else None
-        chart_names=['sentiment','daily','platform','theme','locality']
+        from core.charts.spec import drawing_ids as _drawing_ids,DEFAULT_DRAWING_IDS
+        chart_names=_drawing_ids(template)
         # Replace each old drawing's relationship, preserving its Word geometry.
         for i,drawing in enumerate(list(root.iter(W+'drawing')),1):
-            name=chart_names[i-1] if i<=len(chart_names) else str(i)
+            name=chart_names.get(i) or (DEFAULT_DRAWING_IDS[i-1] if i<=len(DEFAULT_DRAWING_IDS) else str(i))
             if name in charts:
                 import base64
                 png=base64.b64decode(charts[name]['png_base64'],validate=True)
@@ -315,10 +316,26 @@ def render_structured_docx(template:dict,values:dict,allowed_refs:set[str],requi
                     value=str(values[key]['value']) if key in values else '{{'+key+'}}'
                     spans.append((cursor,cursor+length,value));cursor+=length
                 replace_spans(element,spans)
+        unit_by_id={}
+        for item in (template.get('charts') or []):
+            if item.get('id') and item.get('unit'):
+                unit_by_id[item['id']]=item['unit']
         for paragraph in root.iter(W+'p'):
-            text=''.join(n.text or '' for n in paragraph.iter(W+'t'))
-            if (text.startswith('图4') and 'theme' in charts) or (text.startswith('图5') and 'locality' in charts):
-                set_text(paragraph,re.sub(r'(单位[：:]\s*)条',r'\1件',text))
+            caption=''.join(n.text or '' for n in paragraph.iter(W+'t'))
+            matched=re.match(r'图(\d+)',caption)
+            if not matched:continue
+            index=int(matched.group(1))
+            name=chart_names.get(index) or (DEFAULT_DRAWING_IDS[index-1] if index<=len(DEFAULT_DRAWING_IDS) else None)
+            if not name or name not in charts:continue
+            unit=unit_by_id.get(name)
+            if unit is None:
+                try:
+                    from core.charts import registry as _chart_registry
+                    unit=_chart_registry.chart(name).get('unit')
+                except Exception:
+                    unit='件' if name in ('theme','locality') else None
+            if unit=='件':
+                set_text(paragraph,re.sub(r'(单位[：:]\s*)条',r'\1件',caption))
         out=io.BytesIO()
         if chart_files and content_types is not None and not any(e.get('Extension')=='png' for e in content_types):
             ET.SubElement(content_types,'{http://schemas.openxmlformats.org/package/2006/content-types}Default',Extension='png',ContentType='image/png')

@@ -1,5 +1,6 @@
 """Hash-bound model reviews and bounded writer repairs over immutable facts."""
 import copy,json,re,uuid,hashlib
+from contextlib import nullcontext
 from .agent import get_prompt,prompt_profile
 from .state import WritingReviewReply,WritingRevisionReply,StyleJudgment
 from .model_client import invoke_agent
@@ -35,17 +36,33 @@ def supersede(store,state,role=None):
 def active_issues(state):
     return [i for i in state.review_items if i.get('kind')=='writing_review' and i.get('status')=='open']
 
+def _task_package(state):
+    name=getattr(state,'package',None)
+    if isinstance(name,str):name=name.strip()
+    return name or None
+
+def _review_profile(state):
+    report=state.metadata.get('review_report',{})
+    package=_task_package(state)
+    if report.get('profile'):return report['profile'],package
+    return prompt_profile(state.metadata,None,package=package),package
+
 def review_ready(state,draft_hash):
     report=state.metadata.get('review_report',{})
-    return report.get('draft_hash')==draft_hash and report.get('policy_version')==review_policy(report.get('profile','anshun_monthly')) and all(report.get('reviewers',{}).get(role,{}).get('status') in ('passed','issues','human_confirmed') for role in ROLES) and not any(i.get('blocking') for i in active_issues(state))
+    profile,package=_review_profile(state)
+    return report.get('draft_hash')==draft_hash and report.get('policy_version')==review_policy(profile,package) and all(report.get('reviewers',{}).get(role,{}).get('status') in ('passed','issues','human_confirmed') for role in ROLES) and not any(i.get('blocking') for i in active_issues(state))
 
-def review_policy(profile):
-    return hashlib.sha256(('writing-review-stage-retries-v5'+get_prompt('format_reviewer.review',profile)+get_prompt('content_reviewer.review',profile)+skill_context()['sha256']).encode()).hexdigest()
+def review_policy(profile,package=None):
+    from core.packages.context import package_context
+    ctx=package_context(package) if package else nullcontext()
+    with ctx:
+        return hashlib.sha256(('writing-review-stage-retries-v5'+get_prompt('format_reviewer.review',profile)+get_prompt('content_reviewer.review',profile)+skill_context()['sha256']).encode()).hexdigest()
 
 def format_passed(state,draft_hash):
     report=state.metadata.get('review_report',{})
     result=report.get('reviewers',{}).get('format_reviewer',{})
-    return report.get('draft_hash')==draft_hash and report.get('policy_version')==review_policy(report.get('profile','anshun_monthly')) and result.get('status') in ('passed','issues','human_confirmed') and not any(i.get('blocking') for i in active_issues(state) if i.get('reviewer')=='format_reviewer')
+    profile,package=_review_profile(state)
+    return report.get('draft_hash')==draft_hash and report.get('policy_version')==review_policy(profile,package) and result.get('status') in ('passed','issues','human_confirmed') and not any(i.get('blocking') for i in active_issues(state) if i.get('reviewer')=='format_reviewer')
 
 def format_route(store,task_id):
     state=store.get_task(task_id)
@@ -71,7 +88,7 @@ def format_route(store,task_id):
 def begin_run(store,task_id,review_only=False):
     state=store.get_task(task_id)
     state.metadata['writing_review_required']=True
-    profile=prompt_profile(state.metadata,store.get_artifact(state.template_ref))
+    profile=prompt_profile(state.metadata,store.get_artifact(state.template_ref), package=_task_package(state))
     prior=state.metadata.get('writing_review_run',{})
     same=review_only and state.draft_ref and state.metadata.get('review_report',{}).get('draft_hash')==store.get_artifact(state.draft_ref)['content_hash'] and state.metadata.get('review_report',{}).get('policy_version')==review_policy(profile)
     if not same:
@@ -111,7 +128,7 @@ def payload_for(store,state,role):
     if state.metadata.get('historical_research_ref'):
         full=store.get_artifact(state.metadata['historical_research_ref']);history={'window':full['window'],'topics':full['topics']}
     style=store.get_artifact(state.metadata['style_detection_ref']) if state.metadata.get('style_detection_ref') else {}
-    profile=prompt_profile(state.metadata,template)
+    profile=prompt_profile(state.metadata,template, package=_task_package(state))
     if history and 'monthly_recommendations' in machine:
         machine['monthly_recommendations']['template_rule']=machine['monthly_recommendations'].get('rule')
         machine['monthly_recommendations']['rule']=get_prompt('writer.outlook_field',profile)
@@ -218,7 +235,7 @@ async def run_reviewer(deps,task_id,role,phase=None):
     ref=store.put_artifact(task_id,'writing_review_result',{'reviewer':role,'draft_hash':draft['content_hash'],'round':round_no,**result,'project_findings':style.get('project_findings',[]) if role=='content_reviewer' else []})
     report['reviewers'][role]={**{k:result[k] for k in ('status','summary','model_called')},'draft_hash':draft['content_hash'],'result_ref':ref}
     profile=latest.metadata['writing_review_run']['profile']
-    report.update(round=round_no,style_detection_ref=latest.metadata.get('style_detection_ref'),profile=profile,policy_version=review_policy(profile))
+    report.update(round=round_no,style_detection_ref=latest.metadata.get('style_detection_ref'),profile=profile,policy_version=review_policy(profile, _task_package(state)))
     latest.metadata['review_report']=report;latest.review_counts['format' if role=='format_reviewer' else 'content']+=1
     store.put_task(latest,latest.revision)
     store.append_event(task_id,{'type':'writing_review','reviewer':role,'status':result['status'],'round':round_no,'ref':ref,'draft_hash':draft['content_hash'],'issue_count':len(findings),'model_called':result['model_called']})
@@ -264,7 +281,7 @@ async def revise_draft(deps,task_id):
     store=deps.store;state=store.get_task(task_id);draft,template,definitions,fields,machine=document(store,state)
     stage=state.metadata['writing_review_run'].get('repair_stage','content_reviewer')
     issues=repairable(store,state,stage);allowed_fields={i['details']['field_id'] for i in issues}
-    profile=prompt_profile(state.metadata,template)
+    profile=prompt_profile(state.metadata,template, package=_task_package(state))
     payload={'instruction':get_prompt('writer.revise',profile),'editable_fields':[machine[k] for k in sorted(allowed_fields)],
         'issues':[{'id':i['id'],**i['details']} for i in issues],'readonly_data':[v for v in fields.values() if v['owner']=='data'],
         'frozen_context':FrozenReport(store,task_id).summary(),'correction_errors':[state.metadata['writing_review_run']['repair_error']] if state.metadata['writing_review_run'].get('repair_error') else [],

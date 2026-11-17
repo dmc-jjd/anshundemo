@@ -55,7 +55,10 @@ async def invoke_agent(role_id:str,payload:dict,response_model:type[BaseModel],c
             raw=await context.model_adapter(role_id,request_payload)
             if not isinstance(raw,dict) or not raw.get('tool_calls'):break
             if not tools or tool_executor is None or turn==6:raise ValueError('tool_round_limit_or_not_allowed')
-            if len(raw['tool_calls'])>4:raise ValueError('too_many_tools_per_round')
+            if len(raw['tool_calls'])>4:
+                results=[{'error':'too_many_tools_per_round','message':'本轮最多使用 4 个工具，请拆成多轮继续。'} for _ in raw['tool_calls']]
+                request_payload={**payload,'available_tools':tools,'tool_results':request_payload.get('tool_results',[])+results}
+                continue
             results=[]
             for call in raw['tool_calls'][:4]:
                 fn=call.get('function',call);args=fn.get('arguments',{})
@@ -113,7 +116,11 @@ async def invoke_agent(role_id:str,payload:dict,response_model:type[BaseModel],c
             message=(raw.get('choices') or [{}])[0].get('message') or {}
             if not message.get('tool_calls'):break
             if not tools or tool_executor is None or turn==6:raise ValueError('tool_round_limit_or_not_allowed')
-            if len(message['tool_calls'])>4:raise ValueError('too_many_tools_per_round')
+            if len(message['tool_calls'])>4:
+                messages.append({'role':'assistant',**{k:v for k,v in message.items() if k in ('content','tool_calls')}})
+                for call in message['tool_calls']:
+                    messages.append({'role':'tool','tool_call_id':call['id'],'content':json.dumps({'error':'too_many_tools_per_round','message':'本轮最多使用 4 个工具，请拆成多轮继续。'},ensure_ascii=False)})
+                continue
             messages.append({'role':'assistant',**{k:v for k,v in message.items() if k in ('content','tool_calls')}})
             for call in message['tool_calls']:
                 fn=call['function'];result=await tool_executor(fn['name'],json.loads(fn['arguments']))

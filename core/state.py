@@ -1,6 +1,7 @@
 """Contracts for template stages. Runtime snapshots are artifacts, not Python files."""
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, RootModel
+from .frozen_report import Calculation
 
 
 class RawTemplateResult(RootModel[dict]):
@@ -72,7 +73,7 @@ class TemplateField(Contract):
     format: str = Field(min_length=1)
     missing_policy: Literal['block', 'omit_with_review']
     reason: str = Field(min_length=1)
-    binding: DataBinding | None = None
+    binding: DataBinding | Calculation | None = None
     sources: list[FieldSource] = Field(min_length=1)
 
 

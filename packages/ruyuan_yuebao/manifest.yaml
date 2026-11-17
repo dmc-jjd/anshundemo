@@ -1,0 +1,74 @@
+package: ruyuan_yuebao
+report_type: 舆情月报
+version: 1.0.0
+template: template.json
+prompts: prompts/
+
+agents:
+  - template_analyst
+  - data_processor
+  - event_judge
+  - event_classifier
+  - event_summarizer
+  - writer
+  - historical_researcher
+  - format_reviewer
+  - content_reviewer
+tools:
+  allow:
+    - import_records
+    - filter_records
+    - resolve_locality
+    - propose_keyword_event_candidates
+    - propose_vector_event_neighbors
+    - group_events
+    - calculate_metrics
+    - classify_records
+    - cluster_event_themes
+    - discover_topics
+    - select_materials
+    - read_evidence
+    - render_chart
+    - build_table
+    - parse_report_document
+    - compare_report_structures
+  phases:
+    writing:
+      - frozen_statistics
+      - query_frozen_materials
+      - plot_frozen_chart
+      - search_historical_web
+      - fetch_historical_page
+  budgets:
+    default: 40
+    writing: 80
+charts:
+  pack: chart-core
+  use: [platform, daily, platform_warning, theme]
+skills:
+  pack: skill-core
+  use: [lieflat-less-ai-tone, source-binding]
+
+capabilities:
+  require: [records, metrics, locality, charts, events, documents]
+
+features:
+  locality:
+    enabled: false
+  event_classification:
+    enabled: true
+    stages:
+      - kind: bge
+        enabled: false
+        confidence_threshold: 0.75
+      - kind: dictionary
+        enabled: true
+        confidence_threshold: 0.0
+      - kind: llm
+        enabled: false
+  dedup:
+    enabled: true
+  first_warning:
+    enabled: true
+  top10:
+    enabled: true

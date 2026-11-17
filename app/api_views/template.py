@@ -180,8 +180,11 @@ def _active_omissions(features):
 
 
 def _field_matches(field, rule):
-    tool = (field.get('binding') or {}).get('tool')
+    binding = field.get('binding') or {}
+    tool = binding.get('tool')
     if tool and tool in rule['tools']:
+        return True
+    if binding.get('metric')=='top10' and 'top10_events' in rule.get('tools', ()):
         return True
     text = ' '.join(str(field.get(key) or '') for key in ('display_name', 'semantic')).lower()
     return any(marker.lower() in text for marker in rule['markers'])

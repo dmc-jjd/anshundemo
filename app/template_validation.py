@@ -3,7 +3,7 @@ import json
 import re
 from pydantic import ValidationError
 from .state import TemplateReviewResult
-from .template_review import compile_review
+from .template_review import compile_review,binding_allowed,binding_payload
 
 
 def collect_errors(raw,packet,comparison_ref,targets=None):
@@ -34,9 +34,9 @@ def collect_errors(raw,packet,comparison_ref,targets=None):
         if f.source_type in ('materials','analysis') and f.owner!='writer':
             add('narrative_owned_by_writer',label+'是材料文字或分析段，应由Writer根据本期证据填写。',f.id,
                 expected='writer',actual=f.owner,sources=sources);bad_fields.add(f.id)
-        if f.binding and (f.owner!='data' or f.binding.model_dump() not in packet['available_bindings']):
+        if f.binding and (f.owner!='data' or not binding_allowed(f.binding,packet)):
             add('unsupported_template_binding',label+'的数据绑定不在可用目录中；不明确的绑定应留空。',f.id,
-                actual=f.binding.model_dump(),sources=sources);bad_fields.add(f.id)
+                actual=binding_payload(f.binding),sources=sources);bad_fields.add(f.id)
         if f.kind=='table_rows' and f.owner!='data':
             add('table_owned_by_data',label+'是数据表格，应由数据工具负责。',f.id,expected='data',actual=f.owner);bad_fields.add(f.id)
         if f.kind=='list' and re.search(r'固定参照|固定类别|始终包含|必须保留.*类别',f.rule):

@@ -17,7 +17,8 @@
     _ROLE_FIELDS            core/prompts/registry.py   ast 读模块级赋值
     CAPABILITY_TOOLS 键集   core/tools/registry.py     ast 读模块级赋值（键）
     FEATURE_TOOLS 键集      core/tools/registry.py     ast 读模块级赋值（键）
-    图表可用名              core/charts/spec.py        ast 读 ChartStyles 的字段名
+    图表可用名              本包 template.json 的 charts[].id（包内声明的实例 id）；
+                            模板尚未声明时，回落到 core/charts/spec.py 里 ChartStyles 的字段名
     features 允许键          core/tools/registry.py + core/classify/assemble.py
                             扫描 `<receiver>.get("字面量")`（receiver = config / raw）：
                             「哪个键真被读」只有调用点知道，所以只能从调用点取。
@@ -428,6 +429,39 @@ def check_files(c: PackageCheck) -> Section:
     return _ok('FILES', display=f'{present}/{len(files)} ok')
 
 
+
+def _template_chart_ids(c: PackageCheck) -> tuple[str, ...]:
+    """包内 template.json 声明的图表实例 id，保序去重。
+
+    读不到或没有合法 id 时返回空（TEMPLATE 段会另行报错），不在这里猜内容。
+    """
+    if not c.template_path.is_file():
+        return ()
+    try:
+        data, _ = load_json_strict(c.template_path)
+    except JsonError:
+        return ()
+    charts = data.get('charts') if isinstance(data, dict) else None
+    if not isinstance(charts, list):
+        return ()
+    ids: list[str] = []
+    seen: set[str] = set()
+    for item in charts:
+        if not isinstance(item, dict):
+            continue
+        cid = item.get('id')
+        if isinstance(cid, str) and cid and cid not in seen:
+            seen.add(cid)
+            ids.append(cid)
+    return tuple(ids)
+
+
+def _chart_use_allowed(c: PackageCheck) -> tuple[str, ...]:
+    """charts.use 的允许清单：有包内声明则用声明，否则用基座 ChartStyles 字段名。"""
+    declared = _template_chart_ids(c)
+    return declared if declared else tuple(c.consts['charts'])
+
+
 def check_manifest(c: PackageCheck) -> Section:
     errs: list[str] = []
     if c.manifest_error is not None:
@@ -515,10 +549,17 @@ def check_manifest(c: PackageCheck) -> Section:
             if use is not None and not isinstance(use, list):
                 errs.append('charts.use 必须是数组')
             elif use:
+                allowed = _chart_use_allowed(c)
                 for item in use:
-                    if item not in c.consts['charts']:
+                    if item not in allowed:
                         errs.append(f'charts.use 未注册: {item}'
-                                    f'（已注册: {",".join(c.consts["charts"])}）')
+                                    f'（已注册: {",".join(allowed)}）')
+                declared = _template_chart_ids(c)
+                if declared:
+                    missing = [cid for cid in declared if cid not in use]
+                    if missing:
+                        errs.append('charts.use 与 template.json 的 charts 不一致，'
+                                    f'模板有但 use 未列: {",".join(missing)}')
 
     agents = data.get('agents')
     if agents is not None and not isinstance(agents, list):

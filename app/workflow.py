@@ -578,7 +578,9 @@ async def run_template(deps:Dependencies,task_id:str):
         state.metadata['comparison_ref']=comparison_res.data_ref
         local=build_structured_template(documents,comparison_res.data_ref)
         state.metadata['local_template_ref']=store.put_artifact(task_id,'local_template_candidate',local)
-        packet=make_input(documents,store.get_artifact(comparison_res.data_ref),local)
+        package=getattr(state,'package',None)
+        if isinstance(package,str):package=package.strip() or None
+        packet=make_input(documents,store.get_artifact(comparison_res.data_ref),local,package=package)
         input_hash=digest(packet)
         state.metadata['template_input_ref']=store.put_artifact(task_id,'template_model_input',packet)
         save('template_local_ready')

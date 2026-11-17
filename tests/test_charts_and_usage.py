@@ -151,3 +151,45 @@ def test_actual_historical_emf_is_previewable_as_png():
     data,mime=source_image(template,'sentiment')
     assert mime=='image/png' and data.startswith(b'\x89PNG')
     with Image.open(io.BytesIO(data)) as image:assert image.width>0 and image.height>0
+
+
+def test_estimate_prices_aliased_gateway_models(tmp_path):
+    from core.usage import estimate,canonical_model
+    store,_=fixture(tmp_path);config=configuration(store)
+    assert canonical_model('deepseek-v4-1-flash-261017')=='deepseek-flash'
+    assert canonical_model('DeepSeek-V4.1-Flash-1017')=='deepseek-flash'
+    usage={'input_tokens':100,'output_tokens':10,'cache_hit_tokens':0,'cache_miss_tokens':100,'cache_split_known':True}
+    item={'usage':usage,'model':'deepseek-v4-1-flash-261017','provider_host':'ark.cn-beijing.volces.com','requested_at':'2026-11-17T10:00:00+00:00'}
+    cost=estimate(item,config)
+    assert cost and cost['min']>0 and cost['max']>=cost['min']
+    official=dict(item);official['model']='deepseek-flash';official['provider_host']='api.deepseek.com'
+    assert estimate(official,config)==cost
+    assert estimate({**item,'model':'totally-unknown-model'},config) is None
+
+
+def test_too_many_tools_are_returned_and_the_round_retries(tmp_path,monkeypatch):
+    import core.model_client as m
+    from pydantic import BaseModel
+    store,_=fixture(tmp_path);requests=[]
+    class Reply:
+        def __init__(self,obj):self.obj=obj
+        def __enter__(self):return io.StringIO(json.dumps(self.obj))
+        def __exit__(self,*args):pass
+    def request(req,timeout):
+        requests.append(json.loads(req.data))
+        if len(requests)==1:
+            calls=[{'id':f'c{i}','function':{'name':'frozen_statistics','arguments':'{"metric":"count"}'}} for i in range(5)]
+            message={'role':'assistant','tool_calls':calls}
+        else:
+            message={'role':'assistant','content':'{"ok":true}'}
+        return Reply({'model':'deepseek-flash','choices':[{'message':message}],'usage':{'prompt_tokens':10,'completion_tokens':2}})
+    monkeypatch.setattr(m,'MODEL_URL','https://api.deepseek.com');monkeypatch.setattr(m,'MODEL_NAME','deepseek-flash');monkeypatch.setattr(m,'MODEL_KEY','secret')
+    monkeypatch.setattr(m.urllib.request,'urlopen',request)
+    class Answers(BaseModel):
+        ok:bool
+    async def tool(name,args):
+        raise AssertionError('over-limit tools must not be executed')
+    value=asyncio.run(m.invoke_agent('writer',{},Answers,RunContext(store,'r'),tools=[{'type':'function'}],tool_executor=tool))
+    assert value.ok is True and len(requests)==2
+    retry_tools=[msg for msg in requests[1]['messages'] if msg.get('role')=='tool']
+    assert len(retry_tools)==5 and all(json.loads(msg['content'])['error']=='too_many_tools_per_round' for msg in retry_tools)

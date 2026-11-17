@@ -1,0 +1,275 @@
+{
+  "package": "ruyuan_yuebao",
+  "version": "1.0.0",
+  "writer_slots": [
+    "b5_media_report_summary",
+    "b7_netizen_opinions",
+    "b12_peak_event",
+    "numbered_items_1",
+    "b32_overall_suggestion",
+    "b33_case_title",
+    "b34_case_description",
+    "b35_case_analysis",
+    "b36_case_title",
+    "b37_case_description",
+    "b38_case_analysis",
+    "b39_case_title",
+    "b40_case_description",
+    "b41_case_analysis",
+    "b42_case_title",
+    "b43_case_description",
+    "b44_case_analysis",
+    "b46_risk_tip_1",
+    "b47_risk_tip_2",
+    "b48_risk_tip_3",
+    "b49_risk_tip_4"
+  ],
+  "data_contract": {
+    "sheet_index": 1,
+    "required_columns": [
+      "标题",
+      "舆情调性"
+    ],
+    "summary_columns": [
+      "摘要",
+      "原文内容"
+    ],
+    "column_map": {
+      "标题": "title",
+      "发布时间": "published",
+      "来源信息": "source",
+      "作者": "author",
+      "作者Id": "source_id",
+      "事件分类": "category",
+      "网址": "url",
+      "媒体环节": "platform",
+      "媒体属性": "media_attribute",
+      "媒体级别": "media_level",
+      "舆情调性": "sentiment",
+      "是否预警": "warning"
+    },
+    "dedup": {
+      "threshold": 0.65,
+      "candidate_floor_ratio": 0.6,
+      "merge_rounds": 2,
+      "merge_threshold": 0.5
+    }
+  },
+  "vocabulary": {
+    "localities": {
+      "乳源瑶族自治县": [
+        "乳源瑶族自治县",
+        "广东省乳源瑶族自治县",
+        "广东省韶关市乳源瑶族自治县",
+        "韶关市乳源瑶族自治县",
+        "韶关乳源瑶族自治县",
+        "乳源县",
+        "乳源"
+      ]
+    },
+    "cluster_terms": {
+      "环境保护": [
+        "环境保护",
+        "非法捕鱼",
+        "非法开采",
+        "电鱼",
+        "野泳",
+        "伐木",
+        "垃圾处理",
+        "垃圾",
+        "破坏林地",
+        "生态保护",
+        "放生"
+      ],
+      "社会治安": [
+        "社会治安",
+        "治安案件",
+        "民事纠纷",
+        "被盗",
+        "盗窃",
+        "小偷",
+        "诈骗",
+        "走失",
+        "疯狗",
+        "溺水"
+      ],
+      "交通管理": [
+        "交通管理",
+        "交通设施",
+        "交通违章",
+        "网约车",
+        "交通拥堵",
+        "堵车",
+        "滴滴",
+        "头盔",
+        "超车",
+        "危险驾驶"
+      ],
+      "市场监管": [
+        "市场监管",
+        "投诉企业",
+        "服务态度",
+        "食品安全",
+        "投诉商家",
+        "质量监管",
+        "强制消费",
+        "三无"
+      ],
+      "安全生产": [
+        "安全生产",
+        "企业安全事故",
+        "安全隐患",
+        "消防安全",
+        "安全生产事故",
+        "落水",
+        "起火",
+        "消防通道"
+      ],
+      "文化旅游": [
+        "文化旅游",
+        "酒店管理",
+        "景区设施",
+        "景区收费",
+        "景区管理",
+        "景区争议",
+        "门票",
+        "游客",
+        "景区"
+      ],
+      "教育管理": [
+        "教育管理",
+        "校园暴力",
+        "学校收费",
+        "校内管理",
+        "如厕",
+        "校服",
+        "剪发",
+        "送餐"
+      ],
+      "社会民生": [
+        "社会民生",
+        "停电",
+        "小区",
+        "物业",
+        "民政优抚",
+        "用水",
+        "道路建设",
+        "就业安置",
+        "待岗"
+      ],
+      "自然灾害": [
+        "自然灾害",
+        "洪水",
+        "高温",
+        "中暑",
+        "暴雨"
+      ],
+      "城市管理": [
+        "城市管理",
+        "市政设施",
+        "占道经营",
+        "占道",
+        "工程质量",
+        "安全隐患举报",
+        "烂尾",
+        "路灯"
+      ],
+      "执政形象": [
+        "执政形象",
+        "违规违纪",
+        "违纪违法",
+        "投诉公职人员",
+        "投诉政府部门",
+        "派出所"
+      ],
+      "医疗卫生": [
+        "医疗卫生",
+        "医疗收费",
+        "医疗治疗",
+        "误诊",
+        "医院"
+      ]
+    }
+  },
+  "charts": [
+    {
+      "id": "platform",
+      "family": "platform",
+      "drawing_index": 1,
+      "axis_label": "传播平台",
+      "binding": {
+        "source": "metrics.platform"
+      },
+      "style": "pie",
+      "scope": "all_records",
+      "title": "全网信源分布",
+      "final_title": "全网信源分布",
+      "unit": "条"
+    },
+    {
+      "id": "daily",
+      "family": "daily",
+      "drawing_index": 2,
+      "axis_label": "日期",
+      "binding": {
+        "source": "metrics.daily_count"
+      },
+      "style": "line",
+      "scope": "negative_warning_events",
+      "title": "负面预警传播趋势",
+      "final_title": "负面预警传播趋势",
+      "unit": "条"
+    },
+    {
+      "id": "platform_warning",
+      "family": "platform",
+      "drawing_index": 3,
+      "axis_label": "传播平台",
+      "binding": {
+        "source": "metrics.platform"
+      },
+      "style": "pie",
+      "scope": "negative_warning_events",
+      "title": "负面预警信源分布",
+      "final_title": "负面预警信源分布",
+      "unit": "条"
+    },
+    {
+      "id": "theme",
+      "family": "theme",
+      "drawing_index": 4,
+      "axis_label": "事件分类",
+      "binding": {
+        "source": "theme_clusters.groups"
+      },
+      "style": "bar",
+      "scope": "negative_warning_events",
+      "title": "负面预警内容分类",
+      "final_title": "负面预警内容分类",
+      "unit": "件"
+    }
+  ],
+  "section_two": {
+    "field_roles": {
+      "numbered_items_1": "general",
+      "b46_risk_tip_1": "outlook",
+      "b47_risk_tip_2": "outlook",
+      "b48_risk_tip_3": "outlook",
+      "b49_risk_tip_4": "outlook"
+    },
+    "outlook_fields": [
+      "b46_risk_tip_1",
+      "b47_risk_tip_2",
+      "b48_risk_tip_3",
+      "b49_risk_tip_4"
+    ],
+    "outlook_item_count": {
+      "min": 4,
+      "max": 4
+    },
+    "locality_evidence": {
+      "from_vocabulary": true,
+      "region": "乳源瑶族自治县"
+    }
+  }
+}

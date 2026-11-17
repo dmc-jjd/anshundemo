@@ -12,11 +12,44 @@ from datetime import date,datetime,timedelta,timezone
 from typing import Literal
 from pydantic import BaseModel,ConfigDict,Field
 from core.section_schema import Contract,BasisType,OutlookItem,RiskChain,AnalysisPlan
+from core import section_policy as _section_policy
 
 POLICY_VERSION='anshun-mixed-risk-v3-seasonal-fallback'
 ANALYSIS_POLICY_VERSION='anshun-causal-analysis-style-v7'
 OUTLOOK_POLICY_VERSION='anshun-mixed-outlook-style-v8'
 LOCAL_NAMES=('安顺','西秀','平坝','普定','镇宁','关岭','紫云','黄果树')
+
+
+DEFAULT_REGION='安顺市'
+DEFAULT_EVIDENCE_LABEL='安顺'
+
+def _package_of(store=None,task_id=None,package=None):
+    if package:return package
+    if store is not None and task_id and hasattr(store,'package_of'):
+        try:return store.package_of(task_id)
+        except Exception:pass
+    if store is not None and callable(getattr(store,'package',None)):
+        try:return store.package()
+        except Exception:pass
+    return None
+
+def _policy(package=None,policy=None):
+    return policy if policy is not None else _section_policy.load(package)
+
+def local_names(package=None,policy=None):
+    return _section_policy.locality_names(_policy(package,policy),package=package,fallback=LOCAL_NAMES)
+
+def evidence_region(package=None,policy=None,window=None):
+    # Error text must stay "安顺" for the default package; forecast_window.region is "安顺市".
+    configured=_section_policy.region_name(_policy(package,policy),package=package,fallback='')
+    return configured or DEFAULT_EVIDENCE_LABEL
+
+def _official_frequency_host_ok(host,names,package=None,policy=None):
+    rules=_policy(package,policy)
+    hosts=_section_policy.official_hosts(rules)
+    if hosts:return _section_policy.host_matches(host,hosts)
+    if _section_policy.uses_vocabulary_names(rules):return False
+    return host=='anshun.gov.cn' or host.endswith('.anshun.gov.cn')
 
 class RiskCandidate(Contract):
     id:str=Field(pattern=r'^c[1-8]$')
@@ -71,18 +104,21 @@ def forecast_window(report):
     periods=[]
     for offset in (1,2):
         index=year*12+month-1+offset;periods.append(f'{index//12:04}-{index%12+1:02}')
-    return {'region':'安顺市','report_month':f'{year:04}-{month:02}', 'periods':periods,
+    package=_package_of(getattr(report,'store',None),getattr(getattr(report,'state',None),'id',None))
+    region=_section_policy.region_name(_policy(package),package=package,fallback=DEFAULT_REGION)
+    return {'region':region,'report_month':f'{year:04}-{month:02}', 'periods':periods,
             'label':'—'.join(str(int(x[5:]))+'月' for x in periods),
             'historical_years':sorted({y for p in periods for y in range(int(p[:4])-5,int(p[:4]))}),
             'preferred_lookback_years':3,'maximum_lookback_years':5,
             'as_of':date(year,month,calendar.monthrange(year,month)[1]).isoformat()}
 
-def role(field):
-    if field['id']=='monthly_recommendations' or field.get('kind')=='paragraph_list':return 'outlook'
-    if field['id']=='b40_analysis_paragraph' or '研判分析' in field.get('display_name',''):return 'analysis'
-    return None
+def role(field,package=None,policy=None):
+    default=None
+    if field['id']=='monthly_recommendations' or field.get('kind')=='paragraph_list':default='outlook'
+    elif field['id']=='b40_analysis_paragraph' or '研判分析' in field.get('display_name',''):default='analysis'
+    return _section_policy.field_role(field,_policy(package,policy),default)
 
-def policy_for(field):return ANALYSIS_POLICY_VERSION if role(field)=='analysis' else OUTLOOK_POLICY_VERSION
+def policy_for(field,package=None,policy=None):return ANALYSIS_POLICY_VERSION if role(field,package,policy)=='analysis' else OUTLOOK_POLICY_VERSION
 
 def asserted_knowledge(text):
     """Exclude explicit denials from claims; retain all positive facts/numbers."""
@@ -95,16 +131,18 @@ def asserted_knowledge(text):
     return re.sub(r'[^，。；,;]{0,60}(?:往年|历年|历史)[^，。；,;]{0,40}(?:尚未核实|未核实|尚未掌握|未掌握)',unverified,text)
 
 
-def seasonal_knowledge_usable(knowledge):
+def seasonal_knowledge_usable(knowledge,package=None,policy=None):
     claims=asserted_knowledge(knowledge)
     if len(knowledge.strip())<20:return False
     if re.search(r'20\d{2}年|历年|往年|统计显示|发生过|\d+[%％]|\d+起',claims):return False
     # General seasonal mechanisms may mention a peak; a local frequency claim
     # still needs a verified source.
-    return not re.search('(?:'+'|'.join(LOCAL_NAMES)+r')[^，。；]{0,24}(?:高发|多发|频发|高频)',claims)
+    names=local_names(package,policy)
+    return not re.search('(?:'+'|'.join(re.escape(name) for name in names)+r')[^，。；]{0,24}(?:高发|多发|频发|高频)',claims)
 
 
-def validate_history(result,store,task_id,window,page_refs=None):
+def validate_history(result,store,task_id,window,page_refs=None,package=None,policy=None):
+    package=_package_of(store,task_id,package);policy=_policy(package,policy);names=local_names(package,policy);label=evidence_region(package,policy,window)
     good=[];errors=[];months={x[5:] for x in window['periods']};limit_year=int(window['report_month'][:4])
     norm=lambda s:re.sub(r'\s+','',s)
     if page_refs is None:
@@ -127,14 +165,14 @@ def validate_history(result,store,task_id,window,page_refs=None):
                 read_error=page_read_error(page.get('content',''))
                 if read_error:raise ValueError(read_error)
                 if citation.excerpt_index is not None:
-                    excerpts=source_excerpts(page['content'])
+                    excerpts=source_excerpts(page['content'],package=package,policy=policy)
                     if citation.excerpt_index>=len(excerpts):raise ValueError('原文片段索引无效')
                     citation.quote=excerpts[citation.excerpt_index]
-                if not any(name in citation.location_quote for name in LOCAL_NAMES):citation.location_quote=next((name for name in LOCAL_NAMES if name in content),'')
+                if not any(name in citation.location_quote for name in names):citation.location_quote=next((name for name in names if name in content),'')
                 citation.url=page['url']
                 if len(citation.quote)<12:raise ValueError('缺少可校验的连续原文摘录')
                 if not page.get('url') or norm(citation.quote) not in content or norm(citation.location_quote) not in content:raise ValueError('摘录不在已阅读原文中')
-                if not any(x in citation.location_quote for x in LOCAL_NAMES):raise ValueError('不是安顺本地证据')
+                if not any(x in citation.location_quote for x in names):raise ValueError('不是'+label+'本地证据')
                 target=next((p for p in window['periods'] if p[5:]==citation.period[5:]),None)
                 if topic.basis_type=='historical':
                     if not target or int(citation.period[:4]) not in range(int(target[:4])-5,int(target[:4])):raise ValueError('历史案例需为近五年相同月份')
@@ -149,7 +187,7 @@ def validate_history(result,store,task_id,window,page_refs=None):
                     host=urlparse(page['url']).hostname or ''
                     if not (host.endswith('.gov.cn') or host.endswith('.police.gov.cn')):raise ValueError('官方高发依据须来自原始官方来源')
                     if not re.search(r'高发|多发|频发|高频|屡发',asserted_knowledge(citation.quote)):raise ValueError('季节性提示不能冒充高频依据')
-                    if not any(name in citation.quote for name in LOCAL_NAMES) and not (host=='anshun.gov.cn' or host.endswith('.anshun.gov.cn')):raise ValueError('省级高发描述须明确涉及安顺，不能只借用网页其他位置的地名')
+                    if not any(name in citation.quote for name in names) and not _official_frequency_host_ok(host,names,package,policy):raise ValueError('省级高发描述须明确涉及'+label+'，不能只借用网页其他位置的地名')
                 valid.append(citation)
             except (KeyError,ValueError) as exc:errors.append(topic.category+':'+str(exc))
         cases=[c for c in valid if c.basis in ('recurrence_case','historical_case')]
@@ -158,7 +196,7 @@ def validate_history(result,store,task_id,window,page_refs=None):
         knowledge_ref=None;downgraded=None
         # An unusable historical citation does not invalidate independent
         # seasonal reasoning. Drop its factual claim, never promote the page.
-        if topic.basis_type=='historical' and not (frequent or cases) and seasonal_knowledge_usable(topic.knowledge_basis):
+        if topic.basis_type=='historical' and not (frequent or cases) and seasonal_knowledge_usable(topic.knowledge_basis,package=package,policy=policy):
             target_months={int(x[5:]) for x in window['periods']}
             if not topic.applies_to_months or target_months&set(topic.applies_to_months):
                 topic=topic.model_copy(update={'basis_type':'seasonal','applies_to_months':topic.applies_to_months or sorted(target_months)})
@@ -174,7 +212,7 @@ def validate_history(result,store,task_id,window,page_refs=None):
             else:
                 qualifies=bool(months_apply) and (bool(valid) or len(knowledge)>=20)
                 label='本地季节风险资料' if valid else '季节条件推演（模型知识，非本地高发统计）'
-                if (not valid or knowledge) and not seasonal_knowledge_usable(knowledge):
+                if (not valid or knowledge) and not seasonal_knowledge_usable(knowledge,package=package,policy=policy):
                     qualifies=False;errors.append(topic.category+':模型知识只支持条件性季节推演，具体地方历史事实需取证')
                 if qualifies and not valid:
                     knowledge_ref=store.put_artifact(task_id,'risk_knowledge',{'category':topic.category,'knowledge_basis':knowledge,
@@ -193,7 +231,7 @@ class OutlookItemValidationError(ValueError):
         super().__init__(message)
 
 
-def render_outlook_item(item,topics,window):
+def render_outlook_item(item,topics,window,package=None,policy=None):
     topic=next((t for t in topics if t['category']==item.category),None)
     allowed={c['page_ref'] for c in topic['evidence']}|({topic['knowledge_ref']} if topic.get('knowledge_ref') else set()) if topic else set()
     mapping={c.get('url'):c['page_ref'] for c in topic['evidence'] if c.get('url')} if topic else {}
@@ -208,7 +246,7 @@ def render_outlook_item(item,topics,window):
         cited=[c for c in topic['evidence'] if c['page_ref'] in item.history_refs]
         claim=item.historical_basis+' '+(item.paragraph or '')
         assertions=asserted_knowledge(claim)
-        if item.basis_type=='seasonal' and (not seasonal_knowledge_usable(claim) or re.search(r'曾发生|同比',assertions)):raise ValueError('季节推演不能冒充本地历史高发或具体历史事实')
+        if item.basis_type=='seasonal' and (not seasonal_knowledge_usable(claim,package=package,policy=policy) or re.search(r'曾发生|同比',assertions)):raise ValueError('季节推演不能冒充本地历史高发或具体历史事实')
         frequency_supported=any(c['basis']=='official_frequency' for c in cited)
         cases=[c for c in cited if c['basis'] in ('recurrence_case','historical_case')]
         recurrence_supported=len({c['period'][:4] for c in cases})>=2 and len({c['url'] for c in cases})>=2
@@ -248,19 +286,21 @@ def render_outlook_item(item,topics,window):
         raise OutlookItemValidationError(str(exc),item.category,allowed) from exc
 
 
-def render_outlook(items,topics,window):
-    if not 4<=len(items)<=5:raise ValueError('前瞻建议必须4—5类')
+def render_outlook(items,topics,window,package=None,policy=None):
+    low,high=_section_policy.outlook_item_bounds(_policy(package,policy))
+    if not low<=len(items)<=high:raise ValueError(f'前瞻建议必须{low}—{high}类')
     if len({i.category for i in items})!=len(items):raise ValueError('前瞻类别重复')
     values=[];refs=set()
     for item in items:
-        text,item_refs=render_outlook_item(item,topics,window)
+        text,item_refs=render_outlook_item(item,topics,window,package=package,policy=policy)
         values.append(text);refs.update(item_refs)
     return values,sorted(refs)
 
-def source_excerpts(content):
+def source_excerpts(content,package=None,policy=None):
     """Exact source slices, not model paraphrases; stable indices for citations."""
     rows=[];seen=set()
-    matches=list(re.finditer(r'高发|多发|频发|高频|屡发|发生.{0,16}(?:事故|火灾)|拖欠|凝冻|结冰|安顺|平坝|西秀|关岭|镇宁|紫云|普定|黄果树',content))
+    places='|'.join(re.escape(name) for name in local_names(package,policy))
+    matches=list(re.finditer(r'高发|多发|频发|高频|屡发|发生.{0,16}(?:事故|火灾)|拖欠|凝冻|结冰|'+(places or '安顺'),content))
     matches.sort(key=lambda m:(0 if re.search(r'高发|多发|频发|高频|屡发',m.group()) else 1 if re.search(r'发生|拖欠|凝冻|结冰',m.group()) else 2,m.start()))
     for match in matches:
         start=max(0,match.start()-65);end=min(len(content),match.end()+110)
