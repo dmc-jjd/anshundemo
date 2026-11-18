@@ -21,7 +21,10 @@ from app.export import export_docx
 from app.schemas import TaskState
 from app.storage import Store
 from core.structured_template import template_feature_switches
-from test_template_section_switches import ALL_ON, CANDIDATE, TOP10_OFF, _docx_text
+from test_template_section_switches import ALL_ON as TEMPLATE_ALL_ON, CANDIDATE, TOP10_OFF as TEMPLATE_TOP10_OFF, _docx_text
+
+ALL_ON = {**TEMPLATE_ALL_ON, 'locality': True}
+TOP10_OFF = {**ALL_ON, 'top10': False}
 
 
 def _package(monkeypatch, **overrides):
@@ -50,7 +53,7 @@ def test_creation_snapshot_carries_package_off_and_core_reads_it(tmp_path, monke
 
     store = _store_with_task(tmp_path, snapshot)
     state = store.get_task('t')
-    assert template_feature_switches(state, store) == TOP10_OFF, 'core 看不到客户包，只能靠落盘值'
+    assert template_feature_switches(state, store) == TEMPLATE_TOP10_OFF, 'core 模板开关面仍是四项处理开关'
     assert workflow.effective_features(store, state) == TOP10_OFF
 
 

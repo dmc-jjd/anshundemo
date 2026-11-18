@@ -14,8 +14,11 @@ from core import config as _core_config
 from core import paths as _paths
 
 # 包选择点：P7「只加包、不动基座」要求换客户包不改代码，所以这里必须是环境变量。
-# 缺省仍是 anshun_monthly，现有行为零变化。
-PACKAGE = os.getenv('REPORT_PACKAGE', 'anshun_monthly')
+# 与 `core.packages.context.default_package()` 同一事实源；缺省不再写死客户包名，
+# 由 `REPORT_PACKAGE`（现网 `.env`）提供。
+from core.packages.context import default_package
+
+PACKAGE = default_package()
 PACKAGE_DIR = _core_config.ROOT / 'packages' / PACKAGE
 
 # 部署基根（`data/`）：迁移脚本、共享价目表以它为准。

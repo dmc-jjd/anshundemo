@@ -38,8 +38,8 @@ template_policy:
   semantic_units: 完整列表、标题、句子、分析段；禁止字符级槽位
   recommendations:
     min_items: 4
-    max_items: 5
-    structure: 比较5—8类候选，研究目标5类由本地历史、官方季节资料或已核实地方活动、明确模型季节机制支持的合格选题，至少4类方可进入写作；输出4—5类未来1—2个月风险预警与针对性措施，不得编造地方事实或引用
+    max_items: 4
+    structure: 比较候选后输出恰好 4 类未来1—2个月风险预警与针对性措施，选题须由本地历史、官方季节资料或已核实地方活动、明确模型季节机制支持；不得编造地方事实或引用
   top10:
     scope: negative_and_warning
     unit: deduplicated_event

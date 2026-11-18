@@ -89,6 +89,29 @@ def summary_columns(package: str | None = None) -> list[str]:
     return list(_contract_of(package)['summary_columns'])
 
 
+def sheet_index(package: str | None = None) -> int:
+    """明细工作表序号：只读包合同 `data_contract.sheet_index`，缺键即失败，不默认 3。"""
+    contract = _contract_of(package)
+    if 'sheet_index' not in contract:
+        raise ValueError('sheet_index_not_configured')
+    return int(contract['sheet_index'])
+
+
+def sentiment_values(package: str | None = None) -> list[str]:
+    """包合同声明的调性枚举；未声明则空，不回落安顺三种调性。"""
+    cfg = (_contract_of(package).get('sentiment') or {})
+    return list(cfg.get('values') or ())
+
+
+def filter_contract(package: str | None = None) -> dict:
+    """筛选口径：只读 `data_contract.sentiment` / `warning`，不做基座回落。"""
+    contract = _contract_of(package)
+    return {
+        'sentiment': dict(contract.get('sentiment') or {}),
+        'warning': dict(contract.get('warning') or {}),
+    }
+
+
 def localities(package: str | None = None) -> dict[str, list[str]]:
     return dict(_vocabulary_of(package)['localities'])
 
@@ -147,8 +170,17 @@ def writer_slots(package: str | None = None) -> tuple[str, ...]:
 def _derived_writer_slots(package: str | None = None) -> tuple[str, ...]:
     """兜底推导（仅旧包无 `writer_slots` 时走）：占位符清单不在包内，在该包的模板目录。"""
     from core import paths
+    from core.layout import manifest_path
 
-    manifest = json.loads((paths.template_dir(package) / 'report.template.json').read_text(encoding='utf-8'))
+    try:
+        path = manifest_path(package)
+    except RuntimeError as exc:
+        if str(exc).startswith('template_dir_missing'):
+            return ()
+        raise
+    if not path.is_file():
+        return ()
+    manifest = json.loads(path.read_text(encoding='utf-8'))
     return tuple(
         str(placeholder['id'])
         for placeholder in (manifest.get('placeholders') or ())

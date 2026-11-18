@@ -10,13 +10,14 @@
   var params = new URLSearchParams(window.location.search);
   var taskId = params.get('task') || '';
   var WRITABLE = ['awaiting_final_review', 'facts_frozen'];
-  var CHART_TITLES = {
-    sentiment: '图1 舆情情绪分布图',
-    daily: '图2 舆情信息数量图',
-    platform: '图3 舆情信源分布图',
-    theme: '图4 负面舆情分类分布情况',
-    locality: '图5 各区县舆情分布情况'
-  };
+  function chartTitle(block) {
+    if (block && block.title) return block.title;
+    var charts = (model && model.charts) || [];
+    var found = charts.filter(function (item) {
+      return item && (item.id === (block && block.name) || item.slot === (block && (block.slot || block.name)));
+    })[0];
+    return (found && found.title) || (block && block.name) || '图表';
+  }
   /* 阶段 → 主轴序号：只有 4/5 段的任务会落到本页，其余按 0 处理（tab 全 todo）。 */
   var PHASE_STAGE = function (phase) {
     if (!phase) return 0;
@@ -193,13 +194,13 @@
     if (block.png_data_url) {
       var image = document.createElement('img');
       image.src = block.png_data_url;
-      image.alt = CHART_TITLES[block.name] || ('图表 ' + block.name);
+      image.alt = chartTitle(block);
       image.loading = 'lazy';
       figure.appendChild(image);
     } else {
       var missing = document.createElement('div');
       missing.className = 'fd-figure-missing';
-      missing.textContent = '图表暂不可用（' + (CHART_TITLES[block.name] || block.name) + '）';
+      missing.textContent = '图表暂不可用（' + chartTitle(block) + '）';
       figure.appendChild(missing);
     }
     return figure;

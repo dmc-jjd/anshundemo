@@ -41,10 +41,27 @@ def stage_under_budget(run,role):
     """True if this stage can still start another review/repair. Caps reviewer calls at STAGE_REVIEW_MAX_ROUNDS."""
     return run.get('stage_rounds',{}).get(role,0)<STAGE_REVIEW_MAX_ROUNDS and run.get('stage_repair_attempts',{}).get(role,0)<STAGE_REVIEW_MAX_ROUNDS
 
-def _task_package(state):
+def _task_package(state,store=None):
     name=getattr(state,'package',None)
-    if isinstance(name,str):name=name.strip()
-    return name or None
+    if isinstance(name,str):name=name.strip() or None
+    if name:return name
+    if store is not None and hasattr(store,'package_of'):
+        try:
+            name=store.package_of(getattr(state,'id',None))
+            if isinstance(name,str) and name.strip():return name.strip()
+        except Exception:
+            pass
+    if store is not None:
+        raw=getattr(store,'package',None)
+        if callable(raw):
+            try:
+                name=raw()
+                if isinstance(name,str) and name.strip():return name.strip()
+            except Exception:
+                pass
+        elif isinstance(raw,str) and raw.strip():
+            return raw.strip()
+    return None
 
 def _review_profile(state):
     report=state.metadata.get('review_report',{})
@@ -286,17 +303,23 @@ async def revise_draft(deps,task_id):
     store=deps.store;state=store.get_task(task_id);draft,template,definitions,fields,machine=document(store,state)
     stage=state.metadata['writing_review_run'].get('repair_stage','content_reviewer')
     issues=repairable(store,state,stage);allowed_fields={i['details']['field_id'] for i in issues}
-    profile=prompt_profile(state.metadata,template, package=_task_package(state))
+    profile=prompt_profile(state.metadata,template, package=_task_package(state, store))
     payload={'instruction':get_prompt('writer.revise',profile),'editable_fields':[machine[k] for k in sorted(allowed_fields)],
         'issues':[{'id':i['id'],**i['details']} for i in issues],'readonly_data':[v for v in fields.values() if v['owner']=='data'],
         'frozen_context':FrozenReport(store,task_id).summary(),'correction_errors':[state.metadata['writing_review_run']['repair_error']] if state.metadata['writing_review_run'].get('repair_error') else [],
         'skill':{**skill_context(),'application':get_prompt('style.application',profile)}}
-    from .section_two import role as section_role
+    from .section_two import role as section_role, analysis_length_limits
+    package=_task_package(state, store)
     for item in payload['editable_fields']:
         item['required_numbers']=numbers(item['value'])
-        if section_role(definitions[item['id']])=='analysis':
-            item['value_schema']={**item.get('value_schema',{}),'minLength':300,'maxLength':500}
-            item['recommended_length']={'minimum':350,'maximum':440,'counting':'包括标点，留出压缩余量'}
+        minimum,maximum=analysis_length_limits(package, definitions.get(item['id']))
+        if section_role(definitions[item['id']], package=package)=='analysis' and (minimum is not None or maximum is not None):
+            schema={**item.get('value_schema',{})}
+            if minimum is not None: schema['minLength']=minimum
+            if maximum is not None: schema['maxLength']=maximum
+            item['value_schema']=schema
+            if minimum==300 and maximum==500:
+                item['recommended_length']={'minimum':350,'maximum':440,'counting':'包括标点，留出压缩余量'}
     state.metadata['writing_review_run']['repair_attempts']=state.metadata['writing_review_run'].get('repair_attempts',0)+1
     attempts=state.metadata['writing_review_run'].setdefault('stage_repair_attempts',{})
     attempts[stage]=attempts.get(stage,0)+1
@@ -330,8 +353,13 @@ async def revise_draft(deps,task_id):
                     if not any(i['details']['kind']=='fact' for i in targeted) and numbers(before_value)!=numbers(patch.after):raise ValueError('style_repair_changed_fact_numbers')
                     if re.search(r'若|如果|可能|通常',text(before_value)) and not re.search(r'若|如果|可能|通常|或|风险',text(patch.after)):raise ValueError('repair_removed_judgment_qualifications')
                     if isinstance(before_value,list) and (not isinstance(patch.after,list) or len(before_value)!=len(patch.after)):raise ValueError('repair_changed_list_structure')
-                    if section_role(definitions[key])=='analysis' and (not isinstance(patch.after,str) or not 300<=len(patch.after)<=500):
-                        field_errors.append({'field_id':key,'error':'研判分析退修后仍须300—500字，当前'+str(len(patch.after))+'字；请控制350—440字，保留事实与判断限定。'})
+                    minimum,maximum=analysis_length_limits(package, definitions.get(key))
+                    too_short=minimum is not None and (not isinstance(patch.after,str) or len(patch.after)<minimum)
+                    too_long=maximum is not None and isinstance(patch.after,str) and len(patch.after)>maximum
+                    if section_role(definitions[key], package=package)=='analysis' and (too_short or too_long):
+                        lo='' if minimum is None else str(minimum)
+                        hi='' if maximum is None else str(maximum)
+                        field_errors.append({'field_id':key,'error':'分析段退修后须控制'+lo+'—'+hi+'字，当前'+str(len(patch.after) if isinstance(patch.after,str) else 0)+'字；请按包内定义压缩或补全，保留事实与判断限定。'})
                         continue
                     merged[key]={'value':patch.after,'source_refs':sorted(set(machine[key]['source_refs'])|set(patch.source_refs))};changed.append(key)
                 if not changed:

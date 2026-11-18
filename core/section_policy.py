@@ -20,9 +20,12 @@ Supported keys (all optional):
     locality-statistics feature or `resolve_locality`.
   - `region`: region label for the forecast window and evidence-error text.
     If omitted while `from_vocabulary` is true, the first vocabulary key is used.
+  - `names`: explicit evidence place names. Used as-is when present, so a
+    package can keep a short-name list distinct from vocabulary keys.
   - `official_hosts`: hostname suffixes that may stand in for a local name
     in official-frequency citations. Omitted means no extra host exemption
     once vocabulary names are in use.
+  - `evidence_label`: short label for evidence-error text. If omitted, `region` is used.
 """
 
 from __future__ import annotations
@@ -119,6 +122,11 @@ def flatten_localities(vocab: Mapping[str, Any] | None) -> tuple[str, ...]:
 
 def locality_names(policy: Mapping[str, Any] | None, *, package: str | None = None, fallback: tuple[str, ...] = ()) -> tuple[str, ...]:
     """Place names for evidence checks. Vocabulary path does not start locality stats."""
+    evidence = locality_evidence(policy)
+    declared = evidence.get("names") or ()
+    names = tuple(str(item).strip() for item in declared if str(item).strip())
+    if names:
+        return names
     if not uses_vocabulary_names(policy):
         return tuple(fallback)
     try:
@@ -147,6 +155,13 @@ def region_name(policy: Mapping[str, Any] | None, *, package: str | None = None,
         if keys:
             return str(keys[0])
     return fallback
+
+
+def evidence_label(policy: Mapping[str, Any] | None, *, package: str | None = None, fallback: str = "") -> str:
+    evidence = locality_evidence(policy)
+    if evidence.get("evidence_label"):
+        return str(evidence["evidence_label"])
+    return region_name(policy, package=package, fallback=fallback)
 
 
 def official_hosts(policy: Mapping[str, Any] | None) -> tuple[str, ...]:

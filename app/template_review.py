@@ -24,12 +24,54 @@ LEGACY_BINDINGS = [
 ]
 
 
+def _resolve_binding_package(package=None):
+    if package:
+        return package
+    try:
+        from core.packages.context import default_package
+        return default_package()
+    except Exception:
+        return None
+
+
+def _feature_enabled(package, name):
+    try:
+        from core.packages import load_package
+        features = (load_package(package).manifest.features or {}) if package else {}
+        declared = features.get(name) or {}
+        if not isinstance(declared, dict):
+            return declared is True
+        return declared.get('enabled') is True
+    except Exception:
+        return False
+
+
+def _tool_bindings(package=None):
+    """Metric tool paths plus package sentiment enums; TOP10 only when the feature is on."""
+    bindings = [{'tool': 'calculate_metrics', 'path': [key]} for key in (
+        'record_count', 'warning_raw_count', 'negative_record_count',
+        'warning_record_count', 'negative_or_warning_record_count')]
+    try:
+        from core.tools import vocabulary
+        sentiments = list(vocabulary.sentiment_values(package) or ())
+    except Exception:
+        sentiments = []
+    for sentiment in sentiments:
+        bindings.append({'tool': 'calculate_metrics', 'path': ['sentiment', sentiment]})
+    if _feature_enabled(package, 'top10'):
+        bindings.append({'tool': 'top10_events', 'path': []})
+    return bindings
+
+
 def available_bindings(package=None):
-    """Template-confirm toolbox: legacy tool paths, catalog metrics, and package field bindings."""
+    """Template-confirm toolbox: package tool paths, catalog metrics, and package field bindings."""
     from core.field_calculations import load as load_field_calculations
     from core.frozen_report import CALCULATION_CATALOG
-    bindings = [dict(item) for item in LEGACY_BINDINGS]
+    package = _resolve_binding_package(package)
+    bindings = _tool_bindings(package)
     for metric, description in CALCULATION_CATALOG.items():
+        if metric == 'top10' and not _feature_enabled(package, 'top10'):
+            continue
         bindings.append({'metric': metric, 'description': description})
     for field_id, spec in load_field_calculations(package).items():
         if isinstance(spec, dict) and spec.get('metric'):
@@ -53,9 +95,9 @@ def binding_allowed(binding, packet=None):
         return True
     if data.get('tool'):
         key = {'tool': data['tool'], 'path': list(data.get('path') or [])}
-        listed = [item for item in (packet or {}).get('available_bindings') or LEGACY_BINDINGS if item.get('tool')]
+        listed = [item for item in (packet or {}).get('available_bindings') or available_bindings() if item.get('tool')]
         listed = [{'tool': item['tool'], 'path': list(item.get('path') or [])} for item in listed]
-        return key in listed or key in LEGACY_BINDINGS
+        return key in listed
     if data.get('metric'):
         payload = {key: value for key, value in data.items() if key in Calculation.model_fields}
         try:

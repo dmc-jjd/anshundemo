@@ -21,3 +21,15 @@ charts:
 skills:
   pack: skill-core
   use: [lieflat-less-ai-tone]
+
+features:
+  locality:
+    enabled: true
+  event_classification:
+    enabled: true
+  dedup:
+    enabled: true
+  first_warning:
+    enabled: true
+  top10:
+    enabled: true

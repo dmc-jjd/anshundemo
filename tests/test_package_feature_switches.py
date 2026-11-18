@@ -26,7 +26,7 @@ from core.manifest import Manifest, load_manifest
 from core.tools import registry
 from test_template_processing_features import _run_report
 
-ALL_ON = {'dedup': True, 'classification': True, 'first_warning': True, 'top10': True}
+ALL_ON = {'dedup': True, 'classification': True, 'first_warning': True, 'top10': True, 'locality': True}
 TOP10_OFF = {**ALL_ON, 'top10': False}
 TOP10_TOOLS = {'select_materials'}
 
@@ -64,8 +64,8 @@ def test_resolve_tools_knows_top10_without_touching_shared_filter():
     assert 'select_materials' in warning_off, '关预警不该牵连 TOP10'
 
 
-def test_package_switch_mapping_treats_missing_key_as_on(monkeypatch):
-    """包级读口：未声明 = 开（老包行为不变），显式 enabled: false 才是关。"""
+def test_package_switch_mapping_treats_missing_key_as_off(monkeypatch):
+    """包级读口：未声明 = 关，显式 enabled: true 才是开。"""
     def manifest_with(features):
         return Manifest(package='fake', report_type='x', version='1.0.0',
                         template='template.json', prompts='prompts', features=features)
@@ -77,12 +77,13 @@ def test_package_switch_mapping_treats_missing_key_as_on(monkeypatch):
                             'first_warning': {'enabled': False},
                             'top10': {'enabled': False}}))
     assert workflow._package_feature_switches() == {'dedup': True, 'classification': True,
-                                                    'first_warning': False, 'top10': False}
+                                                    'first_warning': False, 'top10': False,
+                                                    'locality': False}
 
-    # 老包完全没有这两个键（也没有 dedup/classification 的显式 true）→ 全开
+    # 未写全五个开关 -> 缺的键视为关，不得静默全开
     monkeypatch.setattr(manifest_module, 'load_manifest',
                         lambda package_dir: manifest_with({}))
-    assert workflow._package_feature_switches() == ALL_ON
+    assert workflow._package_feature_switches() == {name: False for name in ALL_ON}
 
 
 def test_package_off_beats_template_on(tmp_path, monkeypatch):
@@ -128,3 +129,47 @@ def test_both_layers_on_keeps_the_pre_change_tool_list(tmp_path, monkeypatch):
     assert TOP10_TOOLS <= set(available)
     feature_events = [event for event in events if event['type'] == 'processing_features']
     assert feature_events and all(feature_events[0][name] is True for name in ALL_ON)
+
+
+def test_locality_off_prunes_resolve_locality_but_keeps_filter_records():
+    """locality:false 时白名单和保底步骤都没有 resolve_locality；不得牵连 filter_records。"""
+    features = {**ALL_ON, 'locality': False}
+    policy = workflow._processing_policy(features)
+    assert 'resolve_locality' not in policy.allow
+    assert 'filter_records' in policy.allow
+    assert 'resolve_locality' in workflow._disabled_steps(features)
+    assert 'filter_records' not in workflow._disabled_steps(features)
+
+
+def test_locality_on_keeps_resolve_locality():
+    policy = workflow._processing_policy(ALL_ON)
+    assert 'resolve_locality' in policy.allow
+    assert 'resolve_locality' not in workflow._disabled_steps(ALL_ON)
+
+
+def test_ruyuan_manifest_matches_closed_locality():
+    from core import paths
+    from core.packages import package_context
+
+    with package_context('ruyuan_yuebao'):
+        manifest = load_manifest(paths.package_dir())
+    assert manifest.features['locality']['enabled'] is False
+    assert 'resolve_locality' not in set(manifest.policy.allow)
+    assert 'locality' not in set(manifest.required_capabilities)
+
+
+def test_closed_locality_packages_effective_tools_exclude_resolve_locality():
+    """即使龙川 manifest 尚未整理 allow，生效白名单和保底步骤也不再包含属地工具。"""
+    from core import paths
+    from core.packages import package_context
+    from core.tools.registry import CAPABILITY_TOOLS, resolve_tools
+
+    for package in ('ruyuan_yuebao', 'longchuan_yuebao'):
+        with package_context(package):
+            switches = workflow._package_feature_switches()
+            assert switches['locality'] is False
+            features = {key: {'enabled': switches[name]} for name, key in workflow._FEATURE_SWITCHES.items()}
+            resolved = resolve_tools(tuple(CAPABILITY_TOOLS), features)
+            assert 'resolve_locality' not in resolved
+            named = {name: switches[name] for name in workflow._FEATURE_SWITCHES}
+            assert 'resolve_locality' in workflow._disabled_steps(named)

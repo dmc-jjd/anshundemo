@@ -12,8 +12,10 @@
     「偶发、换机器不复现、日志里包名对得上但产物不对」。`ContextVar` 的值属于当前
     执行上下文，线程/协程各一份，天然隔离；新线程没继承 context 时回落到默认包。
 
-未设置时回落到「默认包」：从 `REPORT_PACKAGE` 读（缺省 `anshun_monthly`），
-于是现有单包部署零改动，且启动期不必为「当前包叫什么」写任何全局状态。
+未设置时回落到「部署默认包」：只从环境变量 `REPORT_PACKAGE` 读，
+代码里不再写死某个客户包名。现网在 `.env` 里写 `REPORT_PACKAGE=anshun_monthly`
+即可保持原行为；变量缺席时由 `default_package()` 抛 `package_not_specified`，
+不得静默改用某一个客户包。
 """
 
 from __future__ import annotations
@@ -28,8 +30,12 @@ from typing import Iterator
 #: 默认包的环境变量名。与 `app/config.py:PACKAGE` 同一个事实源（宿主只读它，基座也只读它）。
 ENV_PACKAGE = 'REPORT_PACKAGE'
 
-#: 环境变量缺席时的默认包（= 现网唯一客户的包名；换部署只改环境变量，不改代码）。
-FALLBACK_PACKAGE = 'anshun_monthly'
+
+class PackageNotSpecified(RuntimeError):
+    """未设置 `REPORT_PACKAGE`，且调用方也没有给出包名。"""
+
+    def __init__(self) -> None:
+        super().__init__('package_not_specified')
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,8 +56,11 @@ _ref: ContextVar[PackageRef | None] = ContextVar('omd_package_ref', default=None
 
 
 def default_package() -> str:
-    """部署默认包：`REPORT_PACKAGE`（缺省 `anshun_monthly`）。"""
-    return os.getenv(ENV_PACKAGE) or FALLBACK_PACKAGE
+    """部署默认包：只读 `REPORT_PACKAGE`。未设置时抛 `PackageNotSpecified`。"""
+    value = (os.getenv(ENV_PACKAGE) or '').strip()
+    if not value:
+        raise PackageNotSpecified()
+    return value
 
 
 def current_ref() -> PackageRef:

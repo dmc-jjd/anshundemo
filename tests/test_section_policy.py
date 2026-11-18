@@ -5,19 +5,24 @@ from pathlib import Path
 import pytest
 import yaml
 
-from app.section_two import role, forecast_window, validate_history, source_excerpts, HistoryTopic, HistoryCitation, HistoricalResearch
+from app.section_two import role, forecast_window, validate_history, source_excerpts, HistoryTopic, HistoryCitation, HistoricalResearch, policy_version, policy_for, POLICY_VERSION, ANALYSIS_POLICY_VERSION, OUTLOOK_POLICY_VERSION
 from core import section_policy
 from test_frozen_writer import fixture
 from app.frozen_report import FrozenReport
 
 
-def test_default_roles_match_legacy_heuristics():
-    assert role({"id": "monthly_recommendations", "kind": "paragraph"}) == "outlook"
-    assert role({"id": "numbered_items_1", "kind": "paragraph_list", "display_name": "编号条目列表（第1组）"}) == "outlook"
-    assert role({"id": "b40_analysis_paragraph", "kind": "analysis", "display_name": "研判"}) == "analysis"
-    assert role({"id": "x", "kind": "analysis", "display_name": "综合研判分析"}) == "analysis"
-    assert role({"id": "b46_risk_tip_1", "kind": "analysis", "display_name": "第1条风险提示"}) is None
-    assert role({"id": "b32_overall_suggestion", "kind": "analysis", "display_name": "综合工作建议"}) is None
+def test_unconfigured_roles_do_not_use_anshun_heuristics():
+    """未在 field_roles 声明时，paragraph_list 不是 outlook；显示名也不再启发式识别。"""
+    empty = {"field_roles": {}}
+    assert role({"id": "numbered_items_1", "kind": "paragraph_list", "display_name": "编号条目列表（第1组）"}, policy=empty) is None
+    assert role({"id": "x", "kind": "analysis", "display_name": "综合研判分析"}, policy=empty) is None
+    assert role({"id": "b46_risk_tip_1", "kind": "analysis", "display_name": "第1条风险提示"}, policy=empty) is None
+
+
+def test_anshun_configured_roles_match_moved_field_roles():
+    assert role({"id": "monthly_recommendations", "kind": "paragraph_list"}, package="anshun_monthly") == "outlook"
+    assert role({"id": "b40_analysis_paragraph", "kind": "analysis", "display_name": "研判"}, package="anshun_monthly") == "analysis"
+    assert role({"id": "x", "kind": "analysis", "display_name": "综合研判分析"}, package="anshun_monthly") is None
 
 
 def test_field_roles_override_paragraph_list_and_assign_outlook():
@@ -29,8 +34,8 @@ def test_field_roles_override_paragraph_list_and_assign_outlook():
     }
     assert role({"id": "numbered_items_1", "kind": "paragraph_list"}, policy=policy) is None
     assert role({"id": "b46_risk_tip_1", "kind": "analysis", "display_name": "第1条风险提示"}, policy=policy) == "outlook"
-    # Unmentioned fields keep the built-in default.
-    assert role({"id": "monthly_recommendations", "kind": "paragraph_list"}, policy=policy) == "outlook"
+    # 未声明字段不再回落安顺启发式。
+    assert role({"id": "monthly_recommendations", "kind": "paragraph_list"}, policy=policy) is None
 
 
 def test_invalid_field_role_is_rejected():
@@ -163,7 +168,7 @@ def test_ruyuan_package_config_if_present():
     cfg = template["section_two"]
     assert cfg["field_roles"]["numbered_items_1"] == "general"
     assert cfg["field_roles"]["b46_risk_tip_1"] == "outlook"
-    assert cfg["outlook_fields"] == ["b46_risk_tip_1", "b47_risk_tip_2", "b48_risk_tip_3", "b49_risk_tip_4"]
+    assert cfg["outlook_fields"] == ["b46_risk_tip_1", "b47_risk_tip_2", "b48_risk_tip_3", "b49_risk_tip_4", "b50_risk_tip_5"]
     assert cfg["locality_evidence"]["from_vocabulary"] is True
     assert "乳源" in cfg["locality_evidence"]["region"] or "示例" in cfg["locality_evidence"]["region"]
     manifest = yaml.safe_load((pkg / "manifest.yaml").read_text(encoding="utf-8-sig"))
@@ -172,3 +177,19 @@ def test_ruyuan_package_config_if_present():
     assert role({"id": "b46_risk_tip_1", "kind": "analysis", "display_name": "第1条风险提示"}, policy=cfg) == "outlook"
     names = section_policy.flatten_localities(template["vocabulary"]["localities"])
     assert "乳源" in names and "乳源瑶族自治县" in names
+
+
+def test_anshun_policy_versions_keep_historical_cache_prefix():
+    """安顺历史调研缓存仍用带 anshun- 前缀的旧版本号，避免模块常量去前缀后全部 miss。"""
+    assert policy_version("anshun_monthly") == "anshun-mixed-risk-v3-seasonal-fallback"
+    assert policy_for({"id": "b40_analysis_paragraph", "kind": "analysis"}, package="anshun_monthly") == "anshun-causal-analysis-style-v7"
+    assert policy_for({"id": "monthly_recommendations", "kind": "paragraph_list"}, package="anshun_monthly") == "anshun-mixed-outlook-style-v8"
+
+
+def test_unconfigured_package_falls_back_to_prefix_free_defaults():
+    empty = {"field_roles": {}}
+    assert policy_version(policy=empty) == POLICY_VERSION
+    assert policy_for({"id": "x", "kind": "analysis", "display_name": "研判"}, policy=empty) == OUTLOOK_POLICY_VERSION
+    assert POLICY_VERSION == "mixed-risk-v3-seasonal-fallback"
+    assert ANALYSIS_POLICY_VERSION == "causal-analysis-style-v7"
+    assert OUTLOOK_POLICY_VERSION == "mixed-outlook-style-v8"

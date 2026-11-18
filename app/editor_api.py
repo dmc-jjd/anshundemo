@@ -28,6 +28,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 
 from .api_views.task_resume import display_name
+from .api_views.template_library import list_templates
 from .packages_api import connect_for, files_for
 from .schemas import now
 
@@ -181,6 +182,63 @@ def _docx_refs(store, state):
     return [row['id'] for row in rows if (folder / f"{row['id']}.docx").exists()]
 
 
+def _task_package(store, state):
+    """Resolve a task package without requiring a request header."""
+    name = getattr(state, 'package', None)
+    if isinstance(name, str):
+        name = name.strip() or None
+    if name:
+        return name
+    if hasattr(store, 'package_of'):
+        try:
+            name = store.package_of(state.id)
+            if isinstance(name, str) and name.strip():
+                return name.strip()
+        except Exception:
+            pass
+    raw = getattr(store, 'package', None)
+    if callable(raw):
+        try:
+            name = raw()
+            if isinstance(name, str) and name.strip():
+                return name.strip()
+        except Exception:
+            pass
+    elif isinstance(raw, str) and raw.strip():
+        return raw.strip()
+    return None
+
+
+def _template_index(store):
+    """Union of templates-by-id across task packages (or the default package).
+
+    `main.templates()` requires a Request and must not be used here; listing
+    editable reports has to work without a package header.
+    """
+    from . import main
+
+    packages = []
+    seen = set()
+    for state in store.list_tasks():
+        pkg = _task_package(store, state)
+        if pkg not in seen:
+            seen.add(pkg)
+            packages.append(pkg)
+    if not packages:
+        packages = [None]
+    index = {}
+    for pkg in packages:
+        try:
+            items = main._list_templates(package=pkg)
+        except Exception:
+            items = list_templates(store, package=pkg)
+        for item in items:
+            ident = item.get('id')
+            if ident and ident not in index:
+                index[ident] = item
+    return index
+
+
 def _report_item(store, state, index):
     """一条列表项；**什么报告都没有的任务返回 None**（不进列表）。
 
@@ -211,7 +269,7 @@ def list_editable_reports():
     from . import main
 
     store = main.store
-    index = {item['id']: item for item in main.templates()}
+    index = _template_index(store)
     items = [item for item in (_report_item(store, state, index) for state in store.list_tasks()
                                if not (state.metadata or {}).get(DELETED_KEY)) if item is not None]
     return sorted(items, key=lambda item: item['updated_at'], reverse=True)

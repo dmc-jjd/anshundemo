@@ -33,7 +33,8 @@ def _load_local_env() -> None:
                         'REPORT_MODEL_MAX_TOKENS',
                         'REPORT_SEARCH_URL', 'REPORT_SEARCH_KEY',
                         'REPORT_DEMO_DATA', 'REPORT_MAX_TOOL_CALLS',
-                        'REPORT_MAX_PLANNING_CALLS'}:
+                        'REPORT_MAX_PLANNING_CALLS',
+                        'REPORT_PACKAGE'}:
             continue
         value = value.strip()
         if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):

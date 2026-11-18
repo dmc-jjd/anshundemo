@@ -102,3 +102,56 @@ features:
     enabled: true
   top10:
     enabled: true
+
+# 无模型保底计划与建任务事件范围：从基座硬编码迁入本包，步骤顺序和产物名保持原样。
+fallback:
+  version: anshun-colored-fallback-v1
+  steps:
+    - import_records
+    - calculate_metrics
+    - filter_positive_scope
+    - filter_neutral_scope
+    - filter_records
+    - filter_warning_scope
+    - filter_union_scope
+    - resolve_locality
+    - group_events
+    - classify_records
+    - cluster_event_themes
+    - discover_topics
+    - select_materials
+  goal_by_step:
+    calculate_metrics: [B17_sentiment_peak, B26_platform]
+    filter_positive_scope: [positive_record_scope]
+    filter_neutral_scope: [neutral_record_scope]
+    filter_records: [negative_record_scope]
+    filter_warning_scope: [warning_record_scope]
+    filter_union_scope: [B30_categories_districts_top10]
+    group_events: [B30_event_groups]
+    cluster_event_themes: [B30_categories]
+    resolve_locality: [B30_districts]
+    select_materials: [B30_top10_candidates]
+event_scope:
+  default: negative_or_warning
+  confirmed: true
+  applies_to: first_section_four_categories_districts_top10
+  authority: user_confirmed_2026_11_06
+
+# 内置槽位/五色模板：从基座 BASELINE_TEMPLATE 迁入本包。仅本包模板库展示该条目。
+templates:
+  builtin:
+    - id: anshun-monthly-colored
+      engine: slot_template
+      name: 安顺月报 · 五色逐项占位模板
+      version: 1
+      status: candidate_requires_review
+      usable_for_final: false
+      reason: 8 月标色 Word 已取得，颜色疑点与占位符口径待人工确认
+      manifest_url: /api/template-manifest
+
+# 版式文件仍放在宿主 templates/anshun_monthly/，此处只声明文件名与下载名，不搬迁 docx。
+layout:
+  docx: template-with-placeholders.docx
+  manifest: report.template.json
+  source_docx: source-2026-08.docx
+  download_name: 安顺月报五色占位模板.docx

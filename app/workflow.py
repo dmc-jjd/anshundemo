@@ -33,10 +33,11 @@ def _record_agent_scope(store,task_id,graph,agents):
 
 #: 模板级开关 → 客户包 `features` 键（同一条语义，两个作用域：模板 / 客户包）。
 #: 两层是**相与**：包级关 = 这个客户永远不做，模板级再怎么开都当作关（`_template_features`）。
-#: 四个键都已在 `core/tools/registry.py:FEATURE_TOOLS` 登记，`resolve_tools` 认识它们；
+#: 五个键与 `core/tools/registry.py:FEATURE_TOOLS` 同一键集；`resolve_tools` 认识它们。
 #: `first_warning` 登记的是空组——预警只是 `filter_records` 的共用 scope，没有专属工具。
+#: `locality` 控制 `resolve_locality`：未写入 switches 时 resolve_tools 不会扣除该工具。
 _FEATURE_SWITCHES={'dedup':'dedup','classification':'event_classification',
-                   'first_warning':'first_warning','top10':'top10'}
+                   'first_warning':'first_warning','top10':'top10','locality':'locality'}
 #: 规划器不可见的工具（两轮事件候选由本地保底链路负责，从来不给模型）。
 _PLANNER_HIDDEN=('propose_keyword_event_candidates','propose_vector_event_neighbors')
 #: 数据处理节点（`data_processor`）允许规划器点名的工具集。
@@ -48,18 +49,15 @@ _TOP10_TOOLS=('select_materials',)
 def _package_feature_switches():
     """客户包级开关：`manifest.features.<键>.enabled` → {模板开关名: bool}。
 
-    未声明 = 开（老包不写 `first_warning` / `top10`，行为与改造前逐字一致）；
-    只有显式 `enabled: false` 才是关。读清单失败也按全开处理：坏清单该在启动期被
-    `load_manifest` 拒绝，不能在这里静默把客户流程关掉。不缓存——清单很小，而缓存会把
+    未声明 = 关。新包必须把五个开关写全，避免静默回落成安顺全开。
+    只有显式 `enabled: true` 才是开。读清单失败不得默默全开（坏清单应在启动期
+    被 `load_manifest` 拒绝，这里不再用全开掩盖）。不缓存——清单很小，而缓存会把
     「改配置要重启」变成一条隐性契约。
     """
-    try:
-        from core import paths
-        from core.manifest import load_manifest
-        declared=load_manifest(paths.package_dir()).features
-    except Exception:
-        return {name:True for name in _FEATURE_SWITCHES}
-    return {name:(declared.get(key) or {}).get('enabled') is not False
+    from core import paths
+    from core.manifest import load_manifest
+    declared=load_manifest(paths.package_dir()).features
+    return {name:(declared.get(key) or {}).get('enabled') is True
             for name,key in _FEATURE_SWITCHES.items()}
 
 
@@ -103,7 +101,7 @@ def _template_features(store,state):
     - 客户包级：`manifest.features.<键>.enabled`。客户级是**硬约束**：这个客户永远不做
       TOP10，就该在包级关掉，此时模板级怎么写开着都不算数。
 
-    四个开关的全部下游消费者都读这个函数：工具白名单/保底步骤（`_processing_policy`、
+    五个开关的全部下游消费者都读这个函数：工具白名单/保底步骤（`_processing_policy`、
     `_disabled_steps`）、完成判据（`_needed_refs`）、冻结事实的口径（`freeze_facts`）。
 
     建报告任务时 `task_feature_snapshot` 已把 AND 结果冻进任务（`features_source` 标记），
@@ -117,7 +115,8 @@ def _template_features(store,state):
     if not isinstance(rules,dict) or 'features' not in rules:
         ref=state.template_ref
         rules={}
-        if ref and ref!='anshun-monthly-colored':
+        from .template_engine import is_slot_template
+        if ref and not is_slot_template(ref, getattr(state,'package',None)):
             try:
                 from .structured_template import load_confirmed_template
                 rules=load_confirmed_template(store,ref).get('rules') or {}
@@ -126,7 +125,7 @@ def _template_features(store,state):
     raw=raw if isinstance(raw,dict) else {}
     template={name:raw.get(name) is not False for name in _FEATURE_SWITCHES}
     package=_package_feature_switches()
-    return {name:template[name] and package[name] for name in _FEATURE_SWITCHES}
+    return {name:template[name] and package.get(name, False) for name in _FEATURE_SWITCHES}
 
 
 def _processing_policy(features):
@@ -176,6 +175,7 @@ def _disabled_steps(features):
     """被模板开关关掉的保底步骤名（`fallback_policy` 的步骤词表）。
 
     `top10` 关掉 → `select_materials`（TOP10 候选材料）整步不进计划；
+    `locality` 关掉 → `resolve_locality` 不进保底计划；
     `first_warning` 关掉没有专有步骤（预警范围是共用筛选面），只停「口径产物」，
     见 `freeze_facts` 里不再写 `first_section_warning_event_count`。
     """
@@ -183,6 +183,7 @@ def _disabled_steps(features):
     if not features['dedup']: off.add('group_events')
     if not features['classification']: off|={'classify_records','cluster_event_themes','discover_topics'}
     if not features['top10']: off|=set(_TOP10_TOOLS)
+    if not features['locality']: off.add('resolve_locality')
     return off
 
 def _graph_node(deps,name,action,graph_name):
@@ -387,9 +388,17 @@ def _item(kind,question,blocking=True,details=None):
     actions=['confirm','modify','merge','split','independent','exclude','defer'] if kind=='event_groups' else ['confirm','modify','defer']
     return {'id':uuid.uuid4().hex,'kind':kind,'question':question,'blocking':blocking,'details':details or {},'status':'open','allowed_actions':actions}
 
+def _sheet_index(state):
+    value=state.metadata.get('sheet_index')
+    if value is not None:
+        return int(value)
+    from core.tools import vocabulary
+    return vocabulary.sheet_index(getattr(state,'package',None))
+
 def _args_for(name,state):
+
     r=state.result_refs
-    if name=='import_records': return {'path':state.metadata['input_path'],'sheet_index':state.metadata.get('sheet_index',3)}
+    if name=='import_records': return {'path':state.metadata['input_path'],'sheet_index':_sheet_index(state)}
     if name=='calculate_metrics': return {'records_ref':r['import_records'],'negative_ref':r.get('filter_records')}
     if name=='filter_records': return {'records_ref':r['import_records'],'scope':'negative'}
     if name=='filter_positive_scope': return {'records_ref':r['import_records'],'scope':'positive'}
@@ -434,14 +443,16 @@ async def _process_records(deps:Dependencies,task_id:str):
             try:
                 import json
                 from core import paths
-                manifest=json.loads((paths.template_dir()/'report.template.json').read_text(encoding='utf-8'))
+                from core.layout import manifest_path
+                manifest=json.loads((manifest_path(getattr(state,'package',None) or None)).read_text(encoding='utf-8'))
                 slot_goals=[{'id':x['id'],'semantic':x['semantic'],'scope':x['scope'],'statistical_unit':x['statistical_unit'],'calculation':x['calculation'],'source_fields':x['source_fields_or_calculation'],'review_required':x['review_required']} for x in manifest['placeholders']]
-                if state.template_ref and state.template_ref!='anshun-monthly-colored':
+                from .template_engine import is_slot_template
+                if state.template_ref and not is_slot_template(state.template_ref, getattr(state,'package',None)):
                     from .structured_template import load_confirmed_template
                     definition=load_confirmed_template(store,state.template_ref)
                     slot_goals=[{'id':f['id'],'semantic':f['semantic'],'owner':f['owner'],'value_schema':f['value_schema'],'binding':f.get('binding')} for f in definition['fields']]
                     manifest={**manifest,'template_id':definition['id']}
-                decision=await invoke_agent('data_processor',{'template_id':manifest['template_id'],'slot_goals':slot_goals,'confirmed_scope_requirements':manifest['scope_requirements'],'input':{'path':state.metadata.get('input_path'),'sheet_index':state.metadata.get('sheet_index',3)},'template_rules':state.metadata.get('template_rules',{}),'results':state.result_refs,'tools':available,'instruction':get_prompt('data_processor.next_tool')},ToolDecision,ctx)
+                decision=await invoke_agent('data_processor',{'template_id':manifest['template_id'],'slot_goals':slot_goals,'confirmed_scope_requirements':manifest['scope_requirements'],'input':{'path':state.metadata.get('input_path'),'sheet_index':_sheet_index(state)},'template_rules':state.metadata.get('template_rules',{}),'results':state.result_refs,'tools':available,'instruction':get_prompt('data_processor.next_tool')},ToolDecision,ctx)
             except Exception as e:
                 store.append_event(task_id,{'type':'planning_error','error':type(e).__name__}); break
             if decision.action=='finish_processing':
@@ -460,7 +471,7 @@ async def _process_records(deps:Dependencies,task_id:str):
     needed=_needed_refs(features)
     if not needed<=state.result_refs.keys():
         reason='model_unavailable_or_no_progress' if state.metadata.get('mode')=='dynamic' else 'model_not_configured'
-        state.fallback=build_fallback_plan(state,reason)
+        state.fallback=build_fallback_plan(state,reason,features=features,allow=policy.allow,disabled=_disabled_steps(features))
         if state.metadata.get('event_scope')=='negative_warning' and 'filter_records:negative_warning' not in state.result_refs:
             state.fallback['steps'].insert(state.fallback['steps'].index('group_events'),'filter_negative_warning_scope')
         # 保底链路同样受模板开关约束：关掉的步骤根本不进计划，而不是进去撞白名单。
@@ -695,11 +706,14 @@ def make_preview(deps:Dependencies,task_id:str,slot_values:dict|None=None):
 async def _write_draft(deps:Dependencies,task_id:str):
     store=deps.store; state=store.get_task(task_id)
     if not state.fact_ref: raise ValueError('data_review_required')
-    if state.template_ref and state.template_ref!='anshun-monthly-colored':
+    from .template_engine import is_slot_template
+    if state.template_ref and not is_slot_template(state.template_ref, getattr(state,'package',None)):
         from .structured_writer import write_structured_preview
         return await write_structured_preview(deps,task_id)
     ctx=RunContext(store,task_id)
-    chart_inputs={'sentiment':{},'daily':{},'platform':{},'theme':{'cluster_ref':state.result_refs.get('confirmed_theme_groups')},'locality':{'locality_ref':state.result_refs.get('resolve_locality')}}
+    from core.charts.spec import declared_charts
+    extras={'theme':{'cluster_ref':state.result_refs.get('confirmed_theme_groups')},'locality':{'locality_ref':state.result_refs.get('resolve_locality')}}
+    chart_inputs={item['id']:extras.get(item['id'],{}) for item in declared_charts(package=getattr(state,'package',None))}
     for chart_type,extra in chart_inputs.items():
         state=store.get_task(task_id)
         prior=state.result_refs.get('render_chart:'+chart_type)

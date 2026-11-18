@@ -8,7 +8,8 @@
 错误语义（M2 的关键：坏包绝不回落默认包）：
     - 未声明的包名       → 404 `package_not_found:<包>`
     - 在册但不可用       → 422 `package_unavailable:<包>:<原因>`
-    - 空                 → 部署默认包（`REPORT_PACKAGE`）
+    - 空                 → 部署默认包（必须已设置 `REPORT_PACKAGE`）
+    - 空且未设置默认包   → 400 `package_not_specified`
     绝不「坏包就悄悄用默认包跑」——那会让操作员以为任务建成功了，产物却属于另一个客户。
 
 `GET /api/packages` 的 `usable:false` 条目**仍在列表里**：注册表要能描述坏包，
@@ -36,7 +37,12 @@ def resolve_package(name: str = '') -> str:
     """校验目标包并返回包名；空 = 部署默认包。坏包/未知包明确拒绝（不静默回落）。"""
     from core.packages import context as package_context
 
-    target = str(name or '').strip() or package_context.default_package()
+    target = str(name or '').strip()
+    if not target:
+        try:
+            target = package_context.default_package()
+        except package_context.PackageNotSpecified as exc:
+            raise HTTPException(400, 'package_not_specified') from exc
     entry = next((item for item in catalog() if item['package'] == target), None)
     if entry is None:
         raise HTTPException(404, f'package_not_found:{target}')
@@ -89,16 +95,14 @@ def artifact_file(store, ref: str, suffix: str = '.docx') -> Path:
 
 
 def resolve_files(store, ids: list[str], package: str = '', default=None) -> list[str]:
-    """上传文件 id → 路径：先在目标包 uploads 找，再回落默认包 uploads。
+    """上传文件 id → 路径：只在目标包 uploads 查找。
 
-    回落默认包只针对**文件查找**（旧上传仍在默认包，不能因为换包就 404），
-    与「坏包不回落」是两件事：包本身必须可用，才走到这里。
+    非默认包不得借用默认包 uploads 里的文件；默认包自身仍可用宿主注入的 default 目录。
     """
     folder = uploads_for(store, package, default)
-    fallback = Path(default) if default is not None else uploads_for(store)
     found_paths: list[str] = []
     for fid in ids:
-        found = sorted(Path(folder).glob(f'{fid}.*')) or sorted(fallback.glob(f'{fid}.*'))
+        found = sorted(Path(folder).glob(f'{fid}.*'))
         if not found:
             raise HTTPException(404, f'file_not_found: {fid}')
         found_paths.append(str(found[0]))
@@ -115,5 +119,16 @@ def idempotent(store, key: str, value: str, package: str = '') -> str:
 
 @router.get('/api/packages')
 def packages() -> list[dict]:
-    """客户包注册表：`[{package,name,report_type,version,usable,status,error}]`。"""
-    return catalog()
+    """客户包注册表：附带部署默认标记，供工作台选择，而不再静默取排序第一项。"""
+    from core.packages import context as package_context
+
+    try:
+        default = package_context.default_package()
+    except package_context.PackageNotSpecified:
+        default = None
+    items = []
+    for item in catalog():
+        entry = dict(item)
+        entry['default'] = bool(default) and item.get('package') == default
+        items.append(entry)
+    return items

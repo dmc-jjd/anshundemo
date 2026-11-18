@@ -101,10 +101,12 @@ def test_exhausted_format_repair_budget_does_not_consume_content_budget(tmp_path
     assert any(i['status']=='open' and i['reviewer']=='format_reviewer' for i in state.review_items)
 
 
-def test_overlength_analysis_patch_does_not_discard_other_valid_field(tmp_path):
+def test_overlength_analysis_patch_does_not_discard_other_valid_field(tmp_path, monkeypatch):
     from app.reviewers import begin_run,revise_draft
+    from core import section_policy
     store,template,state=seeded(tmp_path);template=copy.deepcopy(template)
     next(f for f in template['fields'] if f['id']=='w1')['display_name']='研判分析'
+    monkeypatch.setattr(section_policy, 'load', lambda package=None: {'field_roles': {'w1': 'analysis'}, 'analysis_length': {'min_chars': 300, 'max_chars': 500}})
     state.template_ref=store.put_artifact('r','template',template);store.put_task(state,state.revision)
     values=store.get_artifact(state.draft_ref)['slot_values'];values['w1']['value']='若隐患没有及时化解，相关风险可能进一步扩大。'*17
     state=save_draft(store,state,template,values,{state.fact_ref,'human_edit'},{},[]);begin_run(store,'r',True)

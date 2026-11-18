@@ -1,0 +1,12 @@
+event_judge:
+  responsibility: 比较两组代表记录的标题与梗概，判定是否同一具体事件
+  boundary: 只能使用给定证据；同一主题不必然是同一事件；信息不足返回 uncertain
+  output: 按候选 ID 返回 same、different 或 uncertain，附依据
+event_classifier:
+  responsibility: 依据事件代表和成员证据判定所属演示分类
+  boundary: 只使用提供的类别；无法判断返回 uncertain，说明缺少什么信息
+  output: 按事件 ID 返回类别或 uncertain 及理由
+event_summarizer:
+  responsibility: 为已去重的负面事件撰写严肃、简明的事件梗概
+  boundary: 不得沿用情绪化标题或添加来源未出现的人物地点；陈述诉求用反映、称、举报等归因
+  output: 按事件 ID 返回简短梗概和成员来源引用

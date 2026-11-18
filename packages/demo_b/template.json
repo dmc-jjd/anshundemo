@@ -10,7 +10,30 @@
       "事件分类": "category", "媒体环节": "platform", "媒体级别": "media_level",
       "舆情调性": "sentiment", "是否预警": "warning", "摘要": "summary"
     },
-    "dedup": { "threshold": 0.65, "candidate_floor_ratio": 0.6 }
+    "dedup": { "threshold": 0.65, "candidate_floor_ratio": 0.6 },
+    "sentiment": {
+      "field": "sentiment",
+      "values": ["正面", "中性", "负面"],
+      "scopes": {
+        "negative": {"contains": ["负"]},
+        "positive": {"values": ["正面"]},
+        "neutral": {"values": ["中性"]}
+      }
+    },
+    "warning": {
+      "field": "warning",
+      "truth": ["是", "已预警", "1", "true", "TRUE", "预警"],
+      "scopes": {
+        "warning": {"warning_truth": true, "require_truth_present": true},
+        "negative_warning": {
+          "all": [{"warning_truth": true}, {"contains": ["负"]}],
+          "require_truth_present": true
+        },
+        "negative_or_warning": {
+          "any": [{"contains": ["负"]}, {"warning_truth": true}]
+        }
+      }
+    }
   },
   "vocabulary": {
     "localities": {

@@ -263,11 +263,20 @@ class PackageLoad:
         required, features = manifest.required_capabilities, manifest.features
         if not (required or features):
             return policy
-        from core.tools.registry import resolve_tools
+        from core.tools.registry import FEATURE_TOOLS, resolve_tools
 
-        narrowed = resolve_tools(required, features)
-        base = set(policy.allow) if policy.allow else narrowed
-        return ToolPolicy(allow=frozenset(base & narrowed),
+        if required:
+            narrowed = resolve_tools(required, features)
+            base = set(policy.allow) if policy.allow else narrowed
+            allow = base & narrowed
+        else:
+            # 未声明 require = 不按产物剪枝，沿用 tools.allow；只按 features 做减法。
+            allow = set(policy.allow)
+            for feature, tools in FEATURE_TOOLS.items():
+                config = (features or {}).get(feature)
+                if config is not None and config.get('enabled') is False:
+                    allow -= set(tools)
+        return ToolPolicy(allow=frozenset(allow),
                           phases=policy.phases, budgets=policy.budgets)
 
 
@@ -342,8 +351,12 @@ def catalog() -> tuple[dict, ...]:
             manifest = loaded.manifest
             loaded.template
             loaded.prompt_bundle       # prompts/index.yaml + roles + 角色校验
+            template = loaded.template
+            contract = template.get('data_contract') or {}
             entry.update(name=manifest.report_type, report_type=manifest.report_type,
                          version=manifest.version, usable=True, status='ok')
+            if 'sheet_index' in contract:
+                entry['sheet_index'] = int(contract['sheet_index'])
         except Exception as exc:       # noqa: BLE001  注册表要能描述任何坏包
             entry['error'] = f'{type(exc).__name__}: {exc}'
         entries.append(entry)

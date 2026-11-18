@@ -72,7 +72,7 @@
 <section id="template" class="tab">
   <div class="head">
     <h1>模板确认</h1>
-    <div class="head-actions"><a class="btn ghost sm" href="/api/template-manifest" target="_blank" rel="noopener">全部占位符与待审项</a></div>
+    <div class="head-actions"><a class="btn ghost sm" id="templateManifestLink" href="/api/template-manifest" target="_blank" rel="noopener">全部占位符与待审项</a></div>
   </div>
   <section id="templateDetail" class="template-detail" aria-label="模板详情" hidden></section>
   <div class="split">
@@ -120,7 +120,7 @@
     <label>报告月份<input type="month" id="reportMonth" value="2026-10"></label>
     <label>报告期号<input type="number" id="reportIssue" min="1" placeholder="本期实际期号"></label>
     <label>成文日期<input type="date" id="reportDate"></label>
-    <label>明细工作表序号<input type="number" id="sheetIndex" value="3" min="1"></label>
+    <label>明细工作表序号<input type="number" id="sheetIndex" min="1"></label>
     <p id="parameterSuggestion" class="help full" role="status"></p>
     <div class="full"><button class="primary" id="startReport" type="button">上传并开始处理</button></div>
     <div id="reportMsg" class="message full"></div>

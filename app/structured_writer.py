@@ -12,7 +12,7 @@ from .tool_executor import RunContext,execute_tool
 from .schemas import DraftVersion,ToolCall
 from .frozen_report import FrozenReport,Calculation,CALCULATION_CATALOG,query_materials
 from .writer_tools import native_tools,CHARTS,HANDLERS
-from .section_two import AnalysisPlan,OutlookItem,OutlookItemValidationError,role as second_role,policy_for,render_analysis,render_outlook_item,POLICY_VERSION
+from .section_two import AnalysisPlan,OutlookItem,OutlookItemValidationError,role as second_role,policy_for,render_analysis,render_outlook_item,analysis_length_limits,POLICY_VERSION
 from core import section_policy as _section_policy
 from .source_binding import SourceCatalog,NumberedAnswers,NumberedOutlookRepairAnswers,SourceBindingError,invoke_numbered_writer
 
@@ -146,13 +146,18 @@ async def write_structured_preview(deps,task_id,agents=None):
     # 声明式调度：历史调研由角色声明决定，不再靠"模板里有没有 outlook 字段"猜。
     agents=frozenset(resolve_enabled_agents() if agents is None else agents)
     template=load_confirmed_template(store,state.template_ref);fields={f['id']:f for f in template['fields']}
-    package=None
-    if hasattr(store,'package_of'):
+    package=getattr(state,'package',None)
+    if isinstance(package,str):package=package.strip() or None
+    if not package and hasattr(store,'package_of'):
         try:package=store.package_of(task_id)
         except Exception:package=None
-    if not package and callable(getattr(store,'package',None)):
-        try:package=store.package()
-        except Exception:package=None
+    if not package:
+        raw=getattr(store,'package',None)
+        if callable(raw):
+            try:package=raw()
+            except Exception:package=None
+        elif isinstance(raw,str):
+            package=raw
     if isinstance(package,str):package=package.strip() or None
     section_cfg=_section_policy.load(package)
     outlook_group=list(_section_policy.outlook_field_ids(section_cfg))
@@ -270,7 +275,16 @@ async def write_structured_preview(deps,task_id,agents=None):
         subset={**template['writer_schema'],'properties':{key:template['writer_schema']['properties'][key] for key in ids}}
         subset=copy.deepcopy(subset)
         subset.pop('required',None)
-        if 'b40_analysis_paragraph' in ids:subset['properties']['b40_analysis_paragraph']['properties']['value'].update(minLength=300,maxLength=500)
+        from .section_two import analysis_length_limits
+        for key in ids:
+            minimum,maximum=analysis_length_limits(package, fields.get(key))
+            if minimum is None and maximum is None:
+                continue
+            value_schema=subset['properties'][key].get('properties',{}).get('value')
+            if not isinstance(value_schema, dict):
+                continue
+            if minimum is not None: value_schema['minLength']=minimum
+            if maximum is not None: value_schema['maxLength']=maximum
         payload={'instruction':get_prompt('writer.general',profile),'prompt_profile':profile,
             'output_values_schema':subset,'template_parts':block['parts'],'template_rules':template.get('rules',{}),
             'report_context':report.summary(),'fields':[compact_field(fields[key]) for key in ids],
@@ -290,7 +304,11 @@ async def write_structured_preview(deps,task_id,agents=None):
                 item_schema['required']=list(dict.fromkeys(item_schema.get('required',[])+['paragraph']))
             else:
                 plan_schema=response_schema['$defs']['NumberedAnalysis']
-                plan_schema['properties']['paragraph']={'type':'string','minLength':300,'maxLength':500}
+                paragraph_schema={'type':'string'}
+                minimum,maximum=analysis_length_limits(package, fields[ids[0]])
+                if minimum is not None:paragraph_schema['minLength']=minimum
+                if maximum is not None:paragraph_schema['maxLength']=maximum
+                plan_schema['properties']['paragraph']=paragraph_schema
                 plan_schema['required']=list(dict.fromkeys(plan_schema.get('required',[])+['paragraph']))
             payload['instruction']=get_prompt('writer.analysis',profile) if section_role=='analysis' else get_prompt('writer.outlook',profile)
             if section_role=='analysis':payload['instruction']+=get_prompt('writer.analysis_output',profile)
@@ -330,7 +348,7 @@ async def write_structured_preview(deps,task_id,agents=None):
                 if section_role=='analysis':
                     if not answer.analysis_plan:raise ValueError('必须提供两条有触发条件、升级路径、影响、信号与阻断措施的analysis_plan')
                     if not answer.analysis_plan.paragraph:raise ValueError('必须直接写analysis_plan.paragraph自然正文，chains仅供审计，不得依赖程序拼接成稿')
-                    text,refs=render_analysis(answer.analysis_plan,current_evidence_refs)
+                    text,refs=render_analysis(answer.analysis_plan,current_evidence_refs,package=package)
                     answer.values={ids[0]:{'value':text,'source_refs':refs}}
                 elif section_role=='outlook':
                     if not answer.outlook_items:raise ValueError('必须提供面向未来的outlook_items，不能改写本月TOP10')
@@ -389,7 +407,13 @@ async def write_structured_preview(deps,task_id,agents=None):
                 for key,value in answer.values.items():
                     try:
                         validate_values(template,{key:value},allowed,writer_only=True)
-                        if key=='b40_analysis_paragraph' and not 300<=len(value['value'])<=500:raise ValueError(f'当前{len(value["value"])}字；必须300至500字。重写为约380字，仅列3项关键数字、2个风险和3项简短建议。不要罗列所有统计。')
+                        if section_role=='analysis' and isinstance(value.get('value'),str):
+                            minimum,maximum=analysis_length_limits(package, fields.get(key))
+                            length=len(value['value'])
+                            if (minimum is not None and length<minimum) or (maximum is not None and length>maximum):
+                                lo=minimum if minimum is not None else ''
+                                hi=maximum if maximum is not None else ''
+                                raise ValueError(f'当前{length}字；必须{lo}至{hi}字。请按字段字数定义压缩或补全，保留关键事实与判断。')
                         values[key]=value
                         if section_role:
                             generated_policy[key]=policy_for(fields[key],package=package)
@@ -439,7 +463,10 @@ async def write_structured_preview(deps,task_id,agents=None):
                 if preview:
                     from jsonschema import Draft202012Validator
                     if not Draft202012Validator(fields[key]['value_schema']).is_valid(preview):preview=None
-                    if section_role=='analysis' and (not isinstance(preview,str) or len(preview)<300):preview=None
+                    if section_role=='analysis':
+                        from .section_two import analysis_length_limits as _analysis_length_limits
+                        minimum,_=_analysis_length_limits(package, fields.get(key) if key else None)
+                        if not isinstance(preview,str) or (minimum is not None and len(preview)<minimum):preview=None
                     if section_role=='outlook' and outlook_group and key in outlook_group:
                         if not isinstance(preview,str) or not 180<=len(preview)<=600:preview=None
                     elif section_role=='outlook' and (not isinstance(preview,list) or not outlook_low<=len(preview)<=outlook_high or any(not isinstance(text,str) or not 180<=len(text)<=600 for text in preview)):preview=None

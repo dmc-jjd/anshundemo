@@ -278,6 +278,16 @@ class Manifest:
     #: 非空 = 只有列出的角色参与，未列出角色驱动的流程步骤整段跳过。
     #: 角色 → 步骤的映射在 `core/agent_steps.py`，客户包只写角色 id。
     agents: tuple[str, ...] = ()
+    #: 无模型保底计划的可选覆盖：`version` / `steps` / `goal_by_step`。
+    #: 未声明时由基座按 tools.allow + features 生成，不回落某一客户的槽位名。
+    fallback: Mapping[str, Any] = field(default_factory=dict)
+    #: 建任务事件范围：`default` / `confirmed` / `applies_to` / `authority`。
+    #: 未声明时只写通用 `event_scope`，不写客户专属 applies_to / authority。
+    event_scope: Mapping[str, Any] = field(default_factory=dict)
+    #: 包内置模板目录（如槽位/五色引擎条目）。未声明则模板库不插入任何基线条目。
+    builtin_templates: tuple[Mapping[str, Any], ...] = ()
+    #: 版式文件名（docx / manifest / download_name）。目录仍按包解析，不回落别的包。
+    layout: Mapping[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> "Manifest":
@@ -315,6 +325,10 @@ class Manifest:
             required_capabilities=tuple(caps_cfg.get("require") or ()),
             features={str(k): dict(v or {}) for k, v in (data.get("features") or {}).items()},
             agents=agents,
+            fallback=dict(data.get("fallback") or {}),
+            event_scope=dict(data.get("event_scope") or {}),
+            builtin_templates=tuple(dict(item) for item in ((data.get("templates") or {}).get("builtin") or ())),
+            layout=dict(data.get("layout") or {}),
         )
 
 

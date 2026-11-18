@@ -4,6 +4,21 @@ import html,io,zipfile,re,base64,copy
 from pathlib import Path
 from core import paths
 
+def _package_of(draft=None,facts=None,store=None):
+    if facts and facts.get('package'): return facts.get('package')
+    if draft and draft.get('package'): return draft.get('package')
+    if store is not None and callable(getattr(store,'package',None)):
+        try: return store.package()
+        except Exception: pass
+    return None
+
+def _export_cfg(package=None):
+    try:
+        from core.packages import load_package
+        return dict((load_package(package).template or {}).get('export') or {})
+    except Exception:
+        return {}
+
 def template_values(draft,facts,issues=None,store=None):
     """模板 99 个占位符的「计算结果」字典——从 `_source_template_draft` 原样抽出。
 
@@ -22,21 +37,40 @@ def template_values(draft,facts,issues=None,store=None):
     month=facts.get('report_month') or '2026-10'
     try: year,m=month.split('-'); m=int(m)
     except Exception: year,m='2026',10
-    values={'B5_COVER':f'{year}年第{m}期','B12_COVER':f'安顺市{year}年{m}月网络舆情分析报告','B17_RED_01':f'{total/10000:.2f}','B17_RED_02':str(sentiment.get('正面',0)),'B17_RED_03':pct(sentiment.get('正面',0)),'B17_RED_04':str(sentiment.get('中性',0)),'B17_RED_05':pct(sentiment.get('中性',0)),'B17_RED_06':str(sentiment.get('负面',0)),'B17_RED_07':pct(sentiment.get('负面',0))+'%','B26_RED_01':str(m),'B29_RED_01':str(m)}
-    platforms=['移动客户端','网站','微信公众号','视频','微博','纸媒','电视','互动栏目']
-    values['B26_MAGENTA_02']='、'.join(platforms[:-1])+'、互动栏目平台'
-    for index,label in enumerate(platforms):
-        start=3+index*3 if index<7 else 26
-        values[f'B26_MAGENTA_{start:02}']=label
-        count_slot=start+1 if index<7 else 22
-        percent_slot=start+2 if index<7 else 23
-        values[f'B26_RED_{count_slot:02}']=str(metrics['platform'].get(label,0))
-        values[f'B26_RED_{percent_slot:02}']=pct(metrics['platform'].get(label,0))+('%' if index==7 else '')
+    package=_package_of(draft,facts,store)
+    cfg=_export_cfg(package)
+    values={}
+    if not cfg:
+        for slot_id,answer in draft.get('slot_values',{}).items():
+            if isinstance(answer,dict) and answer.get('source_refs') and isinstance(answer.get('value'),str):
+                values[slot_id]=answer['value']
+        return values
+    values={'B17_RED_01':f'{total/10000:.2f}','B17_RED_02':str(sentiment.get('正面',0)),'B17_RED_03':pct(sentiment.get('正面',0)),'B17_RED_04':str(sentiment.get('中性',0)),'B17_RED_05':pct(sentiment.get('中性',0)),'B17_RED_06':str(sentiment.get('负面',0)),'B17_RED_07':pct(sentiment.get('负面',0))+'%','B26_RED_01':str(m),'B29_RED_01':str(m)}
+    cover=cfg.get('cover') or {}
+    if cover.get('issue_slot'):
+        values[cover['issue_slot']]=str(cover.get('issue') or '{year}年第{m}期').format(year=year,m=m)
+    if cover.get('title_slot'):
+        values[cover['title_slot']]=str(cover.get('title') or '').format(year=year,m=m)
+    platform_slots=list(cfg.get('platform_slots') or ())
+    if platform_slots:
+        names=[item['name'] for item in platform_slots]
+        suffix=cfg.get('platform_list_suffix')
+        if cfg.get('platform_list_slot'):
+            values[cfg['platform_list_slot']]='、'.join(names[:-1])+ (suffix if suffix is not None else ('、'+names[-1] if names else ''))
+        for item in platform_slots:
+            label=item['name']
+            if item.get('label_slot'): values[item['label_slot']]=label
+            if item.get('count_slot'): values[item['count_slot']]=str(metrics['platform'].get(label,0))
+            if item.get('percent_slot'): values[item['percent_slot']]=pct(metrics['platform'].get(label,0))+str(item.get('percent_suffix') or '')
     dedup_path=facts.get('deduplicated_path')
     if dedup_path:
         from collections import Counter
         from .ooxml import read_xlsx
-        workbook=read_xlsx(Path(dedup_path),sheet_index=int(facts.get('deduplicated_sheet_index',3)))
+        sheet=facts.get('deduplicated_sheet_index', facts.get('sheet_index'))
+        if sheet is None:
+            from core.tools import vocabulary
+            sheet=vocabulary.sheet_index(facts.get('package'))
+        workbook=read_xlsx(Path(dedup_path),sheet_index=int(sheet))
         header=workbook['rows'][0]['cells']
         required=('区县','事件分类')
         if not all(name in header for name in required): raise ValueError('deduplicated_source_missing_columns')
@@ -51,8 +85,8 @@ def template_values(draft,facts,issues=None,store=None):
             values['B30_RED_04']=f'{count/n*100:.2f}'
             values['B17_YELLOW_12']='、'.join(name for name,_ in categories.most_common(6))
         localities=Counter(r['cells'][header.index('区县')] for r in rows)
-        locality_slots=[('市区',7),('西秀区',9),('黄果树旅游区',11),('关岭县',13),('平坝区',15),('紫云县',17),('普定县',19),('镇宁县',21),('安顺经开区',23)]
-        for label,index in locality_slots:
+        for item in (cfg.get('localities') or ()):
+            label,index=item['name'],int(item['index'])
             count=localities.get(label,0)
             values[f'B30_RED_{index:02}']=str(count)
             values[f'B30_RED_{index+1:02}']=f'{count/n*100:.2f}' if n else '缺失'
@@ -74,9 +108,12 @@ def _source_template_draft(draft,facts,issues,overrides=None):
     from lxml import etree as ET
     from .config import DATA
     from .storage import Store
-    path=paths.template_dir()/'template-with-placeholders.docx'
+    package=_package_of(draft,facts,None)
+    from core.layout import docx_path
+    try: path=docx_path(package)
+    except RuntimeError: return None
     if not path.exists(): return None
-    values=template_values(draft,facts,issues)
+    values=template_values(draft,{**facts,'package':package} if package else facts,issues)
     if not values: return None
     if overrides:
         # 人工覆盖优先于计算结果：终稿以人工研判提交值为准（见 app/final_document.py）。
@@ -91,10 +128,13 @@ def _source_template_draft(draft,facts,issues,overrides=None):
         for t in root.xpath('//w:t',namespaces=ns):
             if t.text:
                 for key,value in values.items(): t.text=t.text.replace('{{'+key+'}}',value)
-        chart_names=['sentiment','daily','platform','theme','locality']
+        from core.charts.spec import declared_charts
+        from core.layout import source_docx_path
+        chart_names=[item['id'] for item in declared_charts(package=package)]
         original=ET.fromstring(zin.read('word/document.xml'))
-        # The template carries no old drawing, so use the supplied source's five drawing geometries.
-        with zipfile.ZipFile(paths.template_dir()/'source-2026-08.docx') as source_zip:
+        source_path=source_docx_path(package)
+        if source_path is None or not source_path.exists(): return None
+        with zipfile.ZipFile(source_path) as source_zip:
             source_root=ET.fromstring(source_zip.read('word/document.xml'))
         old_drawings=source_root.xpath('//w:drawing',namespaces=ns)
         rel_path='word/_rels/document.xml.rels'
@@ -182,7 +222,9 @@ def export_docx(draft:dict,facts:dict,template:dict|None,mode:str,issues:list[di
     if mode=='draft':
         source=_source_template_draft(draft,facts,issues,overrides)
         if source is not None: return source
-    parts=[_p('安顺月报工作台结构演示稿','Title'),_p('报告状态：'+('终稿' if mode=='final' else '草稿')),_p('正式事实引用：'+draft['fact_ref'])]
+    package=_package_of(draft,facts,local_store)
+    demo_title=(_export_cfg(package).get('demo_title') or '结构演示稿')
+    parts=[_p(demo_title,'Title'),_p('报告状态：'+('终稿' if mode=='final' else '草稿')),_p('正式事实引用：'+draft['fact_ref'])]
     for section in draft['sections']:
         parts.extend([_p(section['heading'],'Heading1'),_p(section['text'])])
     parts.append(_p('来源与处理结果','Heading1'))

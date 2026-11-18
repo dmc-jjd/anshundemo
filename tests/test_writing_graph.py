@@ -187,7 +187,16 @@ def test_invalid_format_repairs_also_forward_to_content_after_limit(tmp_path):
     assert state.metadata['review_report']['reviewers']['content_reviewer']['model_called'] is True
     assert not review_ready(state,store.get_artifact(state.draft_ref)['content_hash'])
 
-def test_review_repairs_cannot_exceed_analysis_length_even_with_loose_template(tmp_path):
+def test_review_repairs_cannot_exceed_analysis_length_even_with_loose_template(tmp_path, monkeypatch):
+    from core import section_policy
+    original_load=section_policy.load
+    def load_with_analysis_field(package=None):
+        cfg=dict(original_load(package) or {})
+        roles=dict(cfg.get('field_roles') or {})
+        roles['w1']='analysis'
+        cfg['field_roles']=roles
+        return cfg
+    monkeypatch.setattr(section_policy, 'load', load_with_analysis_field)
     store,template,state=seeded(tmp_path)
     template=copy.deepcopy(template);next(f for f in template['fields'] if f['id']=='w1')['display_name']='研判分析'
     state.template_ref=store.put_artifact('r','template',template);store.put_task(state,state.revision)

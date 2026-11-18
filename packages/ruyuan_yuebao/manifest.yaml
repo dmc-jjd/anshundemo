@@ -18,7 +18,6 @@ tools:
   allow:
     - import_records
     - filter_records
-    - resolve_locality
     - propose_keyword_event_candidates
     - propose_vector_event_neighbors
     - group_events
@@ -50,7 +49,7 @@ skills:
   use: [lieflat-less-ai-tone, source-binding]
 
 capabilities:
-  require: [records, metrics, locality, charts, events, documents]
+  require: [records, metrics, charts, events, documents]
 
 features:
   locality:

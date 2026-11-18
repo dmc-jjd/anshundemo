@@ -29,7 +29,11 @@ def _data_fields(package=None):
 
 
 def import_records(args,ctx):
-    path=Path(args['path']); sheet=int(args.get('sheet_index',3))
+    path=Path(args['path'])
+    if args.get('sheet_index') is None:
+        sheet=vocabulary.sheet_index(getattr(ctx,'package',None))
+    else:
+        sheet=int(args['sheet_index'])
     required_columns, column_map, summary_columns = _data_fields(getattr(ctx,'package',None))
     book=read_xlsx(path,sheet_index=sheet)
     rows=book['rows']; header=rows[0]['cells']
@@ -40,7 +44,8 @@ def import_records(args,ctx):
         cells=row['cells']; data={key:(cells[i] if i<len(cells) else '') for i,key in enumerate(header)}
         if not any(data.values()): continue
         rid=f'{file_hash[:12]}:{book["sheet"]}:{row["excel_row"]}'
-        published=data.get('发布时间','')
+        published_column=next((column for column,field in column_map.items() if field=='published'),None)
+        published=data.get(published_column,'') if published_column else ''
         if re.fullmatch(r'\d+(?:\.\d+)?',published):
             try:published=(datetime(1899,12,30)+timedelta(days=float(published))).isoformat(timespec='minutes')
             except (ValueError,OverflowError):pass
@@ -61,20 +66,69 @@ def import_records(args,ctx):
     ref=ctx.store.put_artifact(ctx.task_id,'records',{'records':records,'file_hash':file_hash,'header':header,'sheet':book['sheet'],'normalization':NORMALIZATION_VERSION})
     return ToolResult(status='ok',data_ref=ref,method=f'OOXML sheet {sheet}; every nonempty source row retained',warnings=[f'{len(records)} source rows'])
 
+def _clause_matches(record, clause, contract):
+    if not clause:
+        return False
+    if isinstance(clause, str):
+        return _scope_matches(record, clause, contract)
+    sentiment_cfg = contract.get('sentiment') or {}
+    warning_cfg = contract.get('warning') or {}
+    field = sentiment_cfg.get('field') or 'sentiment'
+    warning_field = warning_cfg.get('field') or 'warning'
+    text = str(record.get(field) or '')
+    warning_value = str(record.get(warning_field) or '').strip()
+    truth = {str(item).strip() for item in (warning_cfg.get('truth') or ())}
+    parts = []
+    if 'contains' in clause:
+        parts.append(any(token in text for token in clause.get('contains') or ()))
+    if 'values' in clause:
+        parts.append(text in {str(item) for item in clause.get('values') or ()})
+    if clause.get('warning_truth'):
+        parts.append(warning_value in truth)
+    if 'any' in clause:
+        parts.append(any(_clause_matches(record, item, contract) for item in clause.get('any') or ()))
+    if 'all' in clause:
+        parts.append(all(_clause_matches(record, item, contract) for item in clause.get('all') or ()))
+    return any(parts) if parts else False
+
+
+def _scope_spec(scope, contract):
+    sentiment_cfg = contract.get('sentiment') or {}
+    warning_cfg = contract.get('warning') or {}
+    scopes = {}
+    scopes.update(sentiment_cfg.get('scopes') or {})
+    scopes.update(warning_cfg.get('scopes') or {})
+    return scopes.get(scope)
+
+
+def _scope_matches(record, scope, contract):
+    spec = _scope_spec(scope, contract)
+    if spec is None:
+        raise ValueError('unknown_scope')
+    return _clause_matches(record, spec, contract)
+
+
+def _truth_present(records, contract):
+    warning_cfg = contract.get('warning') or {}
+    field = warning_cfg.get('field') or 'warning'
+    truth = {str(item).strip() for item in (warning_cfg.get('truth') or ())}
+    return any(str(record.get(field) or '').strip() in truth for record in records)
+
+
 def filter_records(args,ctx):
     records=records_of(ctx,args['records_ref']); scope=args.get('scope','negative')
-    if scope=='negative': selected=[r for r in records if '负' in r.get('sentiment','')]
-    elif scope=='positive': selected=[r for r in records if r.get('sentiment')=='正面']
-    elif scope=='neutral': selected=[r for r in records if r.get('sentiment')=='中性']
-    elif scope in ('warning','negative_warning','negative_or_warning'):
-        vals={str(r.get('warning','')).strip() for r in records}
-        if scope!='negative_or_warning' and not any(v in ('是','已预警','1','true','TRUE','预警') for v in vals):
-            return ToolResult(status='needs_review',method='warning field examined',unresolved=[{'kind':'warning_rule','question':'预警字段没有可确认的真值规则','values':sorted(vals)[:20]}])
-        truth=('是','已预警','1','true','TRUE','预警')
-        if scope=='negative_or_warning': selected=[r for r in records if '负' in r.get('sentiment','') or str(r.get('warning','')).strip() in truth]
-        else: selected=[r for r in records if str(r.get('warning','')).strip() in truth and (scope=='warning' or '负' in r.get('sentiment',''))]
-    elif scope=='media': selected=[r for r in records if r.get('media_level')==args.get('media_level')]
-    else: raise ValueError('unknown_scope')
+    if scope=='media':
+        selected=[r for r in records if r.get('media_level')==args.get('media_level')]
+    else:
+        contract=vocabulary.filter_contract(getattr(ctx,'package',None))
+        spec=_scope_spec(scope, contract)
+        if spec is None:
+            raise ValueError('unknown_scope')
+        if isinstance(spec, dict) and spec.get('require_truth_present'):
+            vals={str(r.get((contract.get('warning') or {}).get('field') or 'warning','')).strip() for r in records}
+            if not _truth_present(records, contract):
+                return ToolResult(status='needs_review',method='warning field examined',unresolved=[{'kind':'warning_rule','question':'预警字段没有可确认的真值规则','values':sorted(vals)[:20]}])
+        selected=[r for r in records if _scope_matches(r, scope, contract)]
     ref=ctx.store.put_artifact(ctx.task_id,'records',{'records':selected,'scope':scope,'parent_ref':args['records_ref']})
     return ToolResult(status='ok',data_ref=ref,method=f'exact field filter: {scope}',warnings=[f'{len(selected)} selected of {len(records)}'])
 

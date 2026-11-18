@@ -10,11 +10,10 @@ from core.prompts import registry as prompt_registry
 # 旧单根布局未迁移时 `core.paths.data_root()` 会按默认包回落旧根并 warning 一次。
 paths.configure_data_root(DATA_BASE)
 paths.configure_package_dir(PACKAGE_DIR)
-# 客户模板目录（占位符清单 + 带占位符的 docx）按客户包隔离：目录名 = 包名，即
-# `templates/<PACKAGE>/`。基座侧 `core/slot_writer.py` 只认 `paths.template_dir()`，
-# 不认目录名；换包只改 `REPORT_PACKAGE`。目录存在性由 `template_dir()` 在**取用时**校验
-# （缺失 → `template_dir_missing:<包>`，不静默回退），import 期不访问模板目录。
-paths.configure_template_dir(ROOT / 'templates' / PACKAGE)
+# 客户模板目录按包名解析（packages/<包>/templates/ 或 templates/<包>/）。
+# 不再在启动期 configure_template_dir 绑到默认包（那会在主线程把安顺目录做成全局覆盖，
+# 且 ContextVar 进不了线程池，主线程与工人行为不一致）。测试仍可按需调用该注入面。
+# 目录存在性由 template_dir() 在取用时校验（缺失 → template_dir_missing:<包>，不回落别的包）。
 # 启动期只 scandir（不解析任何包内文件）。100 包实测 ~1 ms；全量 configure 是秒级，
 # 只允许在首次使用时按需加载（见 `GET /api/packages` / `core.packages.registry.catalog`）。
 package_registry.bootstrap()

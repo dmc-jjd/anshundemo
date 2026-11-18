@@ -48,7 +48,8 @@ def assemble_review_view(store, state):
 def apply_slot_values(store, state, req):
     """人工填槽。返回 (error, result)：error=(status,detail) 由路由函数转成 HTTP 错误。"""
     if not state.draft_ref:return (409,'draft_missing'),None
-    if state.template_ref!='anshun-monthly-colored':
+    from ..template_engine import is_slot_template
+    if not is_slot_template(state.template_ref, getattr(state,'package',None)):
         from ..writing_review import edit_structured
         try:return None,edit_structured(store,state.id,req.values,req.expected_hash)
         except (ValueError,KeyError) as exc:return (409,str(exc)),None

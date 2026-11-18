@@ -5,7 +5,7 @@ ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
 from app.storage import Store
 from app.structured_writer import save_draft
 from app.structured_template import validate_values
-from app.section_two import POLICY_VERSION,policy_for
+from app.section_two import policy_version,policy_for,_package_of
 
 def publish(source_root):
     source=Store(source_root);target=Store(ROOT/'data')
@@ -18,10 +18,12 @@ def publish(source_root):
     fields={f['id']:f for f in template['fields']};keys=('monthly_recommendations',)
     current=draft['slot_values'].get('monthly_recommendations')
     if current!=baseline.get('recommendations') and 'human_edit' not in (current or {}).get('source_refs',[]):raise ValueError('当前建议已有其他更新，不能覆盖')
+    package=_package_of(target,tid,getattr(state,'package',None))
     for key in keys:
-        if key not in candidate['slot_values'] or tested.metadata.get('writer_policy_versions',{}).get(key)!=policy_for(fields[key]):raise ValueError('第二部分尚未通过当前执行约束')
+        if key not in candidate['slot_values'] or tested.metadata.get('writer_policy_versions',{}).get(key)!=policy_for(fields[key],package=package):
+            raise ValueError('第二部分尚未通过当前执行约束')
     history_ref=tested.metadata['historical_research_ref'];history=source.get_artifact(history_ref)
-    if history['status']!='ready' or history.get('policy_version')!=POLICY_VERSION or len((history.get('candidate_comparison') or {}).get('candidates',[]))<4:raise ValueError('混合风险候选比较与依据核对尚未完成')
+    if history['status']!='ready' or history.get('policy_version')!=policy_version(package) or len((history.get('candidate_comparison') or {}).get('candidates',[]))<4:raise ValueError('混合风险候选比较与依据核对尚未完成')
     facts=target.get_artifact(state.fact_ref);first=dict(draft['slot_values']);allowed=set(draft['evidence_refs']);imported=[]
     # Source/plan artifacts are immutable and retain the same content hashes.
     with source.connect() as conn:rows=conn.execute('SELECT id,kind FROM artifacts WHERE task_id=?',(tid,)).fetchall()

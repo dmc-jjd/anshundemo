@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 from core.packages.context import (
+    PackageNotSpecified,
     PackageRef,
     bind,
     current_package,
@@ -42,6 +43,7 @@ load_package = load
 __all__ = [
     'PackageError',
     'PackageLoad',
+    'PackageNotSpecified',
     'PackageRef',
     'bind',
     'bootstrap',

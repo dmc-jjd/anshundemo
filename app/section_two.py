@@ -2,8 +2,8 @@
 
 WP-S8-L4 拆分：**零客户数据**的四个 pydantic 模型（`Contract`/`BasisType`/`OutlookItem`/
 `RiskChain`/`AnalysisPlan`）已上移 `core/section_schema.py`，供基座侧 `source_binding` 复用；
-本模块仍是第二段的**客户规则**之家——县级地名表、报告地域名、客户字段 id、
-`anshun-*` 政策版本，以及把地名/字段 id 写进正则与文案的 `validate_history`/
+本模块仍是第二段规则的读取与校验入口；客户地名、地域名、官方域名和字段角色
+放在各包 `section_two` 配置里，基座不再回落安顺默认值。以及
 `forecast_window`/`source_excerpts`/`seasonal_knowledge_usable`/`role`。
 上移的五个名字在这里原样 re-export，故 `from app.section_two import OutlookItem` 等公开面零变化。
 """
@@ -14,14 +14,22 @@ from pydantic import BaseModel,ConfigDict,Field
 from core.section_schema import Contract,BasisType,OutlookItem,RiskChain,AnalysisPlan
 from core import section_policy as _section_policy
 
-POLICY_VERSION='anshun-mixed-risk-v3-seasonal-fallback'
-ANALYSIS_POLICY_VERSION='anshun-causal-analysis-style-v7'
-OUTLOOK_POLICY_VERSION='anshun-mixed-outlook-style-v8'
-LOCAL_NAMES=('安顺','西秀','平坝','普定','镇宁','关岭','紫云','黄果树')
+POLICY_VERSION='mixed-risk-v3-seasonal-fallback'
+ANALYSIS_POLICY_VERSION='causal-analysis-style-v7'
+OUTLOOK_POLICY_VERSION='mixed-outlook-style-v8'
 
+def policy_version(package=None,policy=None):
+    """历史调研政策版本：包内 `section_two.policy_version` 优先，否则用中性缺省。"""
+    value=_policy(package,policy).get('policy_version')
+    return str(value) if value else POLICY_VERSION
 
-DEFAULT_REGION='安顺市'
-DEFAULT_EVIDENCE_LABEL='安顺'
+def analysis_policy_version(package=None,policy=None):
+    value=_policy(package,policy).get('analysis_policy_version')
+    return str(value) if value else ANALYSIS_POLICY_VERSION
+
+def outlook_policy_version(package=None,policy=None):
+    value=_policy(package,policy).get('outlook_policy_version')
+    return str(value) if value else OUTLOOK_POLICY_VERSION
 
 def _package_of(store=None,task_id=None,package=None):
     if package:return package
@@ -37,19 +45,16 @@ def _policy(package=None,policy=None):
     return policy if policy is not None else _section_policy.load(package)
 
 def local_names(package=None,policy=None):
-    return _section_policy.locality_names(_policy(package,policy),package=package,fallback=LOCAL_NAMES)
+    return _section_policy.locality_names(_policy(package,policy),package=package,fallback=())
 
 def evidence_region(package=None,policy=None,window=None):
-    # Error text must stay "安顺" for the default package; forecast_window.region is "安顺市".
-    configured=_section_policy.region_name(_policy(package,policy),package=package,fallback='')
-    return configured or DEFAULT_EVIDENCE_LABEL
+    return _section_policy.evidence_label(_policy(package,policy),package=package,fallback='')
 
 def _official_frequency_host_ok(host,names,package=None,policy=None):
     rules=_policy(package,policy)
     hosts=_section_policy.official_hosts(rules)
     if hosts:return _section_policy.host_matches(host,hosts)
-    if _section_policy.uses_vocabulary_names(rules):return False
-    return host=='anshun.gov.cn' or host.endswith('.anshun.gov.cn')
+    return False
 
 class RiskCandidate(Contract):
     id:str=Field(pattern=r'^c[1-8]$')
@@ -85,7 +90,36 @@ class HistoricalResearch(Contract):
     topics:list[HistoryTopic]=Field(default_factory=list,max_length=6)
     gaps:list[str]=Field(default_factory=list,max_length=10)
 
-def render_analysis(plan,allowed):
+def analysis_length_limits(package=None, field=None, policy=None):
+    """分析段字数闸门：包 section_two.analysis_length 与字段 value_schema 取更严交集。
+
+    只对 analysis 角色字段生效（未传入 field 时视为分析段合成，如 render_analysis）。
+    字段 schema 较松（如仅 minLength=1）时仍落到包内限制；包未声明则无硬限制。
+    不会把展望段 180—600 或其他字段的 schema 误当成分析闸门。
+    """
+    if field is not None and role(field, package, policy) != 'analysis':
+        return (None, None)
+    schema = {}
+    if isinstance(field, dict):
+        schema = dict(field.get('value_schema') or {})
+        inner = schema.get('properties') or {}
+        if isinstance(inner.get('value'), dict):
+            schema = {**schema, **inner['value']}
+    schema_min, schema_max = schema.get('minLength'), schema.get('maxLength')
+    cfg = dict((_policy(package, policy) or {}).get('analysis_length') or {})
+    pkg_min = cfg.get('min_chars')
+    pkg_max = cfg.get('max_chars')
+    minimum = schema_min if schema_min is not None else pkg_min
+    maximum = schema_max if schema_max is not None else pkg_max
+    if schema_min is not None and pkg_min is not None:
+        minimum = max(int(schema_min), int(pkg_min))
+    if schema_max is not None and pkg_max is not None:
+        maximum = min(int(schema_max), int(pkg_max))
+    return (int(minimum) if minimum is not None else None,
+            int(maximum) if maximum is not None else None)
+
+
+def render_analysis(plan,allowed,package=None):
     text=plan.overview.rstrip('。')+'。'
     for label,chain in zip(('一是','二是'),plan.chains):
         if not set(chain.source_refs)<=allowed:raise ValueError('研判风险链缺少本月来源；无效引用：'+','.join(sorted(set(chain.source_refs)-allowed))+'。source_refs须原样复制已提供ref，不得自行构造top10:1或事实ID:top10#序号。可用ref：'+','.join(sorted(allowed)))
@@ -96,7 +130,11 @@ def render_analysis(plan,allowed):
         text+=f'{label}若{trigger}，可能{escalation}，进而{chain.impact.rstrip("。；，")}；应关注{chain.signal.rstrip("。；，")}，{measure}。'
     if plan.paragraph:text=plan.paragraph
     if re.search(r'峰值日信息量不等于|不等于事件风险高峰|住户名单不公开|公开受损住户名单',text):raise ValueError('正文不要复述内部写作禁令；不能把当事人名单未公开当作治理问题，应定向核验权益、公开脱敏办理进展。')
-    if not 300<=len(text)<=500:raise ValueError(f'研判风险链合成后{len(text)}字，应控制300—500字；压缩背景、保留因果与阻断措施。')
+    minimum,maximum=analysis_length_limits(package)
+    if minimum is not None and len(text)<minimum:
+        raise ValueError(f'研判风险链合成后{len(text)}字，应控制{minimum}—{maximum or ""}字；压缩背景、保留因果与阻断措施。')
+    if maximum is not None and len(text)>maximum:
+        raise ValueError(f'研判风险链合成后{len(text)}字，应控制{minimum or ""}—{maximum}字；压缩背景、保留因果与阻断措施。')
     return text,sorted({ref for chain in plan.chains for ref in chain.source_refs})
 
 def forecast_window(report):
@@ -105,7 +143,7 @@ def forecast_window(report):
     for offset in (1,2):
         index=year*12+month-1+offset;periods.append(f'{index//12:04}-{index%12+1:02}')
     package=_package_of(getattr(report,'store',None),getattr(getattr(report,'state',None),'id',None))
-    region=_section_policy.region_name(_policy(package),package=package,fallback=DEFAULT_REGION)
+    region=_section_policy.region_name(_policy(package),package=package,fallback='')
     return {'region':region,'report_month':f'{year:04}-{month:02}', 'periods':periods,
             'label':'—'.join(str(int(x[5:]))+'月' for x in periods),
             'historical_years':sorted({y for p in periods for y in range(int(p[:4])-5,int(p[:4]))}),
@@ -113,12 +151,12 @@ def forecast_window(report):
             'as_of':date(year,month,calendar.monthrange(year,month)[1]).isoformat()}
 
 def role(field,package=None,policy=None):
-    default=None
-    if field['id']=='monthly_recommendations' or field.get('kind')=='paragraph_list':default='outlook'
-    elif field['id']=='b40_analysis_paragraph' or '研判分析' in field.get('display_name',''):default='analysis'
-    return _section_policy.field_role(field,_policy(package,policy),default)
+    return _section_policy.field_role(field,_policy(package,policy),None)
 
-def policy_for(field,package=None,policy=None):return ANALYSIS_POLICY_VERSION if role(field,package,policy)=='analysis' else OUTLOOK_POLICY_VERSION
+def policy_for(field,package=None,policy=None):
+    if role(field,package,policy)=='analysis':
+        return analysis_policy_version(package,policy)
+    return outlook_policy_version(package,policy)
 
 def asserted_knowledge(text):
     """Exclude explicit denials from claims; retain all positive facts/numbers."""
@@ -300,7 +338,10 @@ def source_excerpts(content,package=None,policy=None):
     """Exact source slices, not model paraphrases; stable indices for citations."""
     rows=[];seen=set()
     places='|'.join(re.escape(name) for name in local_names(package,policy))
-    matches=list(re.finditer(r'高发|多发|频发|高频|屡发|发生.{0,16}(?:事故|火灾)|拖欠|凝冻|结冰|'+(places or '安顺'),content))
+    pattern=r'高发|多发|频发|高频|屡发|发生.{0,16}(?:事故|火灾)|拖欠|凝冻|结冰'
+    if places:
+        pattern+=r'|'+places
+    matches=list(re.finditer(pattern,content))
     matches.sort(key=lambda m:(0 if re.search(r'高发|多发|频发|高频|屡发',m.group()) else 1 if re.search(r'发生|拖欠|凝冻|结冰',m.group()) else 2,m.start()))
     for match in matches:
         start=max(0,match.start()-65);end=min(len(content),match.end()+110)

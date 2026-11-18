@@ -57,3 +57,34 @@ def test_make_input_surfaces_package_bindings():
     packet = make_input(documents, comparison, local, package='ruyuan_yuebao')
     assert any(item.get('metric') == 'platform_count' for item in packet['available_bindings'])
     assert any(item.get('field_id') == 'b1_web' for item in packet['available_bindings'])
+
+
+def test_longchuan_available_bindings_exclude_top10():
+    bindings = available_bindings("longchuan_yuebao")
+    tools = {(item.get("tool"), tuple(item.get("path") or [])) for item in bindings if item.get("tool")}
+    assert ("top10_events", ()) not in tools
+    assert "top10" not in {item.get("metric") for item in bindings}
+    assert {"tool": "calculate_metrics", "path": ["record_count"]} in bindings
+
+
+def test_anshun_available_bindings_keep_legacy():
+    bindings = available_bindings("anshun_monthly")
+    for item in (
+        {"tool": "calculate_metrics", "path": ["record_count"]},
+        {"tool": "calculate_metrics", "path": ["warning_raw_count"]},
+        {"tool": "calculate_metrics", "path": ["negative_record_count"]},
+        {"tool": "calculate_metrics", "path": ["warning_record_count"]},
+        {"tool": "calculate_metrics", "path": ["negative_or_warning_record_count"]},
+        {"tool": "calculate_metrics", "path": ["sentiment", "正面"]},
+        {"tool": "calculate_metrics", "path": ["sentiment", "中性"]},
+        {"tool": "calculate_metrics", "path": ["sentiment", "负面"]},
+        {"tool": "top10_events", "path": []},
+    ):
+        assert item in bindings
+    assert "top10" in {item.get("metric") for item in bindings}
+
+
+def test_binding_allowed_does_not_grant_legacy_top10_to_other_packages():
+    packet = {"available_bindings": available_bindings("longchuan_yuebao")}
+    assert not binding_allowed({"tool": "top10_events", "path": []}, packet)
+    assert binding_allowed({"tool": "top10_events", "path": []}, {"available_bindings": available_bindings("anshun_monthly")})

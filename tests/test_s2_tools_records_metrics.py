@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import app.tool as tool
 from app.storage import Store
 from app.tool import filter_records
@@ -49,3 +51,37 @@ def test_filter_records_five_scopes_keep_original_selection(tmp_path):
         counts[scope] = len(store.get_artifact(result.data_ref)['records'])
     assert counts == {'positive': 2, 'neutral': 1, 'negative': 2,
                       'warning': 2, 'negative_or_warning': 3}
+
+
+def test_filter_records_includes_sensitive_when_contract_says_so(tmp_path, monkeypatch):
+    from core.tools import vocabulary
+    from copy import deepcopy
+
+    contract = deepcopy(vocabulary.filter_contract("anshun_monthly"))
+    contract["sentiment"]["scopes"]["negative"] = {"contains": ["负"], "values": ["敏感"]}
+
+    def fake_contract(package=None):
+        return contract
+
+    monkeypatch.setattr(vocabulary, "filter_contract", fake_contract)
+    store = Store(tmp_path)
+    rows = list(RECORDS) + [
+        {"id": "r6", "sentiment": "敏感", "warning": "未预警"},
+        {"id": "r7", "sentiment": "敏感", "warning": "是"},
+    ]
+    ref = store.put_artifact("t1", "records", {"records": list(rows)})
+    ctx = SimpleNamespace(store=store, task_id="t1", package="anshun_monthly")
+    result = filter_records({"records_ref": ref, "scope": "negative"}, ctx)
+    selected = {row["id"] for row in store.get_artifact(result.data_ref)["records"]}
+    assert selected == {"r1", "r2", "r6", "r7"}
+
+
+def test_anshun_filter_does_not_include_sensitive_by_default(tmp_path):
+    store = Store(tmp_path)
+    rows = list(RECORDS) + [{"id": "r6", "sentiment": "敏感", "warning": "未预警"}]
+    ref = store.put_artifact("t1", "records", {"records": list(rows)})
+    ctx = SimpleNamespace(store=store, task_id="t1", package="anshun_monthly")
+    result = filter_records({"records_ref": ref, "scope": "negative"}, ctx)
+    selected = {row["id"] for row in store.get_artifact(result.data_ref)["records"]}
+    assert selected == {"r1", "r2"}
+    assert "r6" not in selected

@@ -1,0 +1,50 @@
+{
+  "package": "acceptance_probe",
+  "version": "0.0.1",
+  "writer_slots": [],
+  "data_contract": {
+    "sheet_index": 2,
+    "required_columns": ["标题", "舆情调性"],
+    "summary_columns": ["摘要"],
+    "column_map": {
+      "标题": "title",
+      "信息日期": "published",
+      "来源信息": "source",
+      "媒体环节": "platform",
+      "舆情调性": "sentiment",
+      "是否预警": "warning",
+      "摘要": "summary"
+    },
+    "dedup": { "threshold": 0.65, "candidate_floor_ratio": 0.6 },
+    "sentiment": {
+      "field": "sentiment",
+      "values": ["正面", "中性", "负面"],
+      "scopes": {
+        "negative": {"contains": ["负"]},
+        "positive": {"values": ["正面"]},
+        "neutral": {"values": ["中性"]}
+      }
+    },
+    "warning": {
+      "field": "warning",
+      "truth": ["是", "已预警", "1", "true", "TRUE", "预警"],
+      "scopes": {
+        "warning": {"warning_truth": true, "require_truth_present": true},
+        "negative_warning": {"all": [{"warning_truth": true}, {"contains": ["负"]}], "require_truth_present": true},
+        "negative_or_warning": {"any": [{"contains": ["负"]}, {"warning_truth": true}]}
+      }
+    }
+  },
+  "vocabulary": {
+    "localities": {
+      "探针市": ["探针区"]
+    },
+    "cluster_terms": {
+      "示例类目": ["示例词"]
+    }
+  },
+  "charts": [
+    {"id": "daily", "family": "daily", "drawing_index": 1, "title": "信息走势", "style": "line"},
+    {"id": "platform", "family": "platform", "drawing_index": 2, "title": "平台分布", "style": "pie"}
+  ]
+}

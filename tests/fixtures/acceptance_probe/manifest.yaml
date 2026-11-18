@@ -1,0 +1,34 @@
+package: acceptance_probe
+report_type: 接入验收探针月报
+version: 0.0.1
+template: template.json
+prompts: prompts/
+tools:
+  allow:
+    - import_records
+    - filter_records
+    - calculate_metrics
+    - group_events
+    - classify_records
+    - render_chart
+    - read_evidence
+  budgets: { default: 40 }
+charts:
+  pack: chart-core
+  use: [daily, platform]
+skills:
+  pack: skill-core
+  use: [lieflat-less-ai-tone]
+capabilities:
+  require: [records, metrics, charts]
+features:
+  locality:
+    enabled: false
+  event_classification:
+    enabled: false
+  dedup:
+    enabled: true
+  first_warning:
+    enabled: false
+  top10:
+    enabled: false

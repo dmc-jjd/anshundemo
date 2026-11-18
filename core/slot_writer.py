@@ -31,19 +31,22 @@ class SlotAnswer(BaseModel):
 TEXT_TYPES={'source_text','existing_field','theme_cluster','narrative_from_sources','computed_judgement'}
 FIRST_BLOCKS={17,26,29,30}
 
-def writer_slot_ids()->set[str]:
+def writer_slot_ids(package=None)->set[str]:
     """可写槽位集合：客户包 `template.json` 的 `writer_slots`（缺省走 vocabulary 兜底）。"""
-    return set(vocabulary.writer_slots())
+    return set(vocabulary.writer_slots(package))
 
 def _issue(slot,error_type,message):
     return {'slot_id':slot['id'],'semantic':slot['semantic'],'error_type':error_type,'message':message}
 
 async def write_first_section_slots(deps,task_id:str,result_refs:dict,only_slots:set[str]|None=None)->tuple[dict,list[dict]]:
     store=deps.store
-    profile=prompt_profile(store.get_task(task_id).metadata)
-    manifest=json.loads((paths.template_dir()/'report.template.json').read_text(encoding='utf-8'))
-    slots=[x for x in manifest['placeholders'] if x['id'] in (only_slots or writer_slot_ids())]
-    template_blocks=read_docx(paths.template_dir()/'template-with-placeholders.docx')['blocks']
+    state=store.get_task(task_id)
+    package=getattr(state,'package',None) or None
+    profile=prompt_profile(state.metadata)
+    from .layout import docx_path,manifest_path
+    manifest=json.loads((manifest_path(package)).read_text(encoding='utf-8'))
+    slots=[x for x in manifest['placeholders'] if x['id'] in (only_slots or writer_slot_ids(package))]
+    template_blocks=read_docx(docx_path(package))['blocks']
     template_paragraphs=[b['text'] for b in template_blocks if b['kind']=='paragraph']
     records=store.get_artifact(result_refs['import_records'])['records']
     by_id={r['id']:r for r in records}

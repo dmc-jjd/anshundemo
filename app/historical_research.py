@@ -1,7 +1,7 @@
 """Knowledge-led candidate comparison with optional source verification."""
 from .agent import get_prompt,DEFAULT_PROMPT_PROFILE,prompt_fingerprint
 import uuid
-from .section_two import HistoricalResearch,HistoryTopic,CandidateComparison,forecast_window,validate_history,POLICY_VERSION,source_excerpts,seasonal_knowledge_usable
+from .section_two import HistoricalResearch,HistoryTopic,CandidateComparison,forecast_window,validate_history,policy_version,_package_of,source_excerpts,seasonal_knowledge_usable
 from .model_client import invoke_agent
 from .tool_executor import execute_tool
 from .schemas import ToolCall
@@ -11,15 +11,17 @@ async def prepare_history(report,context,profile=DEFAULT_PROMPT_PROFILE):
     store=context.store;task_id=context.task_id;window=forecast_window(report)
     fingerprint=prompt_fingerprint(profile,('historical_researcher.',))
     state=store.get_task(task_id);prior=state.metadata.get('historical_research_ref')
+    package=_package_of(store,task_id,getattr(state,'package',None) or getattr(report,'package',None))
+    version=policy_version(package)
     refs=set();errors=[];topics=[];comparison=None;comparison_ref=None
     if prior:
         data=store.get_artifact(prior)
         same_prompt=data.get('prompt_fingerprint')==fingerprint if data.get('prompt_fingerprint') else profile==DEFAULT_PROMPT_PROFILE
         readable=all(not page_read_error(store.get_artifact(ref).get('content','')) for ref in data.get('source_refs',[]) if ref.startswith('historical_page-'))
-        if same_prompt and readable and data.get('policy_version')==POLICY_VERSION and data.get('window')==window and data.get('status')=='ready':return prior,data
+        if same_prompt and readable and data.get('policy_version')==version and data.get('window')==window and data.get('status')=='ready':return prior,data
         if data.get('window',{}).get('report_month')==window['report_month']:
             refs.update(data.get('source_refs',[]))
-            if same_prompt and data.get('policy_version')==POLICY_VERSION:
+            if same_prompt and data.get('policy_version')==version:
                 topics=data.get('topics',[]);comparison=data.get('candidate_comparison');comparison_ref=data.get('comparison_ref')
     from .historical_reader import HistoricalReader
     reader=HistoricalReader(context,refs)
@@ -77,7 +79,7 @@ async def prepare_history(report,context,profile=DEFAULT_PROMPT_PROFILE):
                 topics.extend(qualified);fallback_categories.append(candidate['category']);selected_ids.add(candidate['id']);selected_categories.add(candidate['category'])
             if len({t['category'] for t in topics})>=5:break
         if fallback_categories:store.append_event(task_id,{'type':'historical_seasonal_fallback','categories':fallback_categories,'new_model_calls':0,'verified_local_history':False})
-    data={'policy_version':POLICY_VERSION,'prompt_profile':profile,'prompt_fingerprint':fingerprint,'window':window,'seasonal_fallback_categories':fallback_categories,
+    data={'policy_version':version,'prompt_profile':profile,'prompt_fingerprint':fingerprint,'window':window,'seasonal_fallback_categories':fallback_categories,
           'candidate_comparison':comparison,'comparison_ref':comparison_ref,'topics':topics,'status':'ready' if comparison and len({t['category'] for t in topics})>=4 else 'insufficient',
           'errors':errors,'source_refs':sorted(refs)}
     ref=store.put_artifact(task_id,'historical_research',data)

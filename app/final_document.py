@@ -27,8 +27,10 @@ from .ooxml import read_docx
 
 EDIT_KIND = 'final_document_edit'
 WRITABLE_STAGES = ('awaiting_final_review', 'facts_frozen')
-CHART_SLOTS = {'CHART_1': 'sentiment', 'CHART_2': 'daily', 'CHART_3': 'platform',
-               'CHART_4': 'theme', 'CHART_5': 'locality'}
+def _chart_slots(package=None, template=None):
+    from core.charts.spec import chart_slots
+    return chart_slots(template=template, package=package)
+
 SLOT_RE = re.compile(r'\{\{([A-Za-z0-9_]+)\}\}')
 DEFINITION_MARKS = ('类型：', '语义：')
 
@@ -44,24 +46,31 @@ class FinalDocumentError(Exception):
 
 # ---------------------------------------------------------------- 模板与清单
 
-def template_path() -> Path:
-    return paths.template_dir() / 'template-with-placeholders.docx'
+def _task_package(state=None):
+    return getattr(state, 'package', None) or None
 
 
-def manifest() -> dict:
-    return json.loads((paths.template_dir() / 'report.template.json').read_text(encoding='utf-8'))
+def template_path(package=None) -> Path:
+    from core.layout import docx_path
+    return docx_path(package)
 
 
-def placeholders() -> list[dict]:
-    return manifest()['placeholders']
+def manifest(package=None) -> dict:
+    from core.layout import manifest_path
+    path = manifest_path(package)
+    return json.loads(path.read_text(encoding='utf-8'))
 
 
-def placeholder_ids() -> set[str]:
-    return {item['id'] for item in placeholders()}
+def placeholders(package=None) -> list[dict]:
+    return manifest(package)['placeholders']
 
 
-def _slot_codes() -> dict[str, str]:
-    return {item['id']: item.get('slot_type', 'text') for item in placeholders()}
+def placeholder_ids(package=None) -> set[str]:
+    return {item['id'] for item in placeholders(package)}
+
+
+def _slot_codes(package=None) -> dict[str, str]:
+    return {item['id']: item.get('slot_type', 'text') for item in placeholders(package)}
 
 
 def _is_definition(block: dict) -> bool:
@@ -80,7 +89,9 @@ def _artifact(store, ref):
 
 
 def _computed_values(store, state) -> dict:
-    facts = _artifact(store, state.fact_ref)
+    facts = dict(_artifact(store, state.fact_ref))
+    if getattr(state, 'package', None) and not facts.get('package'):
+        facts['package'] = state.package
     draft = _artifact(store, state.draft_ref)
     return template_values(draft, facts, None, store=store)
 
@@ -90,7 +101,7 @@ def _display_value(values: dict, slot_id: str) -> str:
     return f'{{{{{slot_id}}}}}' if value is None else str(value)
 
 
-def _parts(text: str, values: dict, codes: dict[str, str], overrides: dict) -> list[dict]:
+def _parts(text: str, values: dict, codes: dict[str, str], overrides: dict, chart_slot_ids=None) -> list[dict]:
     parts, position = [], 0
     for match in SLOT_RE.finditer(text):
         if match.start() > position:
@@ -102,7 +113,7 @@ def _parts(text: str, values: dict, codes: dict[str, str], overrides: dict) -> l
             'value': _display_value(values, slot_id),
             'code': codes.get(slot_id, 'text'),
             # 图表槽（CHART_n）不可编辑：覆盖它会让导出端找不到 {{CHART_n}} 而丢掉整张图。
-            'editable': slot_id not in CHART_SLOTS,
+            'editable': slot_id not in (chart_slot_ids or {}),
             'edited': slot_id in overrides,
         })
         position = match.end()
@@ -111,8 +122,11 @@ def _parts(text: str, values: dict, codes: dict[str, str], overrides: dict) -> l
     return parts or [{'type': 'text', 'text': text}]
 
 
-def _chart_block(store, facts: dict, block: dict, slot_id: str) -> dict:
-    name = CHART_SLOTS[slot_id]
+def _chart_block(store, facts: dict, block: dict, slot_id: str, slots=None, titles=None) -> dict:
+    name = (slots or {}).get(slot_id)
+    if not name:
+        return {'index': block['index'], 'kind': 'paragraph', 'editable': False,
+                'text': block['text'], 'parts': [{'type': 'text', 'text': block['text']}]}
     png = None
     ref = (facts.get('result_refs') or {}).get('render_chart:' + name)
     if ref:
@@ -121,16 +135,16 @@ def _chart_block(store, facts: dict, block: dict, slot_id: str) -> dict:
         except KeyError:
             png = None
     return {'index': block['index'], 'kind': 'chart', 'editable': False,
-            'slot': slot_id, 'name': name,
+            'slot': slot_id, 'name': name, 'title': (titles or {}).get(name) or name,
             'png_data_url': f'data:image/png;base64,{png}' if png else None}
 
 
-def _table_block(block: dict, values: dict, codes: dict[str, str], overrides: dict) -> dict:
+def _table_block(block: dict, values: dict, codes: dict[str, str], overrides: dict, chart_slot_ids=None) -> dict:
     rows = []
     for row in block.get('rows', []):
         cells = []
         for cell in row:
-            parts = _parts(cell, values, codes, overrides)
+            parts = _parts(cell, values, codes, overrides, chart_slot_ids)
             if len(parts) == 1:
                 cells.append(parts[0])
             else:
@@ -144,23 +158,31 @@ def _table_block(block: dict, values: dict, codes: dict[str, str], overrides: di
 
 def render_model(store, state) -> dict:
     """终稿 A4 页的完整渲染模型（definition 99 块 / body 31 块）。"""
+    package = _task_package(state)
     computed = _computed_values(store, state)
     overrides = dict(state.metadata.get('final_overrides') or {})
     values = {**computed, **overrides}
-    codes = _slot_codes()
+    try:
+        codes = _slot_codes(package)
+        doc = read_docx(template_path(package))
+    except RuntimeError as exc:
+        if str(exc).startswith('template_dir_missing') or str(exc).startswith('package_not_found'):
+            raise FinalDocumentError(404, 'template_dir_missing') from exc
+        raise
     facts = _artifact(store, state.fact_ref)
-
-    doc = read_docx(template_path())
+    slots = _chart_slots(package)
+    from core.charts.spec import display_titles, declared_charts
+    titles = display_titles(package=package)
     definition, report, preamble = [], [], []
     first_definition = next((i for i, block in enumerate(doc['blocks']) if _is_definition(block)), 0)
     for index, block in enumerate(doc['blocks']):
         bare = SLOT_RE.sub('', block['text']).strip()
-        chart_slot = next((slot for slot in CHART_SLOTS
+        chart_slot = next((slot for slot in slots
                            if bare == '' and f'{{{{{slot}}}}}' in block['text']), None)
         if _is_definition(block):
-            parsed = ({'parts': _parts(block['text'], values, codes, overrides)}
+            parsed = ({'parts': _parts(block['text'], values, codes, overrides, slots)}
                       if block['kind'] == 'paragraph'
-                      else {'rows': _table_block(block, values, codes, overrides)['rows']})
+                      else {'rows': _table_block(block, values, codes, overrides, slots)['rows']})
             parts = parsed.get('parts') or []
             definition.append({'index': block['index'], 'kind': block['kind'],
                                'editable': any(p.get('editable') for p in parts if p['type'] == 'slot'),
@@ -169,11 +191,11 @@ def render_model(store, state) -> dict:
             preamble.append({'index': block['index'], 'kind': 'preamble', 'editable': False,
                              'text': block['text'], 'parts': [{'type': 'text', 'text': block['text']}]})
         elif block['kind'] == 'table':
-            report.append(_table_block(block, values, codes, overrides))
+            report.append(_table_block(block, values, codes, overrides, slots))
         elif chart_slot:
-            report.append(_chart_block(store, facts, block, chart_slot))
+            report.append(_chart_block(store, facts, block, chart_slot, slots, titles))
         else:
-            parts = _parts(block['text'], values, codes, overrides)
+            parts = _parts(block['text'], values, codes, overrides, slots)
             report.append({'index': block['index'], 'kind': 'paragraph',
                            'editable': any(p.get('editable') for p in parts if p['type'] == 'slot'),
                            'text': block['text'], 'parts': parts})
@@ -188,7 +210,10 @@ def render_model(store, state) -> dict:
         ],
         'overrides': overrides,
         'edited_count': len(overrides),
-        'placeholder_count': len(placeholders()),
+        'placeholder_count': len(placeholders(package)),
+        'charts': [{'id': item['id'], 'slot': f"CHART_{item['drawing_index']}",
+                    'title': titles.get(item['id']) or item.get('title') or item['id'],
+                    'drawing_index': item['drawing_index']} for item in declared_charts(package=package)],
     }
 
 

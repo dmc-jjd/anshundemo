@@ -114,17 +114,17 @@ def test_no_stray_prompt_files():
     assert base_on_disk <= set(provenance)   # 基座文件必须在 A 的 34 键契约内，不是无主文件
 
 
-def test_provenance_split_is_0_package_34_base():
-    # 覆盖可见性（S10-F）：34 个提示词**全部由基座提供**，包内 agent/ 为空。
-    # 依据：模板制作、历史调研、要闻采集都是全局能力；原先残留的客户端 4 个只有
-    # 「安顺 / 贵州 / 黄果树 / 交通管理」这类**举例**，已泛化为「本地区 / 省域 /
-    # 示例地名 / 示例类目」，指令语义不变。
-    # 客户包只提供数据（template.json 词表 + manifest 开关）；若某客户要改口吻，
-    # 在包内放同名文件即可覆盖（provenance 会显示为 'package'）。
+def test_provenance_split_anshun_overlays_six_package():
+    # 覆盖可见性：安顺把仍依赖的专属约束正文迁到包内覆写后，这 6 个键 provenance=package；
+    # 其余通用提示词仍由基座提供。不要改注册表加载口径，只反映包内实际文件。
+    expected_package = {
+        'template_analyst.template', 'writer.analysis', 'writer.outlook',
+        'writer.general', 'writer.revise', 'event_judge.top10',
+    }
     provenance = registry.provenance()
     assert len(provenance) == 34
-    assert {key for key, source in provenance.items() if source == 'package'} == set()
-    assert [source for source in provenance.values() if source == 'base'] == ['base'] * 34
+    assert {key for key, source in provenance.items() if source == 'package'} == expected_package
+    assert sum(1 for source in provenance.values() if source == 'base') == 28
 
 
 def test_unconfigured_raises():

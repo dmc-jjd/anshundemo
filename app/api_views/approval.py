@@ -25,7 +25,8 @@ def approval_gate(store, state, req, *, validate_draft, export_docx):
         if status and status.get('pending_charts'):
             return (409,'missing_current_chart'),None
         return (409,'preview_cannot_be_approved'),None
-    if state.template_ref=='anshun-monthly-colored':
+    from ..template_engine import is_slot_template
+    if is_slot_template(state.template_ref, getattr(state,'package',None)):
         from ..slot_writer import writer_slot_ids
         unfilled=[slot_id for slot_id in sorted(writer_slot_ids()) if not (draft.get('slot_values',{}).get(slot_id) or {}).get('value')]
         if unfilled:return (409,'writer_slots_unfilled:'+','.join(unfilled)),None

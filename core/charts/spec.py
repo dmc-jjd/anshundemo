@@ -111,6 +111,38 @@ def ordered_template_charts(template):
         result.append(item)
     return result
 
+def declared_charts(template=None,package=None):
+    """包或确认模板里声明的图表，按 drawing_index（缺省为列表序）排列。无声明则空。"""
+    if template and template.get('charts'):
+        return ordered_template_charts(template)
+    try:
+        from core.packages import load_package
+        return ordered_template_charts(load_package(package).template)
+    except Exception:
+        return []
+
+def chart_slots(template=None,package=None):
+    return {f"CHART_{item['drawing_index']}":item['id'] for item in declared_charts(template,package) if item.get('id')}
+
+def display_titles(template=None,package=None):
+    """终稿展示标题：包 export.chart_titles 优先，否则「图n + 包内 title」。"""
+    titles={}
+    try:
+        from core.packages import load_package
+        cfg=dict((load_package(package).template or {}).get('export') or {})
+        titles={str(k):str(v) for k,v in (cfg.get('chart_titles') or {}).items()}
+    except Exception:
+        titles={}
+    result={}
+    for item in declared_charts(template,package):
+        key=item.get('id')
+        if not key: continue
+        if key in titles:
+            result[key]=titles[key]
+        else:
+            result[key]=f"图{item.get('drawing_index') or ''} {item.get('title') or key}".strip()
+    return result
+
 def drawing_ids(template,data_root:Path|None=None):
     """Map 1-based drawing_index to chart instance id.
 
@@ -134,7 +166,9 @@ def drawing_ids(template,data_root:Path|None=None):
             generated=[]
         if generated:
             return {int(item['drawing_index']):item['id'] for item in generated}
-    ids=registry.ids() or list(DEFAULT_DRAWING_IDS)
+    ids=list(registry.ids())
+    if not ids:
+        return {}
     return {index+1:name for index,name in enumerate(ids)}
 
 def allowed_styles(chart):
@@ -292,13 +326,17 @@ def definitions(template,data_root:Path):
             for i,item in enumerate(items)]
 
 def styles_for(template,overrides=None,*,data_root:Path):
-    declared={c['id']:c for c in registry.charts()}
-    for item in definitions(template,data_root):
-        declared[item['id']]=item
-    values={**{key:ChartStyles().model_dump()[key] for key in ChartStyles.model_fields},
-            **{key:item['style'] for key,item in declared.items()}}
+    if template and template.get('charts'):
+        items=list(template.get('charts') or ())
+    else:
+        items=list(definitions(template,data_root))
+    declared={c['id']:c for c in items if c.get('id')}
+    defaults=ChartStyles().model_dump()
+    values={}
+    for key,item in declared.items():
+        values[key]=item.get('style') or defaults.get(key) or (allowed_styles(item) or ['pie'])[0]
     for key,style in (overrides or {}).items():
-        if key not in declared and key not in ChartStyles.model_fields:
+        if key not in declared:
             raise ValueError('unknown_chart_style:'+str(key))
         values[key]=style
     # Validate built-in families with the existing model (rejects e.g. daily=pie).

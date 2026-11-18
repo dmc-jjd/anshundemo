@@ -11,18 +11,6 @@
 from __future__ import annotations
 
 
-#: 内置基线条目：逐字沿用原 main.templates() 的字面量（响应体形状不变）。
-BASELINE_TEMPLATE = {
-    'id': 'anshun-monthly-colored',
-    'name': '安顺月报 · 五色逐项占位模板',
-    'version': 1,
-    'status': 'candidate_requires_review',
-    'usable_for_final': False,
-    'reason': '8 月标色 Word 已取得，颜色疑点与占位符口径待人工确认',
-    'manifest_url': '/api/template-manifest',
-}
-
-
 #: 研判仍在后台跑的相位：此时硬删会让后台图写到已不存在的任务，
 #: 显式拒绝（UI 只对已出候选 / 已确认的任务给入口，正常流程碰不到）。
 ACTIVE_TEMPLATE_PHASES = frozenset((
@@ -30,8 +18,8 @@ ACTIVE_TEMPLATE_PHASES = frozenset((
 ))
 
 
-def list_templates(store) -> list[dict]:
-    """模板库条目：内置基线 + 仍存在的模板任务的已确认版本 / 待确认候选。
+def list_templates(store, package=None) -> list[dict]:
+    """模板库条目：当前包声明的内置模板 + 仍存在的模板任务的已确认版本 / 待确认候选。
 
     与旧实现的唯一行为差异：待确认的候选任务也出现在库里（带 ``task_id``），
     前端因此能对「已确认」和「待确认」两类任务都提供删除入口；下拉仍只取
@@ -40,7 +28,8 @@ def list_templates(store) -> list[dict]:
     历史上软删除留下的 ``template_deleted_at`` 任务仍会被跳过；调用
     ``purge_soft_deleted_templates`` 后这类残留会被硬删除。
     """
-    items = [dict(BASELINE_TEMPLATE)]
+    from ..template_engine import builtin_templates
+    items = [dict(item) for item in builtin_templates(package)]
     for task in store.list_tasks():
         if task.kind != 'template' or task.metadata.get('template_deleted_at'):
             continue

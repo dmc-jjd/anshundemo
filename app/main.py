@@ -33,7 +33,7 @@ from .packages_api import (artifact_file, files_for, idempotent, resolve_files,
 from .api_views.writing import apply_slot_values,assemble_review_view,draft_content_hash,DRAFT_SCHEMA_OUTDATED_DETAIL
 
 store=PackageStores(); deps=Dependencies(store)
-app=FastAPI(title='安顺月报工作台 Demo')
+app=FastAPI(title='舆情分析报告工作台')
 # 客户包注册表（GET /api/packages）：刻意不进 OpenAPI（与 hotspot/editor 同一约定）。
 app.include_router(packages_router)
 # 手动定义草稿的三个接口（选区→选择题→占位符/字段 JSON），刻意不进 OpenAPI：
@@ -81,39 +81,64 @@ async def upload(request:Request,file:UploadFile=File(...)):
     reason=None if readable else ('legacy_doc_unreadable' if dest.suffix.lower()=='.doc' else 'not_unencrypted_ooxml')
     return {'id':fid,'sha256':sha,'name':name,'readable':readable,'path':str(dest),'reason':reason}
 
-@app.get('/api/templates')
-def templates():
+def _list_templates(package=None):
     from .api_views.template_library import list_templates
-    return list_templates(store)
+    return list_templates(store, package=package)
+
+@app.get('/api/templates')
+def templates(request:Request):
+    return _list_templates(_requested_package(request) or None)
 
 @app.get('/api/template-manifest')
-def template_manifest():
+def template_manifest(request:Request):
     import json
-    return json.loads((paths.template_dir()/'report.template.json').read_text(encoding='utf-8'))
+    from core.layout import manifest_path
+    package=_requested_package(request) or None
+    try: path=manifest_path(package)
+    except RuntimeError as exc:
+        if str(exc).startswith('template_dir_missing') or str(exc).startswith('package_not_found'):
+            raise HTTPException(404,'template_dir_missing')
+        raise
+    if not path.is_file(): raise HTTPException(404,'template_dir_missing')
+    return json.loads(path.read_text(encoding='utf-8'))
 
 @app.get('/api/template-docx')
-def template_docx():
-    path=paths.template_dir()/'template-with-placeholders.docx'
-    return FileResponse(path,media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',filename='安顺月报五色占位模板.docx')
+def template_docx(request:Request):
+    from core.layout import docx_path,download_name
+    package=_requested_package(request) or None
+    try: path=docx_path(package)
+    except RuntimeError as exc:
+        if str(exc).startswith('template_dir_missing') or str(exc).startswith('package_not_found'):
+            raise HTTPException(404,'template_dir_missing')
+        raise
+    if not path.is_file(): raise HTTPException(404,'template_dir_missing')
+    return FileResponse(path,media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',filename=download_name(package))
 
 class TaskCreate(BaseModel):
     file_ids:list[str]=Field(default_factory=list)
     paths:list[str]=Field(default_factory=list)
     template_ref:str=''
     report_month:str|None=None
-    sheet_index:int=3
+    sheet_index:int|None=None
     mode:str='fallback'
     event_threshold:float|None=Field(default=None,gt=0,le=1)
     issue_number:int|None=Field(default=None,ge=1)
     publication_date:date|None=None
+    package:str|None=None
 def _requested_package(request:Request)->str:  # 目标客户包（空=默认包）；头/查询参数，不进 OpenAPI
     return request.headers.get('X-Report-Package') or request.query_params.get('package','')
+def _aligned_package(req,request:Request)->str:
+    header=_requested_package(request)
+    body=str(getattr(req,'package',None) or '').strip()
+    if body and header and body!=header:
+        raise HTTPException(400,'package_mismatch')
+    return header or body
 def _resolve_files(ids:list[str],package:str=''):
     target=resolve_package(package); return resolve_files(store,ids,target,UPLOADS),target
 
 @app.post('/api/template-tasks')
 async def template_task(req:TaskCreate,request:Request,background_tasks:BackgroundTasks,idempotency_key:str|None=Header(None)):
-    paths,package=_resolve_files(req.file_ids,_requested_package(request))
+    paths,package=_resolve_files(req.file_ids,_aligned_package(req,request))
     if len(paths)<2: raise HTTPException(422,'at_least_two_uploaded_reports_required')
     if any(not path.lower().endswith(('.doc','.docx')) for path in paths):raise HTTPException(422,'docx_reports_required')
     if len({hashlib.sha256(Path(path).read_bytes()).hexdigest() for path in paths})!=len(paths):
@@ -129,10 +154,11 @@ async def template_task(req:TaskCreate,request:Request,background_tasks:Backgrou
 
 @app.post('/api/report-tasks')
 async def report_task(req:TaskCreate,request:Request,background_tasks:BackgroundTasks,idempotency_key:str|None=Header(None)):
-    paths,package=_resolve_files(req.file_ids,_requested_package(request))
+    paths,package=_resolve_files(req.file_ids,_aligned_package(req,request))
     if len(paths)!=1 or not paths[0].lower().endswith('.xlsx'): raise HTTPException(422,'one_xlsx_required')
     rules={}
-    if req.template_ref!='anshun-monthly-colored':
+    from .template_engine import is_slot_template
+    if not is_slot_template(req.template_ref,package):
         from .structured_template import load_confirmed_template
         try: rules=load_confirmed_template(store,req.template_ref).get('rules',{})
         except (KeyError,ValueError): raise HTTPException(409,'confirmed_two_report_template_required')
@@ -140,7 +166,10 @@ async def report_task(req:TaskCreate,request:Request,background_tasks:Background
     if idempotency_key:
         existing=idempotent(store,'report:'+idempotency_key,task_id,package)
         if existing!=task_id: return store.get_task(existing)
-    state=TaskState(id=task_id,package=package,kind='report',phase='queued',template_ref=req.template_ref,input_refs=req.file_ids,metadata={'input_path':paths[0],'report_month':req.report_month,'report_issue':req.issue_number,'report_date':req.publication_date,'sheet_index':req.sheet_index,'mode':req.mode,'event_scope':'negative_or_warning','event_scope_confirmed':True,'event_scope_applies_to':'first_section_four_categories_districts_top10','event_scope_authority':'user_confirmed_2026_11_06','template_rules':task_feature_snapshot(rules),'event_threshold':req.event_threshold or rules.get('event_threshold',.65)})
+    from core.tools import vocabulary as _vocabulary
+    from .fallback_policy import event_scope_metadata
+    sheet_index=req.sheet_index if req.sheet_index is not None else _vocabulary.sheet_index(package)
+    state=TaskState(id=task_id,package=package,kind='report',phase='queued',template_ref=req.template_ref,input_refs=req.file_ids,metadata={'input_path':paths[0],'report_month':req.report_month,'report_issue':req.issue_number,'report_date':req.publication_date,'sheet_index':sheet_index,'mode':req.mode,**event_scope_metadata(package),'template_rules':task_feature_snapshot(rules),'event_threshold':req.event_threshold or rules.get('event_threshold',.65)})
     parameters={key:value for key,value in req.model_dump(mode='json').items() if key in ('issue_number','publication_date') and value is not None}
     if parameters:
         state.metadata['report_parameters']=parameters
@@ -153,13 +182,14 @@ def report_parameter_suggestions(template_ref:str,report_month:str):
     from .report_parameters import suggestions
     from .structured_template import load_confirmed_template
     try:
-        template={} if template_ref=='anshun-monthly-colored' else load_confirmed_template(store,template_ref)
+        from .template_engine import is_slot_template as _is_slot_template
+        template={} if _is_slot_template(template_ref) else load_confirmed_template(store,template_ref)
         return suggestions(template,report_month)
     except (ValueError,KeyError) as exc:raise HTTPException(422,str(exc))
 
 @app.get('/api/tasks')
 def tasks():
-    index=template_display_index(store, templates())
+    index=template_display_index(store, _list_templates())
     return [{'id':task.id,'display_name':display_name(task,index),'kind':task.kind,'phase':task.phase,'revision':task.revision,'created_at':task.created_at,'draft':bool(task.draft_ref),'report_month':task.metadata.get('report_month'),
              'metadata':{'simulation':task.metadata.get('simulation',False)}} for task in store.list_tasks()]
 @app.get('/api/tasks/{task_id}')
@@ -605,4 +635,4 @@ def download(artifact_id:str):
     store.get_artifact(artifact_id)
     path=artifact_file(store,artifact_id,'.docx')
     if not path.exists(): raise HTTPException(404,'download_not_found')
-    return FileResponse(path,media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',filename='安顺月报结构演示稿.docx')
+    return FileResponse(path,media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',filename='结构演示稿.docx')

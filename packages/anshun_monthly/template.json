@@ -14,7 +14,30 @@
       "网址": "url", "媒体环节": "platform", "媒体属性": "media_attribute",
       "媒体级别": "media_level", "舆情调性": "sentiment", "是否预警": "warning"
     },
-    "dedup": { "threshold": 0.65, "candidate_floor_ratio": 0.6, "merge_rounds": 2, "merge_threshold": 0.50 }
+    "dedup": { "threshold": 0.65, "candidate_floor_ratio": 0.6, "merge_rounds": 2, "merge_threshold": 0.50 },
+    "sentiment": {
+      "field": "sentiment",
+      "values": ["正面", "中性", "负面"],
+      "scopes": {
+        "negative": {"contains": ["负"]},
+        "positive": {"values": ["正面"]},
+        "neutral": {"values": ["中性"]}
+      }
+    },
+    "warning": {
+      "field": "warning",
+      "truth": ["是", "已预警", "1", "true", "TRUE", "预警"],
+      "scopes": {
+        "warning": {"warning_truth": true, "require_truth_present": true},
+        "negative_warning": {
+          "all": [{"warning_truth": true}, {"contains": ["负"]}],
+          "require_truth_present": true
+        },
+        "negative_or_warning": {
+          "any": [{"contains": ["负"]}, {"warning_truth": true}]
+        }
+      }
+    }
   },
   "vocabulary": {
     "localities": {
@@ -36,6 +59,45 @@
       "执政形象": ["干部","政务","公职","行政执法","作风"],
       "自然灾害": ["洪灾","洪水","地震","滑坡","泥石流","暴雨"]
     }
+  },
+  "export": {
+    "cover": {
+      "issue_slot": "B5_COVER",
+      "issue": "{year}年第{m}期",
+      "title_slot": "B12_COVER",
+      "title": "安顺市{year}年{m}月网络舆情分析报告"
+    },
+    "platform_list_slot": "B26_MAGENTA_02",
+    "platform_list_suffix": "、互动栏目平台",
+    "platform_slots": [
+      {"name": "移动客户端", "label_slot": "B26_MAGENTA_03", "count_slot": "B26_RED_04", "percent_slot": "B26_RED_05"},
+      {"name": "网站", "label_slot": "B26_MAGENTA_06", "count_slot": "B26_RED_07", "percent_slot": "B26_RED_08"},
+      {"name": "微信公众号", "label_slot": "B26_MAGENTA_09", "count_slot": "B26_RED_10", "percent_slot": "B26_RED_11"},
+      {"name": "视频", "label_slot": "B26_MAGENTA_12", "count_slot": "B26_RED_13", "percent_slot": "B26_RED_14"},
+      {"name": "微博", "label_slot": "B26_MAGENTA_15", "count_slot": "B26_RED_16", "percent_slot": "B26_RED_17"},
+      {"name": "纸媒", "label_slot": "B26_MAGENTA_18", "count_slot": "B26_RED_19", "percent_slot": "B26_RED_20"},
+      {"name": "电视", "label_slot": "B26_MAGENTA_21", "count_slot": "B26_RED_22", "percent_slot": "B26_RED_23"},
+      {"name": "互动栏目", "label_slot": "B26_MAGENTA_26", "count_slot": "B26_RED_22", "percent_slot": "B26_RED_23", "percent_suffix": "%"}
+    ],
+    "localities": [
+      {"name": "市区", "index": 7},
+      {"name": "西秀区", "index": 9},
+      {"name": "黄果树旅游区", "index": 11},
+      {"name": "关岭县", "index": 13},
+      {"name": "平坝区", "index": 15},
+      {"name": "紫云县", "index": 17},
+      {"name": "普定县", "index": 19},
+      {"name": "镇宁县", "index": 21},
+      {"name": "安顺经开区", "index": 23}
+    ],
+    "chart_titles": {
+      "sentiment": "图1 舆情情绪分布图",
+      "daily": "图2 舆情信息数量图",
+      "platform": "图3 舆情信源分布图",
+      "theme": "图4 负面舆情分类分布情况",
+      "locality": "图5 各区县舆情分布情况"
+    },
+    "demo_title": "安顺月报工作台结构演示稿"
   },
   "charts": [
     {
@@ -99,5 +161,21 @@
       "axis_label": "属地",
       "locality_basis": "冻结属地识别的唯一候选；跨区及不明单列"
     }
-  ]
+  ],
+  "section_two": {
+    "field_roles": {
+      "monthly_recommendations": "outlook",
+      "b40_analysis_paragraph": "analysis"
+    },
+    "policy_version": "anshun-mixed-risk-v3-seasonal-fallback",
+    "analysis_policy_version": "anshun-causal-analysis-style-v7",
+    "outlook_policy_version": "anshun-mixed-outlook-style-v8",
+    "analysis_length": {"min_chars": 300, "max_chars": 500},
+    "locality_evidence": {
+      "names": ["安顺", "西秀", "平坝", "普定", "镇宁", "关岭", "紫云", "黄果树"],
+      "region": "安顺市",
+      "evidence_label": "安顺",
+      "official_hosts": ["anshun.gov.cn"]
+    }
+  }
 }
