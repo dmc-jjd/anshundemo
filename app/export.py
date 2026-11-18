@@ -13,11 +13,8 @@ def _package_of(draft=None,facts=None,store=None):
     return None
 
 def _export_cfg(package=None):
-    try:
-        from core.packages import load_package
-        return dict((load_package(package).template or {}).get('export') or {})
-    except Exception:
-        return {}
+    from core.packages import load_package
+    return dict((load_package(package).template or {}).get('export') or {})
 
 def template_values(draft,facts,issues=None,store=None):
     """模板 99 个占位符的「计算结果」字典——从 `_source_template_draft` 原样抽出。
@@ -104,11 +101,11 @@ def template_values(draft,facts,issues=None,store=None):
         values[f'TOP10_{row["rank"]:02}_HEAT']=str(row['negative_warning_count'])
     return values
 
-def _source_template_draft(draft,facts,issues,overrides=None):
+def _source_template_draft(draft,facts,issues,overrides=None,local_store=None):
     from lxml import etree as ET
     from .config import DATA
     from .storage import Store
-    package=_package_of(draft,facts,None)
+    package=_package_of(draft,facts,local_store)
     from core.layout import docx_path
     try: path=docx_path(package)
     except RuntimeError: return None
@@ -144,7 +141,7 @@ def _source_template_draft(draft,facts,issues,overrides=None):
         for i,name in enumerate(chart_names,1):
             ref=facts.get('result_refs',{}).get('render_chart:'+name)
             if not ref or i>len(old_drawings): continue
-            payload=Store(DATA).get_artifact(ref)
+            payload=(local_store if local_store is not None else Store(paths.data_root(package))).get_artifact(ref)
             png=base64.b64decode(payload['png_base64']); chart_files[f'word/media/chart_{i}.png']=png
             rid=f'rIdChart{i}'
             relation=ET.SubElement(rels,f'{{{rel_ns}}}Relationship'); relation.set('Id',rid); relation.set('Type','http://schemas.openxmlformats.org/officeDocument/2006/relationships/image'); relation.set('Target',f'media/chart_{i}.png')
@@ -220,7 +217,7 @@ def export_docx(draft:dict,facts:dict,template:dict|None,mode:str,issues:list[di
             charts[name]=chart
         return render_structured_docx(version,draft.get('slot_values',{}),set(draft.get('evidence_refs',[])),require_complete=mode=='final',charts=charts)
     if mode=='draft':
-        source=_source_template_draft(draft,facts,issues,overrides)
+        source=_source_template_draft(draft,facts,issues,overrides,local_store)
         if source is not None: return source
     package=_package_of(draft,facts,local_store)
     demo_title=(_export_cfg(package).get('demo_title') or '结构演示稿')

@@ -36,9 +36,27 @@ def _approve_env(tmp_path,monkeypatch,structured,**patch):
     store=Store(tmp_path/'store')
     fact=store.put_artifact('r','facts',{'metrics':{}})
     draft={'id':'d1','fact_ref':fact,'template_ref':'other','content_hash':'h1','sections':[],'slot_values':{}}
-    if structured: draft['structured_template_ref']='tpl'
+    if structured:
+        # Fixture contract migration, not a production authorization exception.
+        import hashlib
+        from core.packages.context import current_ref
+        from core.structured_template import _schema
+        package=current_ref().name
+        store.package=package
+        layout=tmp_path/'confirmed-layout.docx'
+        with zipfile.ZipFile(layout,'w') as archive:
+            archive.writestr('word/document.xml','<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>fixed snapshot</w:t></w:r></w:p></w:body></w:document>')
+        field={'id':'fixture_text','owner':'writer','semantic':'fixture','display_name':'fixture','kind':'text','value_schema':{'type':'string','minLength':1}}
+        template={'id':'injection-fixture','status':'confirmed_by_human','source_reports':[{'sha256':hashlib.sha256(layout.read_bytes()).hexdigest()},{'sha256':'second'}],
+                  'comparison_ref':'fixture-comparison','layout_source':str(layout),'fields':[field],
+                  'blocks':[{'index':0,'kind':'paragraph','parts':[{'field':field['id']}]}],
+                  'output_schema':_schema([field]),'writer_schema':_schema([field],True),'rules':{}}
+        ref=store.put_artifact('r','confirmed-template',template)
+        draft['template_ref']=ref
+        draft['structured_template_ref']=ref
+        draft['slot_values']={field['id']:{'value':'fixed snapshot','source_refs':[fact]}}
     draft_ref=store.put_artifact('r','draft_version',draft)
-    store.put_task(TaskState(id='r',kind='report',phase='awaiting_final_review',fact_ref=fact,draft_ref=draft_ref,template_ref='other'))
+    store.put_task(TaskState(id='r',kind='report',phase='awaiting_final_review',fact_ref=fact,draft_ref=draft_ref,template_ref=draft['template_ref'],package=package if structured else ''))
     monkeypatch.setattr(main,'store',store)
     for name,value in patch.items(): monkeypatch.setattr(main,name,value)
     return main,draft

@@ -79,3 +79,38 @@ def apply_slot_values(store, state, req):
     after_human_change(store,state.id,previous_hash,set(req.values))
     store.append_event(state.id,{'type':'human_slot_values','filled':sorted(req.values)})
     return None,{'draft_ref':state.draft_ref,'missing':state.metadata['missing_fields'],'preview_only':state.metadata['preview_only']}
+
+
+def preview_draft_error(store, state):
+    """Request preflight, before phase/parameters/body/background side effects."""
+    from ..reviewers import ACTIVE_PHASES
+    from ..template_engine import validate_task_template
+    if not state.fact_ref:
+        return 409, 'data_review_required'
+    if state.phase in ACTIVE_PHASES:
+        return 409, 'writing_in_progress'
+    if state.phase not in ('facts_frozen', 'awaiting_final_review'):
+        return 409, 'invalid_writing_stage'
+    try:
+        validate_task_template(store, state)
+    except ValueError as exc:
+        return 409, str(exc)
+    return None
+
+
+def record_writing_failure(store, state, error):
+    """Keep a stable template error if a file vanishes after request preflight."""
+    state.phase = 'facts_frozen'
+    code = getattr(error, 'code', None)
+    labels = {'template_artifact_missing': '模板文件缺失，不能用于生成。',
+              'template_artifact_unreadable': '模板文件不可读，不能用于生成。'}
+    state.metadata['writing_error'] = labels.get(code, '写作未完成，请重试或查看日志。')
+    if code in labels:
+        state.metadata['writing_error_code'] = code
+    else:
+        state.metadata.pop('writing_error_code', None)
+    store.put_task(state, state.revision)
+    event = {'type': 'writing_failed', 'error_type': type(error).__name__}
+    if code in labels:
+        event['error_code'] = code
+    store.append_event(state.id, event)

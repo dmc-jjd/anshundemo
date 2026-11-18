@@ -18,18 +18,35 @@ ACTIVE_TEMPLATE_PHASES = frozenset((
 ))
 
 
+def _unavailable_item(task, ref, name, error, *, confirmed):
+    # Reuse the existing visible management placeholder; do not hide the task.
+    label = '文件缺失' if error.artifact_status == 'missing' else '文件不可读'
+    return {
+        'id': ref if confirmed else task.id, 'task_id': task.id,
+        'name': name or ('已确认模板' if confirmed else '待确认模板'), 'version': 1,
+        'status': 'confirmed_by_human' if confirmed else 'candidate_requires_review',
+        'usable_for_final': False, 'artifact_status': error.artifact_status,
+        'reason': label + '，不能用于生成；请检查工件或重新上传并确认模板',
+    }
+
+
 def list_templates(store, package=None) -> list[dict]:
     """模板库条目：当前包声明的内置模板 + 仍存在的模板任务的已确认版本 / 待确认候选。
 
-    与旧实现的唯一行为差异：待确认的候选任务也出现在库里（带 ``task_id``），
-    前端因此能对「已确认」和「待确认」两类任务都提供删除入口；下拉仍只取
-    ``confirmed_by_human``，候选条目不会混进新建报告的模板选择。
+    这是管理库而不是仅含可生成项的列表：候选和缺文件项保留 task_id 供管理。
+    artifact_status 是独立的工件健康状态，不以 usable_for_final 判断文件健康。
+    生成下拉还须排除 missing/unreadable；服务端每次生成仍重新验证实际工件。
 
     历史上软删除留下的 ``template_deleted_at`` 任务仍会被跳过；调用
     ``purge_soft_deleted_templates`` 后这类残留会被硬删除。
     """
     from ..template_engine import builtin_templates
-    items = [dict(item) for item in builtin_templates(package)]
+    from ..structured_template import read_template_artifact, TemplateArtifactUnavailable
+    if package is not None:
+        route_store = getattr(store, 'store_for', None)
+        if callable(route_store):
+            store = route_store(package)
+    items = [{**item, 'artifact_status': 'available'} for item in builtin_templates(package)]
     for task in store.list_tasks():
         if task.kind != 'template' or task.metadata.get('template_deleted_at'):
             continue
@@ -37,17 +54,9 @@ def list_templates(store, package=None) -> list[dict]:
         ref = task.metadata.get('confirmed_template_ref')
         if ref:
             try:
-                artifact = store.get_artifact(ref)
-            except (KeyError, FileNotFoundError, ValueError, OSError):
-                items.append({
-                    'id': ref,
-                    'task_id': task.id,
-                    'name': name or '已确认模板',
-                    'version': 1,
-                    'status': 'confirmed_by_human',
-                    'usable_for_final': False,
-                    'reason': '已确认模板文件读取失败，请检查工件完整性',
-                })
+                artifact = read_template_artifact(store, ref)
+            except TemplateArtifactUnavailable as exc:
+                items.append(_unavailable_item(task, ref, name, exc, confirmed=True))
                 continue
             if not artifact.get('writer_schema'):
                 continue
@@ -60,9 +69,15 @@ def list_templates(store, package=None) -> list[dict]:
                 'version': 1,
                 'status': 'confirmed_by_human',
                 'usable_for_final': False,
+                'artifact_status': 'available',
                 'reason': '结构与 Schema 已确认；尚缺数据绑定的字段保留待填',
             })
         elif task.metadata.get('structured_template_ref') and not task.metadata.get('simulation'):
+            try:
+                read_template_artifact(store, task.metadata['structured_template_ref'])
+            except TemplateArtifactUnavailable as exc:
+                items.append(_unavailable_item(task, task.metadata['structured_template_ref'], name, exc, confirmed=False))
+                continue
             items.append({
                 'id': task.id,
                 'task_id': task.id,
@@ -70,6 +85,7 @@ def list_templates(store, package=None) -> list[dict]:
                 'version': 1,
                 'status': 'candidate_requires_review',
                 'usable_for_final': False,
+                'artifact_status': 'available',
                 'reason': '模型语义研判已完成，等待人工确认；确认后才能用于成稿',
             })
     return items

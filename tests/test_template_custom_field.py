@@ -73,6 +73,37 @@ def test_choice_is_offered_above_preset_dynamic_fields(tmp_path, monkeypatch):
     assert custom['scope'] == 'selection' and custom['owner'] is None
 
 
+def test_custom_field_descriptions_survive_selection_replay_and_confirmation(tmp_path, monkeypatch):
+    store, task_id, _, base_ref = _fixture(tmp_path, monkeypatch)
+    with TestClient(main.app) as client:
+        revision = store.get_task(task_id).revision
+        created = _custom(client, task_id, revision, text='重点关注', custom=WRITER_CUSTOM).json()
+        field_id = created['field']['id']
+        saved = client.put(f'/api/templates/{task_id}/fields/{field_id}', json={
+            'expected_revision': created['revision'], 'rule': '根据证据概括，不沿用历史措辞',
+            'reason': '人工审核说明', 'format': '一句话'})
+        assert saved.status_code == 200, saved.text
+        assert store.get_task(task_id).metadata['structured_template_ref'] == base_ref
+        added = client.post(f'/api/templates/{task_id}/draft/selection', json={
+            'expected_revision': saved.json()['revision'], 'block': 0,
+            'selected_text': '共计', 'start': 0, 'choice': 'text'})
+        assert added.status_code == 200, added.text
+        undone = client.post(f'/api/templates/{task_id}/draft/undo', json={
+            'expected_revision': added.json()['revision']})
+        assert undone.status_code == 200, undone.text
+        effective = client.get(f'/api/templates/{task_id}/draft').json()
+        field = next(f for f in effective['definition']['fields'] if f['id'] == field_id)
+        assert field['reason'] == '人工审核说明' and field['format'] == '一句话'
+        assert len(effective['draft']['selection_log']) == 1
+        assert effective['draft']['base_ref'] == base_ref
+        confirmed = client.post(f'/api/templates/{task_id}/confirm', json={
+            'expected_revision': effective['revision'], 'candidate_ref': base_ref,
+            'reason': 'test', 'rules': RULES, 'resolutions': {}})
+        assert confirmed.status_code == 200, confirmed.text
+        artifact = store.get_artifact(confirmed.json()['metadata']['confirmed_template_ref'])
+        assert next(f for f in artifact['fields'] if f['id'] == field_id)['reason'] == '人工审核说明'
+
+
 def test_custom_writer_field_is_generated_and_visible_to_writer(tmp_path, monkeypatch):
     store, task_id, definition, _ = _fixture(tmp_path, monkeypatch)
     with TestClient(main.app) as client:

@@ -1,11 +1,20 @@
 ---
 name: onboard-client-package
-description: "接一个新客户时的完整操作流程：建包骨架 → 人工确认模板 → 写提示词。当用户要求接入新客户、新建客户包、建模板、写客户提示词、或问『怎么加一个客户』时使用。"
+description: "接一个新客户时的完整操作流程：建包骨架 → 模板比对与人工修改（不确认）→ agent 按 LLM 意见优化原候选 → 用户亲自确认并通知 → 写提示词与技术自检 → 用户测试。也支持在现有客户包内更新模板。当用户要求接入新客户、新建客户包、建模板、更新模板、修改现有客户模板、写客户提示词、或问『怎么加一个客户』时使用。"
 ---
 
-# 接入新客户（agent 操作手册）
+# 客户包接入与模板更新（agent 操作手册）
 
-> 读者是 **agent**，不是人。读完这一份就能在 `packages/<新包>/` 建出整套文件，判断 34 条提示词里哪些要改写、哪些沿用基座，并跑出一份能让人签字的对比报告。
+> 读者是 **agent**，不是人。按本手册建包、优化未确认模板并写客户提示词；业务测试由用户亲自执行，agent 按实际结果整理对比报告。
+>
+> **当前交接规则（2026-11-18）**：用户比对并修改模板后先不确认 → agent 读取 LLM 意见并优化同一未确认模板 → 用户审阅并亲自确认、通知 agent → agent 查物证后写提示词和做技术自检 → 用户测试。已确认模板保持只读，不另换确认版本。阶段 2 的必读操作见 [未确认模板优化与交接](references/template-refinement.md)；实例/数据根和隔离检查见 [基座兼容说明](references/base-compatibility.md)。
+
+## 工作入口：新建客户包或更新现有模板
+
+- **新建客户包**：按主手册 1.5 全链路，从骨架开始。
+- **现有客户包内更新模板**：先读 [模板更新流程](references/template-update.md)，跳过建包骨架，保留原客户包与已有配置。原模板未确认时继续修改同一任务；原模板已确认且用户明确要求更新时，在同包内建立本次更新的未确认模板，保留旧确认模板及报告引用。
+- 更新仍执行“人工修改先不确认 → agent 读取 LLM 意见优化原候选 → 用户亲自确认并通知 → 按差异同步提示词/配置并技术自检 → 用户业务测试”。不将模板更新理解为重建客户包、修改旧确认工件或自动切换已有报告。
+- 同包提示词/部分配置共用，修改可能影响旧模板今后的生成；先核查新旧兼容性，不宣称每份模板有独立提示词副本。新旧要求冲突时指出影响再由用户决定。
 
 ## 〇、这份文档怎么用
 
@@ -18,14 +27,14 @@ description: "接一个新客户时的完整操作流程：建包骨架 → 人�
 
 读法：先读第一章定交互方式；按 二 → 三 → 四 → 五 → 六 → 七 → 八 做题；九、十一 在写完提示词之后；十、十二、十三 随时查。
 
-产出物固定为六样：
+新建客户包的产出物为以下六类；模板更新沿用已有文件，仅保存必要差异与更新记录，具体见模板更新流程：
 
 1. `packages/<新包>/manifest.yaml`
 2. `packages/<新包>/template.json`
 3. `packages/<新包>/prompts/index.yaml`
 4. `packages/<新包>/prompts/roles.yaml`
 5. `packages/<新包>/接入记录.md`（输入 / 缺口表 / 问答记录 / 提示词清单 / 自检证据 / 遗留，六段格式见 5.6）
-6. `packages/<新包>/对比报告-<期号>-<日期>.md`（每次测试运行一份，格式见 9.2）
+6. `packages/<新包>/对比报告-<期号>-<日期>.md`（用户实际测试后按结果整理；未测试仅交测试指引，不虚构运行报告，格式见 9.2）
 
 三条纪律，违反任一条产出不接受：
 
@@ -67,7 +76,7 @@ description: "接一个新客户时的完整操作流程：建包骨架 → 人�
 
 **只有这三类才让用户做：**
 1. **客户业务事实** —— 辖区清单、类目体系、报告类型、客户明确不要哪些能力。只有客户知道。
-2. **界面操作** —— 上传历史报告、点「确认并保存模板」。需要人在浏览器里做。
+2. **界面操作与最终确认** —— 用户上传历史报告并修改预览后先不确认，交 agent 优化原候选；优化完用户审阅并亲自点「确认并保存模板」，完成后通知 agent。提示词完成后的业务测试同样由用户亲自执行。
 3. **物理环境** —— 客户文件在工作区哪个位置、内网/DLP 策略、某台机器能不能访问外网。
 
 #### 让用户做的每一件事，必须写清四样
@@ -205,9 +214,9 @@ description: "接一个新客户时的完整操作流程：建包骨架 → 人�
 
 ### 1.7 阶段 3 开始前必须验证已确认模板存在
 
-见一·五 交接点 B。检测不到 `status == 'confirmed_by_human'` 的模板（且 `source_reports` ≥ 2）就不许开始写提示词，继续等；不许拿「候选模板」（`candidate_requires_review`）当已确认模板。
+见一·五 交接点 B。必须先完成 1.5.4a 的原候选优化，再由用户亲自确认并通知 agent，最后过 1.5.5 的物证检查；三项缺一不可。候选可在阶段 2 读取和修改，但不能据此提前写提示词；检测不到确认时按所处子阶段行动，不能一律只等用户确认。
 
-## 一·五、三阶段全链路（骨架 → 人工确认 → 提示词）
+## 一·五、全链路（骨架 → 未确认模板优化 → 用户确认 → 提示词 → 用户测试）
 
 > **当前只有多包架构（单包架构已不存在）。** `GET /api/packages` 恒返回客户包列表
 > （`[{package,name,report_type,version,usable,status,error}]`），每个任务创建时绑定
@@ -221,16 +230,22 @@ description: "接一个新客户时的完整操作流程：建包骨架 → 人�
 ```
 阶段 1（agent 自动执行）    建包骨架
         ↓ 交接点 A：agent 停下来提示用户（固定话术，见 1.5.3）
-阶段 2（人工执行）          模板对比 + 确认
-        ↓ 交接点 B：agent 检测到「已确认模板」（检测法，见 1.5.5）
-阶段 3（agent 自动执行）    提示词需求推导 + 逐条撰写 + 测试
+阶段 2A（用户操作）        模板对比 + 人工修改，保持未确认
+        ↓ 用户通知 agent 接手本次模板任务
+阶段 2B（agent 执行）      读取 LLM 审核意见，直接优化同一未确认模板
+        ↓ 交付修改清单与预览，等待用户审阅
+阶段 2C（用户操作）        亲自确认模板，并通知 agent 继续
+        ↓ 交接点 B：核对本次任务的已确认模板物证（1.5.5）
+阶段 3（agent 执行）       提示词推导与撰写 + 技术自检
+        ↓ 提交测试入口与验收清单，停止自动业务试跑
+阶段 4（用户执行）         业务测试；agent 按反馈定位与调整
 ```
 
 **关键约束（是流程的一部分，不是建议）**：
 
-- 阶段 1 与阶段 3 之间**必须**有人工确认这一步。agent 不许跳过，也不许代做。
+- 必须先优化原候选、再由用户审阅并亲自确认；agent 不代点确认、不先确认再优化。用户确认后通知才继续写提示词。已确认模板保持只读，不另换确认版本。
 - 阶段 1 结束时，agent 的合法动作只有一个：发出 1.5.3 的固定话术，然后等。
-- 阶段 3 开始前必须先过 1.5.5 的检测；检测不到就继续等，不许改道。
+- 阶段 2B 允许修改本次未确认候选；阶段 3 必须有用户完成确认的通知和 1.5.5 物证。提示词完成后交用户测试，agent 不自动跑出稿/付费模型任务。
 
 ### 1.5.2 阶段 1：建包骨架（五步，可执行）
 
@@ -426,7 +441,7 @@ PKG-CHECK anshun_monthly（摘录）
 > 包骨架已建好，并且通过了自检：`packages/<新包>/`
 > 我也自己查过了——系统已经认得这个包，能正常加载、没有报错，这一步不用你确认。
 >
-> 接下来需要你亲手做的只有三件（我在这里等）：
+> 接下来请先完成模板比对和人工修改，暂时不要确认（我在这里等）：
 >
 > ① 在浏览器打开 http://127.0.0.1:8765/ ，点顶部「02 模板确认」→「新建比对任务」面板。
 >    「客户」下拉里认准末尾是「· `<新包>`」的那一项（每项形如「客户名称 · 包代号」，不同客户可能同名，包代号唯一）；在「历史报告 Word」里选 2 份以上历史报告，**优先选 `.docx`**——只有 `.doc` 老格式也行：文字能读、模板能建，但原文图片的位置取不到、图表只能由系统按数据重画，确认能接受再传（第一份当排版基准）；填一个模板名称，点「上传并比对」。
@@ -435,19 +450,19 @@ PKG-CHECK anshun_monthly（摘录）
 >    · 报「所选报告存在重复内容，请移除重复文件」→ 其中两份内容相同，换一份内容不同的报告。
 > ② 等任务卡出现「预览并确认模板」按钮。模型研判现在**固定先跑两轮**：第一轮出初稿，第二轮逐条核对第一轮意见并按固定清单自审；第二轮判定不完美会自动加跑第三轮终审。任务卡事件区会显示「模板第 N / 3 轮研判已开始/通过」，通常 **4~8 分钟**（报告越长越久）。
 >    超过 10 分钟事件区没有任何轮次进展 → 告诉我卡住了，我自己查任务状态。
-> ③ 点「预览并确认模板」，核对字段与占位符，需要改的先改，最后点「确认并保存模板」。
+> ③ 点「预览并确认模板」，核对字段与占位符，需要改的先保存修改，**先不要点「确认并保存模板」**。字段编辑保存后可关闭；规则/图表等尚未保存的选择请告诉我，我会核对并保存到原候选，不要为了保存而点确认。
 >    按钮是灰的/看不到 → 还没跑完模型研判，等 ② 的按钮出现再点。
->    报「请填写上方尚未明确的业务问题」→ 把弹窗里列的问题逐条答完，再点一次。
+>    仍有业务问题 → 把已知答案告诉我；不清楚的先保留，不为过关随意填写。
 >
-> 三件都做完告诉我，我会自己读已确认模板的物证继续写提示词（不用你报状态，也别去翻接口）。
+> 完成后告诉我，我会读取这份未确认模板的 LLM 审核意见并直接优化，改完交给你审阅。之后由你亲自确认并告诉我，我核对确认结果后再写提示词；提示词写完后的业务测试由你来走。
 
 **三条硬约束（红线）**：
 
 - ❌ 不许 agent 自己继续往下走：不发完话术顺手写提示词、不顺手改 `template.json` 的槽位、不顺手跑第九章测试。
-- ❌ 不许绕过模板确认直接写提示词：没有已确认模板就拿不到 `blocks` / `fields` / `rules` / `writer_schema`，写出来的是猜的，而且会静默回退基座、不报错。
+- ❌ 不许绕过用户确认直接写提示词。阶段 2B 可读候选的 `blocks` / `fields` / `rules` / `writer_schema` 来优化模板，但候选不代表已定稿。
 - ✅ 必须明确说「我在这里等」，并且真的停：发完话术的同一个回合内不再有任何写盘动作。
 
-### 1.5.4 阶段 2：人工做什么（agent 只等，不代办）
+### 1.5.4 阶段 2A：用户比对与修改，先不确认
 
 #### ① 新建任务时选客户（不需要切包、不需要重启）
 
@@ -486,82 +501,75 @@ PKG-CHECK anshun_monthly（摘录）
 
 耗时预期 **4~8 分钟**：每一轮都是整份模板全量输出，2026-11-17 三个模板任务实测单轮模型耗时 109.5 / 134.4 / 143 秒——第 2 轮完美约 4~5 分钟，进第 3 轮约 5.5~8 分钟，且随报告篇幅增长。别再用旧的单轮数字（约 268 秒）回答用户「还要多久」。
 
-#### ④ 在「预览并确认模板」里确认
+#### ④ 预览与人工修改，保持未确认
 
-- **去哪**：任务卡上点「预览并确认模板」→ 弹出标题为「预览并确认模板」的对话框；上半部分是带占位符的报告预览，下半部分「每月沿用的处理规则」区（事件去重 / 自动分类 / 第一部分重点预警 / TOP10 榜单 四个勾选框 + 事件相似度阈值 + 重点预警统计范围），最后点底部「确认并保存模板」。
+- **去哪**：任务卡上点「预览并确认模板」→ 弹出标题为「预览并确认模板」的对话框；上半部分是带占位符的报告预览，下半部分「每月沿用的处理规则」区（事件去重 / 自动分类 / 第一部分重点预警 / TOP10 榜单 四个勾选框 + 事件相似度阈值 + 重点预警统计范围），本轮先保存有独立保存入口的字段/选区修改；规则/图表等仅在确认时提交的选择须交给 agent 核对并通过原候选接口保存，不能假定关闭弹窗后仍保留。**不点底部「确认并保存模板」**，交 agent 执行 1.5.4a；优化后再回此处审阅并由用户亲自确认。
 - **看什么**：预览里动态位置显示占位符 id（`B5_COVER` 这类），固定文字是正常段落；字段逐项核对三样——**归属**（谁来填：程序算 / 模型写）、**这条要写什么**（字段语义）、**归到哪一章**；规则区四个勾选框与客户实际能力一致。特别核对这些段落：多份历史报告里反复出现的衔接句式（如「正面报道主要有：」「中性报道主要有：」「负面网民言论有：」）必须是固定文字，不能整段收成一个写作槽。比对结果里的 `intra_paragraph_frames` 就是这些句式；若预览把它们吞进了动态字段，必须在确认前改回，或重新做模型研判。已确认模板不会自动拆开旧的整段槽。
-- **算成功**：点「确认并保存模板」后对话框关闭、页面提示「模板已确认，可在报告处理页选择该版本。」，模板库那一行的状态变成「可用于成稿」。
-- **不对劲**：按钮是灰的/看不到 → 还停在模型研判，回 ③ 等按钮出现；报「请填写上方尚未明确的业务问题」→ 把弹窗上半部分列的问题逐条答完再点；报「此模板尚未完成模型语义研判」→ 关掉弹窗，任务上点「重新进行模型语义研判」，等它跑完再回来。
+- **本轮算成功**：人工修改已保存，任务仍待确认、`confirmed_template_ref` 为空；用户通知 agent 接手本次任务。最终确认另在 1.5.4a 完成优化后进行。
+- **不对劲**：按钮是灰的/看不到 → 还停在模型研判，回 ③ 等按钮出现；发现尚未明确的业务问题 → 记录问题与已知答案，未知项交用户判断，不提前确认；报「此模板尚未完成模型语义研判」→ 关掉弹窗，任务上点「重新进行模型语义研判」，等它跑完再回来。
 - 需要改的字段**可以编辑**（显示名称 / 字段语义 / 归属）：点字段旁的「编辑」改完点「保存字段设置」，**必须在确认前改**——模板一旦确认就定稿，再点编辑会被拒绝（页面提示已确认，改不动）。
 - **预设分类装不下的内容可以自定义字段**：字段分类里有一项「自定义：我自己定义这个字段」（`app/template_draft.py` 的 `custom_text`），用于预设类型覆盖不到的定性措辞（如「较稳定」「波浪型」）。在卡片内展开的小表单里填字段名（20 字内）、含义（200 字内），并指定由模型写（writer）还是程序算（data），点「生成自定义字段」——不跳页，在原卡片内完成。生成后的字段同样在确认前可编辑三件套。自定义字段的 id 是独立命名空间 `custom_field_N`（全表递增，与预设的 `block_<块>_field_<序号>` 各用一套计数器），阶段 3 读已确认模板时遇到 `custom_field_N` 是正常字段，不是异常。
-- 确认并保存后落盘两样物证（agent 自查，不要让用户去翻）：`template_version` 工件 `status=confirmed_by_human`，任务 `metadata.confirmed_template_ref` 非空。
+- 优化完、用户审阅并亲自确认后，agent 再自查两样物证（本轮未确认阶段不要求它们存在）：`template_version` 工件 `status=confirmed_by_human`，任务 `metadata.confirmed_template_ref` 非空。
 
 #### ⑤ 模板任务删错了怎么办（硬删除 + 同名重建）
 
-模板建错了（选错报告、名字要重来）**不用改名凑合，也不许自己改数据目录**：模板库每行有「删除」入口，这是**硬删除**（`DELETE /api/template-tasks/{id}`，逻辑在 `app/api_views/template_library.py` 的 `delete_template`）：
+本节仅描述用户明确要求删除错误任务时的管理操作，**不是原候选优化的替代流程**；不得用于删除/重建或更换本轮已确认模板。模板建错了（选错报告、名字要重来）**不许自己改数据目录**：模板库每行有「删除」入口，这是**硬删除**（`DELETE /api/template-tasks/{id}`，逻辑在 `app/api_views/template_library.py` 的 `delete_template`）：
 
-- 模板任务从任务表永久删除，事件和审核草稿一并清掉；**未被报告引用的模板工件（含已确认 `template_version`）也会从库和磁盘删除**。删完该任务不再出现在 `GET /api/templates`、新建报告的模板下拉，也**不会再被方式二的 `store.list_tasks()` 读盘扫描命中**。**删除不占用模板名——同名可以重新建模板并确认**。这是删错模板的正式逃生口，删除后无法从任务表恢复。
+- 模板任务从任务表永久删除，事件和审核草稿一并清掉；**未被报告引用的模板工件（含已确认 `template_version`）也会从库和磁盘删除**。删完该任务不再出现在 `GET /api/templates`、新建报告的模板下拉，也**不会再被方式二的目标任务只读检查命中**。**删除不占用模板名——同名可以重新建模板并确认**。这是删错模板的正式逃生口，删除后无法从任务表恢复。
 - 研判正在跑（排队 / 读取报告 / 本地就绪 / 模型研判中）删不掉：接口返回 409 `template_still_running`，前端对这种任务也不给删除入口；等研判结束（或确认后）再删。
 - 已确认模板**已被报告任务引用**时默认删不掉：409 `template_in_use` 并带引用数；界面会二次确认，用户明确确认后才带 `?force=true` 强删。强删会移除模板任务，但已建报告的 `template_ref` 原样保留，并留下那份已确认 `template_version` 以便回看报告；任务本身已不在 `list_tasks()` 里，二次建包 / 更新提示词时不要再把它当可用模板。
 - 不要直接遍历 `artifacts/template_version-*.json` 判断「当前可用模板」——强制删除后磁盘上可能仍留着被报告引用的旧文件。只认仍存在的模板任务，或 `GET /api/templates` 里 `status=confirmed_by_human` 且带 `task_id` 的行。
 
 **agent 的纪律**：agent 只用只读 `GET` 或读盘核查任务状态、引用数与删除结果；**删除动作由用户在模板库界面点「删除」并读完确认文案后自己做**，agent 不替用户发 DELETE。
 
+### 1.5.4a 阶段 2B—2C：agent 优化原候选 → 用户亲自确认
+
+用户完成比对与人工修改、通知接手后，agent 按 [未确认模板优化与交接](references/template-refinement.md) 执行：定位本次包和 task_id → 读取当前候选及实际 LLM 审核意见 → 逐条核对历史报告和用户修改 → 通过已有接口修改**同一未确认模板任务** → 重新读取生效预览，记录已采纳/不采纳/待用户判断及证据。
+
+改完交付预览与修改清单，**停在用户审阅**。用户亲自点击「确认并保存模板」，并通知 agent 后，再按 1.5.5 检查本次任务的最终物证。没有用户通知，即使系统里出现 confirmed 也不自动写提示词；通知了但物证未成立也不进入下一阶段。
+
+已确认模板只读：本次原候选优化不反向解冻、不直接改工件、不调用 chart-version 或另建同名任务来绕过锁定。若接手时已确认，只读核查并说明本次优化窗口已关闭；只有用户明确要求“更新模板”时才进入独立的 [模板更新流程](references/template-update.md)，在同包中新建更新候选并保留旧确认版本。
+
 ### 1.5.5 交接点 B：agent 怎么判断「可以开始了」
 
-这一步**全部由 agent 自己查**——不要让用户去打开页面、翻接口，也不要把「模板好了」这种口头话当判据。要检测到**已确认模板的物证**。两条命令任一条命中即可，两条都跑更稳（HTTP 看应用视角，读盘看真实工件）。
+这一步**全部由 agent 自己查**。必须确认本次客户、本次模板任务及实际工件；同名、全局最新、仅有 confirmed 状态都不算证据。
 
-**方式一：HTTP（服务在跑）**
+**方式一：HTTP（服务在跑，优先）**
 
-```powershell
-$items = Invoke-RestMethod http://127.0.0.1:8765/api/templates
-$items | Where-Object { $_.status -eq 'confirmed_by_human' } | Select-Object id, name
-```
-
-**看什么 / 算成功**：输出形如 `id  name` 的一行或多行，例如 `f3a1c2d4…  龙川月报模板`；至少一行、且 `name` 是这次客户模板的名字 = 已确认模板存在，可以进阶段 3。
-
-**不对劲**：输出为空 → 还没确认，回 1.5.4 ④ 继续等；只看到候选行（内置基线 `id=anshun-monthly-colored`，或 `id` 是任务 id、`status=candidate_requires_review` 的待确认行）→ 候选不是已确认，继续等。
-
-`GET /api/templates`（`app/api_views/template_library.py` 的 `list_templates`）返回**三类行**，不要拿全量行数做判断：
-
-1. **内置基线候选**：固定 `id=anshun-monthly-colored`、`status=candidate_requires_review`、**无 `task_id`**，永远在；
-2. **待确认候选**：仍存在的模板任务、研判已出候选但未确认的行——`id` **就是任务 id**、`status=candidate_requires_review`、带 `task_id`；
-3. **已确认**：`id` 是模板工件 ref、`status=confirmed_by_human`、带 `task_id`（还要求非 simulation 且工件带 `writer_schema`）。
-
-判断可否进阶段 3 **只认第 3 类**：`status=confirmed_by_human` 且带 `task_id`；内置基线与待确认候选都不算。方式一的 PowerShell 过滤（`Where-Object status -eq 'confirmed_by_human'`）仍然安全，候选行不会误判；新建报告的模板下拉也只取 confirmed 行，候选混不进去。库里有几个任务、几行候选是环境状态，**不要写死数字**，以实跑为准。
-
-**方式二：直接读盘（服务没起也能查，判据最硬；命令 agent 自己跑，不要发给用户）**
+先从本次创建任务响应或页面任务地址取得 `$taskId`，不要从全局列表挑最新。下面占位值须替换为本次真实值。
 
 ```powershell
-@'
-import app  # 配好 paths.configure_data_root(DATA)
-from app.storage import Store
-from core.structured_template import load_confirmed_template
-store = Store()
-hits = []
-for t in store.list_tasks():
-    # 只认仍存在、且未被历史软删标记的模板任务；不要 glob artifacts/template_version-*.json
-    if t.kind != 'template' or t.metadata.get('template_deleted_at'):
-        continue
-    ref = t.metadata.get('confirmed_template_ref')
-    if not ref: continue
-    try: tpl = load_confirmed_template(store, ref)
-    except ValueError: continue
-    hits.append((t.id, ref, len(tpl.get('source_reports') or [])))
-print('confirmed_templates', len(hits))
-for h in hits: print(h)
-'@ | & $py -
+$baseUrl = 'http://127.0.0.1:8765'
+$pkg = '<新包>'
+$taskId = '<本次模板任务ID>'
+$headers = @{ 'X-Report-Package' = $pkg }
+$task = Invoke-RestMethod "$baseUrl/api/tasks/$taskId" -Headers $headers
+if ($task.package -ne $pkg -or $task.kind -ne 'template' -or $task.metadata.simulation -or $task.metadata.template_deleted_at) { throw '模板任务归属、类型或状态错误' }
+$items = Invoke-RestMethod "$baseUrl/api/templates" -Headers $headers
+$hits = @($items | Where-Object {
+    $_.task_id -eq $taskId -and $_.status -eq 'confirmed_by_human' -and $_.artifact_status -eq 'available'
+})
+if ($hits.Count -ne 1) { throw '本次模板未确认，或工件缺失/不可读' }
+$payload = Invoke-RestMethod "$baseUrl/api/templates/$taskId/definition" -Headers $headers
+$tpl = $payload.definition
+if ($payload.artifact_ref -ne $hits[0].id -or $tpl.status -ne 'confirmed_by_human' -or
+    @($tpl.source_reports).Count -lt 2 -or -not $tpl.comparison_ref -or -not $tpl.writer_schema) {
+    throw '已确认模板证据不完整'
+}
+$hits | Select-Object id,task_id,name,status,artifact_status
 ```
 
-**看什么 / 算成功**：第一行 `confirmed_templates <n>`，`n ≥ 1`；下面每行形如 `('task-123', 'artifact-abc', 2)`，第三个数是 `source_reports` 份数。
+**算成功**：目标客户的本次模板任务归属正确、工件可读，且两份来源、comparison_ref、writer_schema 与人工确认状态完整。阶段 3 的四类输入仍按 2.2 读取。
 
-**不对劲**：`confirmed_templates 0` → 还没确认，继续等；`n ≥ 1` 但第三个数 < 2 → 过不了读模板门，让用户补传报告后重走 1.5.4 ②③④，别自己改 `source_reports`。
+`GET /api/templates` 是管理列表，内置候选、待确认候选以及缺失/不可读工件的记录都可能保留。只认带本次 `task_id` 的 confirmed + available 项。**不能用 `usable_for_final` 当工件健康或选择门槛**：健康的已确认模板也可能是 False（字段尚待绑定），仍可进入选择流程；**可选不等于建包完成**，交付业务测试前必须按 13.2.2 逐项完成有效绑定检查，不能以“尚缺绑定正常”跳过。是否能正式生成由服务端重新验证。missing/unreadable 不可预览或生成，直接访问定义接口返回 409 `template_artifact_missing` / `template_artifact_unreadable`，不可当作「没确认」而无限等待；记录具体缺口，检查工件或重新上传确认，不能自行改状态。
 
-`load_confirmed_template` 就是应用自己的门（`core/structured_template.py`）：`status=='confirmed_by_human'`、`source_reports` ≥ 2、`comparison_ref` 与 `writer_schema` 非空，缺任一项抛 `ValueError`（`confirmed_two_report_template_required` / `structured_template_missing`）。输出 `confirmed_templates 0` 就是「还没好，继续等」的样子；库里有几个任务、几个已确认是环境状态，每次以实跑为准，别把任何一次的数字写进记录当常量。
+**方式二：离线只读检查**
+
+服务未起时，执行 [基座兼容说明](references/base-compatibility.md) 中的只读脚本，显式传目标包、本次 task_id 和服务实际数据基根。它用 SQLite `mode=ro` 及应用的 `load_confirmed_template`，不创建 Store、不创建空库。数据库不存在与模板损坏都应明确报错，不能回退默认包。两种方式均不可只看模板名称或扫描遗留 artifacts 文件。
 
 **`GET /api/tasks` 不够用**：它的 `metadata` 是白名单，只回 `{'simulation': ...}`（`app/main.py` 的 `tasks()`），**拿不到 `confirmed_template_ref`**；要按任务查就打 `GET /api/tasks/{task_id}`（整份 state）。
 
-**检测不到就继续等**：不进阶段 3、不写任何提示词文件、不「先写两条试试」。等待期间只允许读输入（第二章），不产出。向用户报进度时**只报你查到的具体缺口**，用他的话讲（例：「模板还没确认——你上传的两份报告还没点『确认并保存模板』」），不附命令、不说「你自己去模板库页面看一眼」——那是你自己该查的。
+**按子阶段处理缺口**：原候选尚未优化就执行 1.5.4a，不把「未确认」当停工理由；优化完成后等用户审阅、亲自确认和通知。用户通知完成后若缺文件/确认物证，agent 自查具体原因。所有情况下都不提前写提示词；不得拿等待确认当理由跳过原候选优化。
 
 ### 1.5.6 阶段 3：提示词撰写（本阶段只做触发与衔接）
 
@@ -569,7 +577,7 @@ for h in hits: print(h)
 
 1. 用 2.2 的四类输入读已确认模板（`blocks` / `fields` / `rules` / `writer_schema`），先跑 2.6 输入自检；不通过就停在材料缺口，不猜。
 2. 按 3.3 → 3.5 的顺序推需求集（30 条必写 + 最多 4 条可省），再按第四章逐条判、第六章写。
-3. 按第九章测试对比、第十章六条自检、第十一章交接定稿。
+3. 跑第十章技术自检，交付第九章的用户测试指引并停止自动业务试跑；用户测试后，按第九、十一章整理反馈和定稿。
 
 写之前先把 `template.json` 的 `writer_slots` 按已确认模板的 `writer_schema` 补齐（骨架阶段留的是 `[]`），并把 2.7 的三条命令输出贴进 `接入记录.md` 的「输入」段。
 
@@ -587,7 +595,8 @@ for h in hits: print(h)
 - **隔离口径**：每个客户的任务、产物、上传、热点索引全部落在各自的包根下（`app/packages_api.py` 的 `uploads_for` / `files_for` / `root_for` / `connect_for` 都按任务的包解析）；非默认包**永远不回落**到别的包根。
 - **旧单根布局只回落一次**：`<基根>/packages/<默认包>/` 里没有非空 `demo.sqlite3`、而 `<基根>/demo.sqlite3` 还在时，默认包按旧根解析并打一次 `legacy_data_root_in_use` warning（`core/paths.py` 的 `resolve_data_root`）。判据是「包里有没有非空 db」，不是「包目录在不在」——迁移失败残留的空目录不算已迁移（按目录判会把「迁移失败」误判成「已迁移」，用户视角就是数据全丢）。
 - **迁移脚本**：`scripts/migrate_data_packages.py`（默认 dry-run，只打印计划；`--apply` 执行；`--apply --rollback` 回退，要求台账 `status=done`）。
-- **不需要重启**：包配置按需加载（键 = 包 + 指纹），改客户包文件（`manifest.yaml` / `template.json` / 提示词）后按需重读即生效；**只有改基座代码（`core/` / `app/`）才需要重启服务**。
+- 应用工厂 `app.factory.create_app(Settings(data_root=...))` 可显式指定实例数据基根；核查落点应以运行实例配置为准，不能只猜 `<repo>/data` 或当前终端环境。请求通过 ContextVar 绑定实例服务；`paths.configure_*` 和注册表 configure 只在启动/独立子进程初始化使用，禁止请求期靠全局 configure 切客户。
+- **包配置按需重读**（键 = 包 + 指纹）：修改客户包文件后无需因建包而重启；修改基座代码或部署启动配置（包括数据根、模型配置）需重启对应服务。`import app` / `import app.main` 不创建数据目录；导入成功只说明可导入，不能证明工件、上传、模型或完整业务健康。
 
 ## 二、输入准备（读什么、怎么读）
 
@@ -706,7 +715,7 @@ print([p['id'] for p in d['placeholders']][:10])
 - `owner=data`：统计/任务元信息，由程序或数据工具填；
 - `owner=writer`：需要按本期证据写的文字；
 - `kind`：`number`、`text`、`analysis`、`paragraph_list`、`table_rows` 等，决定这条字段走哪条提示词；
-- `binding`：取数绑定，只能来自确认阶段的 `available_bindings`（兼容的 `{tool, path}`，或计算目录中的 `{metric, ...参数}`）。不明确的留 `null` 并在字段 `rule` 写缺口；不要猜造工具名或 metric。
+- `binding`：取数绑定，只能来自确认阶段的 `available_bindings`（兼容的 `{tool, path}`，或计算目录中的 `{metric, ...参数}`）。不明确的暂留 `null` 并在字段 `rule` 写缺口，随后由建包 agent 排查并完成有效绑定；缺工具先询问用户是否开发，缺口未解决不能交付为待业务测试。不要猜造工具名或 metric。
 
 `rules` 的键（`app/review_service.py` 的 `check_rules` 归一校验）：
 
@@ -885,7 +894,7 @@ $py = 'D:\智能分析报告重构版V5\.conda\JJDreport\python.exe'
 & $py -c "import sys;sys.path.insert(0,'scripts');import gate_core_iso as g;o=g.observe(g.REPO/'core',g.REPO/'app');print('CORE-FILES',o['core_files']);print('CORE-DEP',o['core_dep']['sites'],'sites /',o['core_dep']['files'],'files');print('CORE-HASH',o['core_hash']);print('APP-HASH',o['app_hash'])"
 
 # 3 现有包的契约必须全绿（三条用例遍历 packages/*/）
-& $py -m pytest tests\test_s7_package_contract.py -q
+& $py scripts\run_scoped_checks.py tests/test_s7_package_contract.py
 ```
 
 三条都符合预期才动手：第 1 条不是 `RESULT: PASS` → 基座已经脏了，先报给维护者；第 2 条的四行写进记录，建完包后重跑对比；第 3 条不是 `3 passed` → 现有包已经坏了，新包会继承同一个问题。
@@ -1734,7 +1743,7 @@ print(c.most_common(30))
 ```powershell
 @'
 from app import agent
-from core.packages.registry import load_package
+from core.packages import load_package
 pkg = load_package(None)
 print(len(pkg.agent_prompts))
 p = agent.provenance()
@@ -1858,11 +1867,15 @@ $env:REPORT_PACKAGE='<新包>'; & $py -c "import app"
 - `column_map` 里不要把摘要列映射成 `summary`：`core/tools/records.py` 的 `import_records` 会用 `summary_columns` 的结果覆盖它。
 - `features` 的判定是 `config.get("enabled") is False` 才扣工具（`core/tools/registry.py` 的 `resolve_tools`），写错键名不会生效。
 
-## 九、测试与对比
+## 九、用户测试与反馈对比
 
-### 9.1 跑几次、用哪份数据
+**本章的业务测试由用户亲自执行。** agent 写完提示词、通过第十章技术自检后，交付客户/模板选择、数据输入、操作入口、预期观察点与反馈清单，标记「待用户测试」，不自动创建报告、触发出稿或调用付费模型。用户提供本次任务和反馈后，agent 可只读查看获准范围内的结果、产物与日志并整理对比；不得代替用户宣告业务通过。
 
-- **跑 2~3 次**，同一份输入、同一套提示词、同一模板；记录 run id / 时间 / 模型 / 参数。
+进入本章前必须通过 [数据字段绑定检查](references/data-binding-readiness.md)：所有 data 字段均有有效绑定、所需输入明确、离线计算及类型校验通过。仍缺工具或统计口径时状态为“待工具开发授权 / 待口径确认”，不要要求用户先跑 2~3 次来验证已知缺口。
+
+### 9.1 给用户的测试建议（由用户操作）
+
+- **建议用户跑 2~3 次**，同一份输入、同一套提示词、同一已确认模板；由用户安排，agent 不自动启动或补跑。记录实际 run id / 时间 / 模型 / 参数；未运行就写「待用户测试」，不编运行结果。
 - **数据选择**：
   - 要对比数字，用**与历史报告同月**的数据（例如 8 月数据 + 8 月报告）；否则数字不可比。
   - 只有新月份数据时，只对比结构、字数、句式、体例、TOP10 形态；**不要**拿新月份数字去对旧报告数字。
@@ -1934,14 +1947,16 @@ $env:REPORT_PACKAGE='<新包>'; & $py -c "import app"
 
 ### 9.4 失败处理
 
-- 同一条提示词连续 2 次产出同类问题：停，回到第四章重新判断，不要继续微调。
-- 数字差异 > 1% 或结构缺段：先查口径/模板/字段，不要先改 prompt。
+- 用户测试连续 2 次产出同类问题：按反馈回第四章重新判断，不自动发起第三次业务测试。
+- 数字差异 > 1% 或结构缺段：先只读查口径/模板/字段；已确认模板保持不动，不另换版本。可修提示词或未确认包配置的部分按反馈修复，改完仍交用户复测。
 - 运行报 `prompt_missing` / `unknown_agent_prompt` / `prompt_index_missing_keys`：按第十二章修，不要绕过。
 - 提示词改到第 3 版仍不对：把「证据不足」写进对比报告，交人决定，不要编。
 
 ## 十、建完自检（六条，逐条可执行）
 
-六条全绿、原始输出贴进 `接入记录.md`，才算建完。**建包之后先跑 10.2 的包归属四条**（新包可用、任务绑对包、产物落对根），再回来跑这六条。
+执行前阅读 [基座兼容说明](references/base-compatibility.md)，核实实例数据根、隔离检查与当前历史门禁边界。
+
+六条全绿、原始输出贴进 `接入记录.md`，只代表技术自检完成、可交用户测试；业务未验收时不得写「已定稿」。**建包之后先跑 10.2 的包归属四条**（新包可用、任务绑对包、产物落对根），再回来跑这六条。
 
 **1. 基座提示词是否仍然客户无关**
 
@@ -1975,7 +1990,7 @@ $env:REPORT_PACKAGE='<新包>'; & $py -c "import app"
 
 （同第七章验证：这里 `REPORT_PACKAGE` 只当「让子进程加载哪个包」用，不是切客户。）
 
-期望：`exit 0` 且**无输出**。这一步会一次性跑完四个注册表的 configure，报错码直接指向包里的错处；但提示词键已懒加载——**少声明键这里照样 exit 0**（6.4），键齐不齐看第 6 条与 6.4 的集合比对，别把这条当成「34 键齐」的证据。
+期望：`exit 0` 且**无输出**。这一步绑定启动上下文与四个注册表，包文件和提示词按需加载；仅导入可能尚未读到坏配置。提示词键也已懒加载——**少声明键这里照样 exit 0**（6.4），键齐不齐看第 6 条与 6.4 的集合比对，别把这条当成「34 键齐」的证据。
 
 **4. 加包前后 `core/` 与 `app/` 逐字符不变**
 
@@ -1983,23 +1998,23 @@ $env:REPORT_PACKAGE='<新包>'; & $py -c "import app"
 & $py -c "import sys;sys.path.insert(0,'scripts');import gate_core_iso as g;o=g.observe(g.REPO/'core',g.REPO/'app');print('CORE-FILES',o['core_files']);print('CORE-DEP',o['core_dep']['sites'],'sites /',o['core_dep']['files'],'files');print('CORE-HASH',o['core_hash']);print('APP-HASH',o['app_hash'])"
 ```
 
-加包前跑一次、加包后再跑一次，**四行逐字符相同**。这条不依赖任何基线文件，只做纯观测（`scripts/gate_core_iso.py` 的 `observe`）。包在 `packages/` 下，`core/` 与 `app/` 一个字节都不该动。
+加包前跑一次、加包后再跑一次，**四行逐字符相同**。这条不依赖任何基线文件，只做纯观测（`scripts/gate_core_iso.py` 的 `observe`）。包在 `packages/` 下，纯建包不应改 `core/` 与 `app/`。比较起点必须是**当前优化完成后的基座**，不是优化前的历史哈希；差异先辨明来源，不自动覆盖现有修改或重录基线。
 
 **5. 最小冒烟（包契约三连）**
 
 ```powershell
-& $py -m pytest tests\test_s7_package_contract.py -q
+& $py scripts\run_scoped_checks.py tests/test_s7_package_contract.py
 ```
 
 期望 `3 passed`。这三条用例遍历 `packages/*/`（不是手写清单），新包自动进入判据：①子进程 `import app` 能加载 ②提示词提到的已注册技能都已在 `manifest.skills.use` 声明 ③提示词文件字节口径（至多一个结尾 LF）。输出恒为 `3 passed`——每个用例内部对**所有**包逐个断言。
 
-更完整的一轮用 `& $py -m pytest -q`（本机约 3–4 分钟）：新包加进去后**条数不变**——这些用例遍历 `packages/*/`，不会逐包展开成新用例；全绿即可。
+需要覆盖本批优化时，按 [基座兼容说明](references/base-compatibility.md) 执行显式定向回归。不要直接运行全量 pytest：历史用例可能访问本机业务数据或模型。隔离启动器使用仓库外临时数据、清空凭据并限制网络/写入（Python 审计防误用，不是操作系统沙箱），**不能代替真实客户出稿验收**。记录实际节点、退出码及日志位置；不得把历史结果或多个重叠批次相加当作当前通过数。
 
 **6. 覆盖可见性（改写的 key 才是 `package`）**
 
 ```powershell
 @'
-from core.packages.registry import load_package
+from core.packages import load_package
 from app import agent
 print(len(load_package(None).agent_prompts))
 print(sorted(k for k, v in agent.provenance().items() if v == 'package'))
@@ -2014,13 +2029,15 @@ print(sorted(k for k, v in agent.provenance().items() if v == 'package'))
 |---|---|---|---|
 | 只写 `.conda/docs/` | 不动 | 不动 | 不动 |
 | 改本手册 `.dsh/skills/onboard-client-package/SKILL.md`（旧位置 `core/prompts/base/接入新客户.md` 已删除） | **不动**（不在 `agent_prompts` 里） | **不动**（不在 `core/` 或 `app/` 下） | 不动（不扫 `base/*.md`） |
-| 改 34 条中任意一条 | 会动，需重录 | 会动 | 基座改动会扫；包内覆盖不扫 |
+| 修改提示词 | 默认包解析到的正文变化才影响 S5；非默认客户覆盖不等于 S5 基线变动，禁止自动重录 | 改 core/app 内文件才影响其树哈希 | 基座改动会扫；包内覆盖不扫 |
 
 三条依据：
 
 - `scripts/gate_prompts.py` 不哈希文件，哈希的是四个数据对象：`BASELINE`（`prompts-S5.json`）与 `BUNDLE_KEYS = ("AGENT_PROMPTS", "AGENT_DEFINITIONS", "TEMPLATE_POLICY", "REPORT_PROMPT_PROFILES")`，由同一文件的 `bundle()` 组装。`AGENT_PROMPTS` 来自 `core/agent.py` 的 `_registry.prompts()`，只遍历 `index.yaml` 的 `agent_prompts`。改部署默认包（`REPORT_PACKAGE`）会改变 `AGENT_PROMPTS`，所以 `prompts-S5.json` 只对默认包 `anshun_monthly` 有意义，不能给新客户当基线。
 - `scripts/gate_prompt_neutral.py` 的扫描面是 `core/prompts/base/agent/**/*.md`（34 条提示词正文），docstring 明写不扫 `core/prompts/base/*.md`：那些是对照表（接入说明已移出 core，见本手册）。
 - `scripts/gate_core_iso.py` 的 `observe()` 用 `tree_hash(core_root, "*")` 把 `core/` 下所有文件（含 `.md`）算进 `CORE-HASH`。本手册原来就放在 `core/prompts/base/` 下，移出到 `.dsh/skills/` 后 `CORE-FILES` 少一个、`CORE-HASH` 必变，`--baseline docs/team/baseline/core-S10-J.json` 会 FAIL；那是预期行为，按团队当前的 core 基线规则处理，**不要随手录基线**。
+
+**当前历史例外（2026-11-18 核查）**：`tests/test_s5_prompt_gate.py::test_prompts_match_baseline` 和 `::test_gate_rejects_corrupted_bundle` 已有基线不匹配；详见仓库 `docs/verification/2026-11-18-optimization/remaining-report.md`。新客户接入不得重录 `prompts-S5.json`、删断言、skip/xfail 消红。将既有问题与本次新增失败分开记录，不能宣称全套门禁通过；独立损坏探针通过也不等于旧 S5 基线匹配。未来是否已修复须以当时源码与实跑为准。
 
 ### 10.2 包归属自检（建包之后、写提示词之前跑）
 
@@ -2040,17 +2057,21 @@ $item | Format-List package,usable,error
 **2. 任务绑的是不是新包**（用户在 1.5.4 ① 建完模板任务后跑）
 
 ```powershell
-$latest = (Invoke-RestMethod http://127.0.0.1:8765/api/tasks) | Sort-Object created_at -Descending | Select-Object -First 1
-Invoke-RestMethod "http://127.0.0.1:8765/api/tasks/$($latest.id)" | Select-Object package
+# $taskId 来自本次创建响应/页面任务地址；禁止按全局时间排序挑任务
+$pkg = '<新包>'
+$taskId = '<本次模板任务ID>'
+$task = Invoke-RestMethod "http://127.0.0.1:8765/api/tasks/$taskId" -Headers @{ 'X-Report-Package' = $pkg }
+if ($task.package -ne $pkg -or $task.kind -ne 'template') { throw '任务归属或类型不匹配' }
+$task | Select-Object id,kind,package
 ```
 
 - **看什么**：输出形如 `package` / `-------` / `<新包>`。
 - **算成功**：值 = `<新包>`，不是部署默认包。
 - **不对劲**：值不是 `<新包>`（最常见：建任务时没带 `X-Report-Package`，落到默认包）→ 废弃这个任务，按 1.5.4 ① 重新选客户建，别在错包上继续。
 
-**3. 产物落在哪个根**：`data/packages/<新包>/uploads/` 里有这次上传的文件、`artifacts/` 里有这次任务的工件 = 对。只在 `data/packages/<默认包>/` 里出现 = 落错根，按第 4 条查请求头。判据是「包根下有没有这次的文件」，不是「包目录在不在」（空目录不算）。
+**3. 产物落在哪个根**：按运行实例的实际数据基根解析 `<基根>/packages/<新包>/`，核对本次上传响应 file_id 和本次 task_id 引用的工件；默认包兼容旧根时按 `resolve_data_root` 判定。不能只检查仓库 data、空目录或同名旧文件；任务/工件归属以创建响应和目标包本地库为准。
 
-**4. 没带 `X-Report-Package` 的静默错误**：去默认包根 `data/packages/<默认包>/` 看有没有刚多出来的 `uploads/` 文件或 `artifacts/` 目录——有就是静默落错包（1.5.4 ①）。先清掉错包里的痕迹，再带正确头重建任务。
+**4. 请求与任务归属**：建任务/上传请求显式携带 `X-Report-Package`，请求体若含 package 必须一致；不一致会被拒绝，不应产生任务/工件。未带包信息可能按默认包处理。发现落错包时停止沿用该任务，记录本次确切 ID 后在目标包重建；不能凭默认包「刚多文件」推断归属，更不能自动清理他包文件或任务。删除仍遵守人工确认流程。
 
 四条都看到证据之后才写提示词；任何一条不对劲，先按各自的「不对劲」修，**不要把这一步转成用户作业**。
 
@@ -2060,12 +2081,12 @@ Invoke-RestMethod "http://127.0.0.1:8765/api/tasks/$($latest.id)" | Select-Objec
 
 ### 11.1 人工改什么
 
-人做的是判断，不是查证——查证已在 9.2 的对比报告里做完。请人只看这一份：
+用户亲自完成业务测试，agent 根据用户提供的本次任务结果整理 9.2 对比报告；未测试时只交测试指引并标记待测，不要求用户签字定稿。测试后供用户判断的材料如下：
 
 - **去哪**：打开 `packages/<包>/对比报告-<期号>-<日期>.md`（agent 写好并附了原始命令输出）。
 - **看什么**：「1. 结构对比」的「判定」列（一致 / 缺失 1 条）、「2. 数字对比」的差异列、「5. 结论」的必须改 / 建议改 / 可以不改三行。
 - **算成功**：人明确回答「这版可以」或指出「第几段哪条必须改」；签字只认这个。
-- **不对劲**：报告缺「结构 / 数字 / 段落 / TOP10」任一段，或结论只写「待人工确认」→ 退回 9.4 重跑，不要让人对着半份报告猜。
+- **不对劲**：报告缺「结构 / 数字 / 段落 / TOP10」任一段，或结论只写「待人工确认」→ agent 补齐只读查证；确需重跑时交用户操作，不自行启动。无结果的项目如实标记未验证。
 
 人改的三件事：
 
@@ -2088,7 +2109,7 @@ agent 不改人已经确认的模板字段、固定文字、TOP10 梗概；需�
 - [ ] 字节口径：UTF-8 无 BOM、`\n`、正文 + 恰好一个结尾 LF。
 - [ ] `index.yaml` 的 `agent_prompts` 覆盖 34 个 key（模板三键 `batch/repair/advice` 在内；旧「五个 import 期硬依赖」说法已作废，见 6.4）。
 - [ ] `provenance()` 显示：改写的 key 为 `package`，其余为 `base`。
-- [ ] 2~3 次运行完成；对比报告有结构/数字/段落/TOP10 四段；结论待人工确认。
+- [ ] 提示词与技术自检已交付用户测试；用户实际测试记录与对比证据齐全后才勾业务验收。未测试标记「待用户测试」，不以技术回归代替。
 - [ ] 人工已签字；已知问题写进「遗留」。
 
 ### 11.3 定稿校验（命令原样重跑）
@@ -2108,7 +2129,7 @@ $env:REPORT_PACKAGE='<pkg>'; & $py -c "import app"
 
 # 3 覆盖可见性：改写的 key 应该是 package，其余 base
 @'
-from core.packages.registry import load_package
+from core.packages import load_package
 from app import agent
 print(len(load_package(None).agent_prompts))
 print(sorted(k for k, v in agent.provenance().items() if v == 'package'))
@@ -2118,7 +2139,7 @@ print(sorted(k for k, v in agent.provenance().items() if v == 'package'))
 & $py scripts\gate_prompt_neutral.py
 
 # 5 包契约三连（遍历 packages/*/）
-& $py -m pytest tests\test_s7_package_contract.py -q
+& $py scripts\run_scoped_checks.py tests/test_s7_package_contract.py
 ```
 
 判据：
@@ -2230,7 +2251,7 @@ print(sorted(k for k, v in agent.provenance().items() if v == 'package'))
 #### 13.2.2 数据槽计算绑定：客户包绑定，基座只加通用能力
 
 模板确认和写作取数用的是另一套「计算工具箱」，不是 13.2 里那些运行时函数。
-模型在确认阶段只能从 `available_bindings` 里挑选绑定；写作阶段的规划器对照同一套计算目录补尚未绑定的数据槽。
+模型在确认阶段只能从 `available_bindings` 里挑选绑定。**数据字段绑定由建包 agent 在交付前完成；不能把已知缺口留给写作规划器。** 规划器只能在现有目录内尝试映射，不能开发工具，也不保证覆盖全部字段。执行 [数据字段绑定检查](references/data-binding-readiness.md)。
 
 | 文件 | 干什么的 |
 |---|---|
@@ -2239,12 +2260,16 @@ print(sorted(k for k, v in agent.provenance().items() if v == 'package'))
 | `packages/<包>/calculations.yaml` | 本客户字段 id → 目录中已有运算，含该客户的平台集合、调性、范围、日期格式等参数。只属于客户包，不要写进基座 `KNOWN` 或目录。 |
 | `app/template_review.py` 的 `available_bindings()` | 确认阶段模型可选项：旧的 `{tool, path}`、计算目录全部 metric，以及当前包 `calculations.yaml` 里按字段给出的建议绑定。 |
 
+**新增计算工具的落点必须明确**：获用户同意后，在 `core/frozen_report.py` 同步补 `Calculation` 声明/参数校验、`FrozenReport.calculate()` 实现、`CALCULATION_CATALOG` 说明；客户字段映射与业务参数放 `packages/<包>/calculations.yaml`，不得新增到 `KNOWN`。核查确认阶段与写作执行链路，并补 `tests/` 离线测试。详细位置及两套工具注册的区别见 [补充计算工具的代码位置](references/data-binding-readiness.md#补充计算工具的代码位置)。不能只加提示词或目录文案。
+
+**缺工具必须先出文档**：建包 agent 在请求开发授权前，先按 [计算与图表工具缺口交接规范](references/tool-extension-handoff.md) 保存并向用户链接“缺口与工具方案”文档；采用“目标与基准 → 缺口及拟补能力表 → 现有能力为何不足 → 通用扩展与影响 → 验证与交接”的格式，不能只口头列几条。计算或图表实现可由用户另行分配给专门的工具增加 agent；建包 agent 不默认自己负责代码，也不因本 skill 自动派遣或发送消息。工具实现完成后，建包 agent 核查物证，再接回包绑定、技术检查与用户测试交付。
+
 **建包时的分工（必须按这个顺序做）：**
 
-1. 先读占位符的 `semantic` / `rule` / `format`，对着 `CALCULATION_CATALOG` 找已有口径。能绑上就只改客户包的 `calculations.yaml`（或确认模板里的 `binding`），**不要新加工具**。
-2. 只有目录确实表达不了这种算法时，才向基座增加一条通用 `Calculation` metric，并同时把它纳入确认阶段工具箱（目录一经扩展，`available_bindings()` 会自动带上）。先说明缺口、复用方案和对已有报告的影响，确认后再改基座。
+1. 先读占位符的 `semantic` / `rule` / `format`，对着 `CALCULATION_CATALOG` 找已有口径。能绑上就按证据补客户包 `calculations.yaml`；模板 binding 只可在未确认阶段通过支持入口调整，已确认模板不改、不另换版本。**不要新加工具**。
+2. 目录确实无法表达时，先保存并展示上述缺口交接文档，列出块编号、字段 id、缺失工具的用途、输入、输出、筛选/去重口径和对已有报告的影响，**询问用户是否允许开发这个具体工具，收到明确同意后才改基座**。会话中已有覆盖该工具和范围的明确授权时，记录并沿用，不重复申请。由用户指定的实现 agent（也可以是建包 agent）实现通用 `Calculation` metric，补验证并纳入工具箱，再交建包 agent 完成绑定；不能用修改提示词、改成 Writer 或等待规划器替代。
 3. 不要在客户包里实现一套不能复用的私有运算，也不要把客户字段 id、渠道专名或报告标题写进基座目录。
-4. 已确认模板上 `binding: null` 的数据槽，包内 `calculations.yaml` 在写作时仍可补上，不必为了补绑定而重做模板确认；新确认的模板则应直接绑到目录或包建议口径。
+4. 已确认模板上 `binding: null` 的数据槽，由 agent 在包内 `calculations.yaml` 配置有效计算，不改确认工件、不另换确认版本；新确认的模板应直接绑定到目录或包建议口径。按真实运行优先级核查字段 binding、包配置与旧 KNOWN 映射，不能只数 null；修改包配置会影响同包旧模板的后续生成，先核对同名字段语义。
 5. `peak_date` 默认按全量记录的信息峰值取日；若字段语义是某一类事件的高峰（例如已预警且负面），必须在 `calculations.yaml` 或确认绑定里写明 `scope` / `sentiment`，不能只写 `metric: peak_date`。未写范围时不要假设引擎会按图表口径自动收窄。
 6. 删掉客户包再按本 skill 重建，只能重新落包内配置（图表声明、`calculations.yaml`、提示词覆盖、模板确认）。它不会自动修好当时还在基座里的缺陷。基座已修好的能力（高峰口径、段内衔接句、预览嵌图、审核轮次、确认工具箱等）会在下一次「确认模板」和「写作」时生效；删除会丢掉已确认模板和当期报告，需要用户明确同意。
 
@@ -2330,7 +2355,7 @@ print('data_contract', list(p['data_contract']))
 
 # 看覆盖来源
 @'
-from core.packages.registry import load_package
+from core.packages import load_package
 from app import agent
 print(len(load_package(None).agent_prompts))
 print(sorted(k for k, v in agent.provenance().items() if v == 'package'))

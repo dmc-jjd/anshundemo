@@ -23,7 +23,8 @@ class Calculation(BaseModel):
     metric:Literal['count','scaled_count','sentiment_count','sentiment_percentage','warning_percentage','peak_date',
                    'category_names','category_statistics','leading_category','platform_names','platform_statistics',
                    'platform_count','platform_source_detail','period_start','period_end','record_table',
-                   'county_statistics','report_month','report_year','next_month','issue_number','publish_month','publish_day','publish_year','top10','constant']
+                   'county_statistics','report_month','report_year','next_month','issue_number','publish_month','publish_day','publish_year','top10','constant',
+                   'peak_count','source_statistics','filtered_record_count','distinct_source_count','selected_material_count','parameterized_table']
     scope:Literal['all_records','confirmed_events','warning_events','negative_warning_events']='all_records'
     sentiment:Literal['正面','中性','负面']|None=None
     limit:int=Field(default=6,ge=1,le=20)
@@ -33,6 +34,28 @@ class Calculation(BaseModel):
     platforms:list[str]=Field(default_factory=list)
     exclude_platforms:list[str]=Field(default_factory=list)
     value:str|None=None
+    filters:dict[Literal['media_level','media_attribute','platform','source','author','source_id','sentiment'],list[str]]=Field(default_factory=dict)
+    identity_field:Literal['source_id','source']='source_id'
+    identity_fallback:list[Literal['source','author','platform']]=Field(default_factory=lambda:['source','author'])
+    rows:list[list[str]]=Field(default_factory=list,max_length=20)
+    date_format:Literal['iso','chinese']='iso'
+
+    @model_validator(mode='after')
+    def validate_extension(self):
+        if any(not values or any(not v.strip() for v in values) for values in self.filters.values()):
+            raise ValueError('filters 需要非空的精确匹配值列表。')
+        if self.filters and self.metric not in ('filtered_record_count','distinct_source_count','selected_material_count','source_statistics','peak_count'):
+            raise ValueError('该运算不支持 filters；不能静默忽略筛选。')
+        if self.metric=='parameterized_table':
+            from string import Formatter
+            if not self.rows or any(not row or len(row)>20 for row in self.rows):
+                raise ValueError('parameterized_table 需要非空表格行。')
+            for row in self.rows:
+                for cell in row:
+                    for _,key,fmt,conversion in Formatter().parse(cell):
+                        if key is not None and (key not in ('publication_date','report_month','issue_number') or fmt or conversion):
+                            raise ValueError('表格只允许 publication_date/report_month/issue_number 参数，不支持表达式。')
+        return self
 
 CALCULATION_CATALOG={
  'count':'指定范围的记录数或去重事件数；事件内多条只计一次',
@@ -57,7 +80,13 @@ CALCULATION_CATALOG={
  'period_start':'统计周期起始日期；默认来自日统计，否则用报告月份的第一天',
  'period_end':'统计周期结束日期；默认来自日统计，否则用报告月份的最后一天',
  'record_table':'按调性筛选记录，输出序号、日期、标题、来源、热度的二维表；热度仅在记录本身有值时填写',
- 'constant':'固定值，用于表/图编号等结构性常量'}
+ 'constant':'固定值，用于表/图编号等结构性常量',
+ 'peak_count':'指定原始记录范围的日峰值条数，口径应与 peak_date 一致；无记录为0，有记录但无有效日期时报缺输入',
+ 'source_statistics':'按 source 分组统计原始记录条数，降序、同数按名称排序，输出来源（N条），最多limit项；缺信源单列未知；支持filters/scope/sentiment',
+ 'filtered_record_count':'按 filters 的字段取值精确筛选原始记录条数：字段间AND、字段内OR；可叠加scope/sentiment，不做事件去重',
+ 'distinct_source_count':'筛选后按identity_field去重计家数；主键缺失以identity_fallback组成身份；不能辨识身份时报缺输入，不把所有缺值合为一家',
+ 'selected_material_count':'filters选出候选标题，在同scope/sentiment的原始记录中按去首尾空白后的完全相同标题计算传播数；选最高标题，同数按标题排序；同时返回selection依据，不做语义归并',
+ 'parameterized_table':'rows为数据行二维数组（不含模板表头）；替换{publication_date}/{report_month}/{issue_number}，日期格式iso或chinese；缺本期参数时报缺输入，不沿用历史日期'}
 
 class MissingReportInput(ValueError):pass
 
@@ -180,7 +209,11 @@ class FrozenReport:
     def calculate(self,spec):
         spec=Calculation.model_validate(spec);m=spec.metric;p=self.parameters();total=int(self.metrics.get('record_count',0))
         pct=lambda value,denom:format(value/denom*100,f'.{spec.precision}f')+'%' if denom else '0.'+'0'*spec.precision+'%'
-        if m.startswith('publish_'):
+        selection=None
+        if m in ('peak_count','source_statistics','filtered_record_count','distinct_source_count','selected_material_count','parameterized_table'):
+            from .calculation_extensions import calculate
+            value,selection=calculate(self,spec)
+        elif m.startswith('publish_'):
             if not p.get('publication_date'):raise MissingReportInput('缺少报告成文日期，请在报告参数中填写。')
             day=date.fromisoformat(p['publication_date']);value=str(getattr(day,{'publish_year':'year','publish_month':'month','publish_day':'day'}[m]))
         elif m in ('report_month','report_year','next_month'):
@@ -268,8 +301,10 @@ class FrozenReport:
         elif m=='top10':value=[[str(r['rank']),r['summary'],str(r['negative_warning_count'])] for r in self.facts.get('top10',[])]
         elif m=='constant':value=str(spec.value or '')
         else:raise ValueError('unsupported_calculation')
-        parameter_ref=self.state.metadata.get('report_parameters_ref') if m=='issue_number' or m.startswith('publish_') else None
-        return {'value':value,'source_refs':[parameter_ref or self.fact_ref],'calculation':spec.model_dump(),'fact_ref':self.fact_ref}
+        parameter_ref=self.state.metadata.get('report_parameters_ref') if m in ('issue_number','parameterized_table') or m.startswith('publish_') else None
+        result={'value':value,'source_refs':[parameter_ref or self.fact_ref],'calculation':spec.model_dump(),'fact_ref':self.fact_ref}
+        if selection is not None:result['selection']=selection
+        return result
     def summary(self):
         return {'fact_ref':self.fact_ref,'report_parameters':self.parameters(),'record_count':self.metrics.get('record_count'),
                 'scope_policy':{'section_one_categories_and_localities':'confirmed_events',

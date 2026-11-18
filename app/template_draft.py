@@ -408,7 +408,7 @@ def apply_selection(definition: dict, entry: dict) -> tuple[dict, dict | None, d
 
 # ---------------------------------------------------------------- 草稿重建
 
-def rebuild(base_definition: dict, log: list[dict], base_ref: str = '') -> dict:
+def rebuild(base_definition: dict, log: list[dict], base_ref: str = '', field_edits: dict | None = None) -> dict:
     """草稿 = 基线 + 重放日志。幂等：同日志必然得到同一份 blocks/fields。"""
     definition = copy.deepcopy(base_definition)
     entries = []
@@ -417,6 +417,15 @@ def rebuild(base_definition: dict, log: list[dict], base_ref: str = '') -> dict:
         applied['seq'] = index + 1
         applied['choice_label'] = CHOICE_BY_ID[entry['choice']]['label']
         entries.append(applied)
+    from .api_views.template_field import edit_template_field
+    effective_edits = {}
+    for field_id, patch in (field_edits or {}).items():
+        if not any(f['id'] == field_id for f in definition['fields']):
+            continue  # 撤销选区后，已经消失的字段不保留覆盖项。
+        error, definition, _ = edit_template_field(definition, field_id, patch)
+        if error:
+            raise DraftError(*error)
+        effective_edits[field_id] = patch
     fields = definition['fields']
     draft = {
         'format_version': 1,
@@ -430,6 +439,7 @@ def rebuild(base_definition: dict, log: list[dict], base_ref: str = '') -> dict:
         'output_schema': _schema(fields),
         'writer_schema': _schema(fields, True),
         'selection_log': entries,
+        'field_edits': copy.deepcopy(effective_edits),
         'pending': {
             'needs_binding': [f['id'] for f in fields if f.get('needs_binding')],
             'chart_slots': [b['index'] for b in definition['blocks'] if b.get('slot_kind') == 'chart'],
@@ -453,6 +463,8 @@ def definition_view(base_definition: dict, draft: dict | None) -> dict:
     merged = copy.deepcopy(base_definition)
     merged['blocks'] = draft['blocks']
     merged['fields'] = draft['fields']
+    merged['output_schema'] = _schema(draft['fields'])
+    merged['writer_schema'] = _schema(draft['fields'], True)
     merged['id'] = draft.get('base_template_id')
     return merged
 
@@ -490,7 +502,8 @@ def _log_entries(draft: dict | None) -> list[dict]:
 
 def _save(store, state, base_ref: str, base_definition: dict, log: list[dict]) -> dict:
     """草稿落 Store：artifact + state.metadata 指针 + CAS 递增 revision。"""
-    draft = rebuild(base_definition, log, base_ref)
+    previous = current_draft(store, state)
+    draft = rebuild(base_definition, log, base_ref, (previous or {}).get('field_edits'))
     state.metadata['manual_template_draft_ref'] = store.put_artifact(state.id, DRAFT_KIND, draft)
     store.put_task(state, state.revision)
     return draft
@@ -538,7 +551,8 @@ def undo_selection(store, state, base_ref: str, base_definition: dict) -> dict:
     if not log:
         raise DraftError(409, 'draft_empty')
     log.pop()
-    draft = rebuild(base_definition, log, base_ref) if log else None
+    edits = (current_draft(store, state) or {}).get('field_edits')
+    draft = rebuild(base_definition, log, base_ref, edits) if log or edits else None
     if draft is None:
         state.metadata.pop('manual_template_draft_ref', None)
     else:

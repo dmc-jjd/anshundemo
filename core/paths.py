@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import logging
 from contextvars import ContextVar
+from contextlib import contextmanager
 from pathlib import Path
 
 from core.packages import context as _context
@@ -79,6 +80,16 @@ def _configured_base() -> Path:
 def data_root_base() -> Path:
     """部署级数据基根（`data/`）：共享价目表、迁移脚本都以它为准。"""
     return _configured_base()
+
+
+@contextmanager
+def data_root_context(path):
+    """Temporarily bind an application root without changing deployment defaults."""
+    token = _data_root_var.set(Path(path))
+    try:
+        yield
+    finally:
+        _data_root_var.reset(token)
 
 
 def _package_root_ready(directory: Path) -> bool:

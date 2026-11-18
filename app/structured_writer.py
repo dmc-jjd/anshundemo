@@ -25,21 +25,8 @@ class StructuredOutlookRepairAnswers(StructuredAnswers):
 class CalculationPlans(BaseModel):
     calculations:dict[str,Calculation]=Field(default_factory=dict)
 
-# Explicit definitions for the existing confirmed monthly template. New semantic
-# fields use the same typed catalog through the planner, never guessed numbers.
-KNOWN={
- 'b5_issue_no':{'metric':'issue_number'},'b8_publish_month':{'metric':'publish_month'},'b8_publish_day':{'metric':'publish_day'},
- 'b12_report_month':{'metric':'report_month'},'b26_month':{'metric':'report_month'},'b29_report_month':{'metric':'report_month'},
- 'b17_total_volume':{'metric':'scaled_count'},'b17_peak_date':{'metric':'peak_date'},
- 'b17_warning_count':{'metric':'count','scope':'confirmed_events'},'b17_warning_ratio':{'metric':'warning_percentage','scope':'confirmed_events'},
- 'b17_top_negative_categories':{'metric':'category_names','scope':'confirmed_events'},
- 'b26_platform_rank_list':{'metric':'platform_names'},'b26_platform_entries':{'metric':'platform_statistics'},'b26_key_platform_list':{'metric':'platform_names'},
- 'b30_negative_total':{'metric':'count','scope':'confirmed_events'},'b30_top_category_with_share':{'metric':'leading_category','scope':'confirmed_events'},
- 'b30_county_distribution_list':{'metric':'county_statistics','scope':'confirmed_events'},'b34_top10_table':{'metric':'top10'},
- 'b26_main_channels':{'metric':'platform_names'},'b32_figure_no':{'metric':'constant','value':'4'},'b35_table_no':{'metric':'constant','value':'1'}}
-for name,sentiment in [('positive','正面'),('neutral','中性'),('negative','负面')]:
-    KNOWN['b17_'+name+'_count']={'metric':'sentiment_count','sentiment':sentiment}
-    KNOWN['b17_'+name+'_ratio']={'metric':'sentiment_percentage','sentiment':sentiment}
+from .writing_pipeline import calculations as _calculations
+KNOWN=_calculations.KNOWN
 
 def compact_field(field):
     return {k:field[k] for k in ('id','display_name','owner','kind','semantic','rule','format','binding') if k in field}
@@ -61,30 +48,12 @@ def field_calculation_spec(field,package=None):
     return load_field_calculations(package).get(field['id'])
 
 def calculation_for(field,report,plans,package=None):
-    spec=plans.get(field['id']) or KNOWN.get(field['id']) or field_calculation_spec(field,package)
-    if spec:
-        spec=Calculation.model_validate(spec).model_dump()
-        if field['id'] in ('b17_warning_count','b17_warning_ratio'):spec['scope']=report.warning_scope()
-        return report.calculate(spec)
-    binding=field.get('binding') or {}
-    if binding.get('tool')=='top10_events':return report.calculate({'metric':'top10'})
-    if binding.get('tool')=='calculate_metrics':
-        value=report.metrics
-        for part in binding['path']:value=value[part]
-        return {'value':str(value),'source_refs':[report.fact_ref],'calculation':binding}
-    raise ValueError('缺少计算定义；请指定该字段的统计口径。')
+    return _calculations.calculation_for(field,report,plans,package,spec_resolver=field_calculation_spec)
+
 
 def data_values(template,report,plans=None,package=None):
-    values={};issues=[]
-    for field in template['fields']:
-        if field['owner']!='data':continue
-        try:
-            result=calculation_for(field,report,plans or {},package=package)
-            value={k:result[k] for k in ('value','source_refs')}
-            validate_values(template,{field['id']:value},{report.fact_ref,report.state.metadata.get('report_parameters_ref')})
-            values[field['id']]=value
-        except Exception as exc:issues.append({'field_id':field['id'],'semantic':field.get('display_name',field['id']),'message':str(exc)[:600],'error':type(exc).__name__})
-    return values,issues
+    return _calculations.data_values(template,report,plans,package,calculate=calculation_for,validate=validate_values)
+
 
 def _layout_docx_path(template):
     path=Path(template.get('layout_source') or '')
@@ -121,44 +90,39 @@ def pending_chart_count(template, charts):
     return max(0, expected-len(charts or {}))
 
 def preview_status(template, values, charts):
-    missing=[f['id'] for f in (template or {}).get('fields',[]) if f['id'] not in (values or {})]
-    pending=pending_chart_count(template or {}, charts)
-    return {'missing_fields':missing,'pending_charts':pending,'preview_only':bool(missing or pending)}
+    from .writing_pipeline.completion import preview_status as status
+    return status(template,values,charts,count_charts=pending_chart_count)
+
 
 def save_draft(store,state,template,values,allowed,charts,issues):
-    missing=[f['id'] for f in template['fields'] if f['id'] not in values]
-    issues=[i for i in issues if i.get('field_id') in missing or i.get('chart')]
+    status=preview_status(template,values,charts)
+    missing=status['missing_fields']
+    unfilled={f['id'] for f in template['fields'] if f['id'] not in values}
+    issues=[i for i in issues if i.get('field_id') in unfilled or i.get('chart')]
     draft=DraftVersion(id=uuid.uuid4().hex,fact_ref=state.fact_ref,template_ref=state.template_ref,
         structured_template_ref=state.template_ref,slot_values=values,evidence_refs=sorted(allowed),chart_refs=charts,
         recommendations=values.get('monthly_recommendations',{}).get('value',[]),
         missing_recommendation_evidence=any(i.get('error')=='historical_evidence_insufficient' for i in issues))
     draft.content_hash=hashlib.sha256(draft.model_dump_json(exclude={'content_hash'}).encode()).hexdigest()
     state.draft_ref=store.put_artifact(state.id,'structured_draft',draft.model_dump())
-    pending=pending_chart_count(template, charts)
-    state.metadata.update(preview_only=bool(missing or pending),missing_fields=missing,writer_issues=issues,pending_charts=pending)
+    pending=status['pending_charts']
+    state.metadata.update(status,writer_issues=issues)
     state.metadata['structured_writer_version']=2
     store.put_task(state,state.revision)
     store.append_event(state.id,{'type':'structured_writer_result','template_ref':state.template_ref,'filled':list(values),'missing':missing,'issues':issues,'pending_charts':pending})
     return state
 
 async def write_structured_preview(deps,task_id,agents=None):
-    store=deps.store;report=FrozenReport(store,task_id);state=report.state
-    # 声明式调度：历史调研由角色声明决定，不再靠"模板里有没有 outlook 字段"猜。
+    store=deps.store;state=store.get_task(task_id)
+    from core.task_package import resolve_task_package
+    from .template_engine import validate_task_template
+    package=resolve_task_package(state=state,store=store)
+    template=validate_task_template(store,state)
+    if template is None:raise ValueError('structured_template_required')
+    report=FrozenReport(store,task_id)
+    # Validate the actual local artifact before any scope/model/body write.
     agents=frozenset(resolve_enabled_agents() if agents is None else agents)
-    template=load_confirmed_template(store,state.template_ref);fields={f['id']:f for f in template['fields']}
-    package=getattr(state,'package',None)
-    if isinstance(package,str):package=package.strip() or None
-    if not package and hasattr(store,'package_of'):
-        try:package=store.package_of(task_id)
-        except Exception:package=None
-    if not package:
-        raw=getattr(store,'package',None)
-        if callable(raw):
-            try:package=raw()
-            except Exception:package=None
-        elif isinstance(raw,str):
-            package=raw
-    if isinstance(package,str):package=package.strip() or None
+    fields={f['id']:f for f in template['fields']}
     section_cfg=_section_policy.load(package)
     outlook_group=list(_section_policy.outlook_field_ids(section_cfg))
     outlook_low,outlook_high=_section_policy.outlook_item_bounds(section_cfg)
@@ -176,7 +140,9 @@ async def write_structured_preview(deps,task_id,agents=None):
     same=old.get('fact_ref')==state.fact_ref and old.get('template_ref')==state.template_ref
     previous=old.get('slot_values',{}) if same else {}
     if same:allowed.update(old.get('evidence_refs',[]))
-    unknown=[f for f in fields.values() if f['owner']=='data' and f['id'] not in KNOWN and not field_calculation_spec(f,package)]
+    unknown=[f for f in fields.values() if f['owner']=='data' and f['id'] not in KNOWN
+             and not field_calculation_spec(f,package)
+             and (f.get('binding') or {}).get('tool') not in ('calculate_metrics','top10_events')]
     if unknown:
         errors=[]
         for attempt in range(3):
@@ -211,6 +177,13 @@ async def write_structured_preview(deps,task_id,agents=None):
         if key in fields and fields[key]['owner']=='writer' and ('human_edit' in answer.get('source_refs',[]) or (field_same and state.metadata.get('structured_writer_version')==2 and current_policy)):
             try:validate_values(template,{key:answer},allowed,writer_only=True);values[key]=answer
             except Exception:pass
+    from .writing_pipeline.calculation_context import build_contexts,validate_selection
+    calculation_contexts=build_contexts(fields,report,values,plans,package)
+    # Previous text may have been written before a package's calculation binding existed.
+    for key in list(values):
+        if fields[key]['owner']=='writer':
+            try:validate_selection(key,values[key],calculation_contexts)
+            except ValueError:values.pop(key)
     history=None;history_ref=None;generated_policy={};pending_sources={}
     if 'historical_researcher' in agents and any(second_role(f,package=package)=='outlook' and f['id'] not in values for f in fields.values()):
         from .historical_research import prepare_history
@@ -290,6 +263,10 @@ async def write_structured_preview(deps,task_id,agents=None):
             'report_context':report.summary(),'fields':[compact_field(fields[key]) for key in ids],
             'calculated_data_fields':{key:answer for key,answer in values.items() if fields[key]['owner']=='data'},
             'evidence':evidence['items']+[{'ref':report.fact_ref,'type':'confirmed_statistics','data':report.summary()}]}
+        linked=[c for c in calculation_contexts if any(c.get(name) in ids for name in ('title_field','list_field'))]
+        if linked:
+            payload['calculation_selections']=linked
+            payload['instruction']+='\ncalculation_selections 是程序已计算的同一组选题与传播条数。title_field必须逐字使用selection.title；list_field只能列selection.candidates中的标题且必须包含selection.title。不要另选标题搭配这个计数。'
         response_schema={'type':'object','additionalProperties':False,'properties':{'values':subset},'required':['values']}
         if section_role:
             from .style_skill import skill_context
@@ -320,13 +297,9 @@ async def write_structured_preview(deps,task_id,agents=None):
                 payload['evidence']=[]
                 payload['fields']=[{'id':key,'owner':'writer','execution_rule':get_prompt('writer.outlook_field',profile)} for key in ids]
         errors=[];reference_repair=None;candidate=None
-        outlook_locked={};outlook_invalid=[];outlook_positions={};outlook_repair=None;final_outlook_items=None;dropped_outlook_items=[]
-        def outlook_allowed_refs(category):
-            topic=next((t for t in history['topics'] if t['category']==category),None) if history else None
-            return sorted(({c['page_ref'] for c in topic['evidence']}|({topic['knowledge_ref']} if topic.get('knowledge_ref') else set())) if topic else set())
-        def invalid_outlook(item,index,code,message,allowed_refs=None):
-            return {'item_index':index,'category':item.category,'error_code':code,'message':message,
-                    'item':item.model_dump(),'allowed_refs':outlook_allowed_refs(item.category) if allowed_refs is None else sorted(allowed_refs)}
+        from .writing_pipeline.outlook_repair import OutlookRepairState
+        outlook_state=OutlookRepairState(history)
+        outlook_repair=None;final_outlook_items=None;dropped_outlook_items=[]
         repair_response_schema=copy.deepcopy(response_schema) if section_role=='outlook' else None
         if repair_response_schema:repair_response_schema['properties']['outlook_items']['minItems']=1
         response_schema=catalog.schema(response_schema)
@@ -337,7 +310,7 @@ async def write_structured_preview(deps,task_id,agents=None):
             remaining=[key for key in ids if key not in values]
             if not remaining:break
             store.append_event(task_id,{'type':'writer_block_start','block':block['index'],'field_count':len(remaining),'round':attempt+1})
-            repairing_outlook=section_role=='outlook' and bool(outlook_positions)
+            repairing_outlook=section_role=='outlook' and bool(outlook_state.positions)
             round_payload={**payload,'correction_errors':errors,'remaining_fields':remaining}
             if outlook_repair:round_payload['outlook_repair']=outlook_repair
             try:
@@ -352,34 +325,8 @@ async def write_structured_preview(deps,task_id,agents=None):
                     answer.values={ids[0]:{'value':text,'source_refs':refs}}
                 elif section_role=='outlook':
                     if not answer.outlook_items:raise ValueError('必须提供面向未来的outlook_items，不能改写本月TOP10')
-                    answer.values={};valid_items=[];invalid_items=[]
-                    if not repairing_outlook:outlook_positions={item.category:index for index,item in enumerate(answer.outlook_items)}
-                    retry_categories={entry['category'] for entry in outlook_invalid}
-                    topic_categories={t['category'] for t in history['topics']}
-                    counts={category:sum(i.category==category for i in answer.outlook_items) for category in {i.category for i in answer.outlook_items}}
-                    duplicates={category for category,count in counts.items() if count>1}
-                    accepted={item.category for item in answer.outlook_items if item.category not in outlook_locked and (not repairing_outlook or item.category in retry_categories or item.category in topic_categories)}
-                    outlook_invalid[:]=[entry for entry in outlook_invalid if entry['category'] not in accepted]
-                    for index,item in enumerate(answer.outlook_items):
-                        if item.category in outlook_locked or (repairing_outlook and item.category not in retry_categories and item.category not in topic_categories):continue
-                        raw_item=item.model_copy(deep=True)
-                        if item.category in duplicates:
-                            invalid=invalid_outlook(raw_item,index,'duplicate_category','前瞻类别重复：'+item.category+'；每个类别只能保留一条。')
-                        elif not item.paragraph:
-                            invalid=invalid_outlook(raw_item,index,'missing_paragraph','每类风险必须提供自然完整的paragraph正文；不能省略正文后靠拼接审计字段成稿。')
-                        else:
-                            topic=next((t for t in history['topics'] if t['category']==item.category),None)
-                            if topic:item.basis_type=topic.get('basis_type','historical')
-                            try:
-                                text,item_refs=render_outlook_item(item,history['topics'],history['window'],package=package,policy=section_cfg)
-                                outlook_locked[item.category]={'item_index':index,'position':outlook_positions.get(item.category,index),
-                                    'category':item.category,'item':item.model_dump(),'text':text,'refs':item_refs}
-                                outlook_invalid[:]=[entry for entry in outlook_invalid if entry['category']!=item.category]
-                                continue
-                            except OutlookItemValidationError as exc:
-                                invalid=invalid_outlook(raw_item,index,exc.code,str(exc),exc.allowed_refs)
-                        invalid_items.append(invalid);outlook_invalid.append(invalid)
-                    valid_items=sorted(outlook_locked.values(),key=lambda entry:entry['position'])
+                    answer.values={}
+                    valid_items=outlook_state.accept(answer.outlook_items,repairing_outlook,render_outlook_item,package,section_cfg)
                     if outlook_low<=len(valid_items)<=outlook_high:
                         max_items=fields[ids[0]].get('value_schema',{}).get('maxItems')
                         if max_items and len(valid_items)>max_items:
@@ -395,18 +342,12 @@ async def write_structured_preview(deps,task_id,agents=None):
                             answer.values={ids[0]:{'value':rendered,'source_refs':refs}}
                         outlook_repair=None
                     else:
-                        repair_items=[]
-                        for entry in outlook_invalid:
-                            numbers=[catalog.reverse[ref] for ref in entry['allowed_refs'] if ref in catalog.reverse]
-                            message='前瞻类别和历史来源未对应；只能使用本类别允许资料编号。' if entry['error_code']=='category_source_mismatch' else entry['message']
-                            repair_items.append({**entry,'message':message,'allowed_numbers':numbers})
-                        outlook_repair={'invalid_items':repair_items}
-                        errors=[entry['category']+'：'+entry['message']+'；允许资料编号：'+(','.join(map(str,entry['allowed_numbers'])) or '无') for entry in repair_items]
-                        if not errors:errors=[f'前瞻合格类别不足{outlook_low}类；请仅补充或替换尚未合格的类别。']
+                        outlook_repair,errors=outlook_state.feedback(catalog,outlook_low)
                 if set(answer.values)-set(ids):raise ValueError('unknown_or_protected_template_field')
                 for key,value in answer.values.items():
                     try:
                         validate_values(template,{key:value},allowed,writer_only=True)
+                        validate_selection(key,value,calculation_contexts)
                         if section_role=='analysis' and isinstance(value.get('value'),str):
                             minimum,maximum=analysis_length_limits(package, fields.get(key))
                             length=len(value['value'])
@@ -431,28 +372,12 @@ async def write_structured_preview(deps,task_id,agents=None):
         for key in ids:
             if key not in values:
                 if section_role=='outlook':
-                    valid_entries=sorted(outlook_locked.values(),key=lambda e:e['position'])
-                    invalid_entries=list({e['category']:e for e in outlook_invalid}.values())
-                    has_body=bool(valid_entries or invalid_entries)
-                    source_only=bool(invalid_entries) and all(e.get('error_code')=='category_source_mismatch' for e in invalid_entries)
-                    merged=[]
-                    for e in valid_entries:
-                        merged.append({'position':e['position'],'valid':True,'category':e['category'],'text':e['text'],'item':e['item'],'refs':e['refs']})
-                    for e in invalid_entries:
-                        merged.append({'position':e.get('item_index',0),'valid':False,'category':e['category'],'text':e['item'].get('paragraph') or e['item'].get('historical_basis',''),'item':e['item'],'refs':[]})
-                    merged.sort(key=lambda x:(x['position'],0 if x['valid'] else 1))
-                    value=[e['text'] for e in merged]
+                    pending=outlook_state.pending(key,report.fact_ref,state.template_ref)
+                    has_body=pending is not None
+                    source_only=has_body and pending['status']=='writer_source_pending'
                     if has_body:
-                        pending_sources[key]=store.put_artifact(task_id,'writer_pending_sources',{
-                            'field_id':key,
-                            'valid_items':[{'category':e['category'],'item':e['item'],'text':e['text'],'refs':e['refs'],'position':e['position']} for e in valid_entries],
-                            'invalid_items':[{'item_index':e.get('item_index'),'category':e['category'],'item':e['item'],'error_code':e.get('error_code'),'message':e.get('message'),'allowed_refs':e.get('allowed_refs',[])} for e in invalid_entries],
-                            'outlook_items':[{'category':e['category'],'text':e['text'],'valid':e['valid']} for e in merged],
-                            'value':value,
-                            'reason':'正文已生成，引用或校验未能在限定轮次内完成；候选正文与逐项错误已保留，供最终人工核对。',
-                            'fact_ref':report.fact_ref,'template_ref':state.template_ref,
-                            'status':'writer_source_pending' if source_only else 'writer_validation_pending'})
-                    error='writer_unfilled' if not has_body else ('writer_source_pending' if source_only else 'writer_validation_pending')
+                        pending_sources[key]=store.put_artifact(task_id,'writer_pending_sources',pending)
+                    error=pending['status'] if has_body else 'writer_unfilled'
                     issues.append({'field_id':key,'semantic':fields[key].get('display_name',key),
                         'message':('正文已生成，引用待核对；候选正文已保留，可在终稿人审确认。' if source_only else '正文已生成，部分校验未完成；候选正文已保留，可在终稿人审确认。') if has_body else '；'.join(errors)[:1800],
                         'error':error})

@@ -13,7 +13,7 @@
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Query
 
 from core.packages.context import package_context
 
@@ -21,6 +21,25 @@ from . import hotspot
 from .social_hotlist import profile as social_profile
 
 router = APIRouter(include_in_schema=False)
+
+
+@router.get('/api/starbridge/demo-package')
+def starbridge_demo_package(title: str = Query(min_length=1, max_length=500),
+                            source: str = Query(default='今日热点', max_length=80)):
+    """可访问的演示材料包，不采集、不落盘；真实数据接口接入时替换此适配点。"""
+    return {
+        'schema_version': 'starbridge.v1', 'demo': True,
+        'notice': '全包为流程演示材料，非真实新闻原文或公众意见，不得用于正式出版。',
+        'topic': {'title': title, 'source': source},
+        'original': {'demo': True, 'text': f'【模拟原文】围绕“{title}”开展交流讨论。具体时间、地点、主体和进展待真实数据补充。'},
+        'citizen_comments': [
+            {'id': 'citizen-demo-1', 'demo': True, 'author': '模拟网民甲', 'text': '【模拟评论】期待相关举措更加便民，并公开后续进展。'},
+            {'id': 'citizen-demo-2', 'demo': True, 'author': '模拟网民乙', 'text': '【模拟评论】希望关注执行中的公平性与信息透明。'},
+        ],
+        'media_comments': [
+            {'id': 'media-demo-1', 'demo': True, 'author': '模拟媒体', 'text': '【模拟评论】应结合具体场景观察落实效果，完善配套机制。'},
+        ],
+    }
 
 
 def _package(request: Request) -> str:

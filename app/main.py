@@ -32,7 +32,7 @@ from .packages_api import (artifact_file, files_for, idempotent, resolve_files,
                            resolve_package, router as packages_router, uploads_for)
 from .api_views.writing import apply_slot_values,assemble_review_view,draft_content_hash,DRAFT_SCHEMA_OUTDATED_DETAIL
 
-store=PackageStores(); deps=Dependencies(store)
+from .runtime import store, deps, uploads as UPLOADS
 app=FastAPI(title='舆情分析报告工作台')
 # 客户包注册表（GET /api/packages）：刻意不进 OpenAPI（与 hotspot/editor 同一约定）。
 app.include_router(packages_router)
@@ -49,7 +49,6 @@ app.include_router(final_document_router)
 app.include_router(hotspot_router);app.include_router(editor_router)  # 终稿 canvas-editor 的 docx 存取（见 app/editor_api.py），同样刻意不进 OpenAPI
 app.include_router(chat_router)  # D 方案临时对话通道（思考流/搜索流/流式回答），同样不进 OpenAPI：见 app/chat_api.py
 app.mount('/static',StaticFiles(directory=Path(__file__).parent/'static'),name='static')
-UPLOADS=DATA/'uploads'; UPLOADS.mkdir(parents=True,exist_ok=True)
 def get_task(task_id):
     try: return store.get_task(task_id)
     except KeyError: raise HTTPException(404,'task_not_found')
@@ -114,17 +113,7 @@ def template_docx(request:Request):
     if not path.is_file(): raise HTTPException(404,'template_dir_missing')
     return FileResponse(path,media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',filename=download_name(package))
 
-class TaskCreate(BaseModel):
-    file_ids:list[str]=Field(default_factory=list)
-    paths:list[str]=Field(default_factory=list)
-    template_ref:str=''
-    report_month:str|None=None
-    sheet_index:int|None=None
-    mode:str='fallback'
-    event_threshold:float|None=Field(default=None,gt=0,le=1)
-    issue_number:int|None=Field(default=None,ge=1)
-    publication_date:date|None=None
-    package:str|None=None
+from .api_models import TaskCreate
 def _requested_package(request:Request)->str:  # 目标客户包（空=默认包）；头/查询参数，不进 OpenAPI
     return request.headers.get('X-Report-Package') or request.query_params.get('package','')
 def _aligned_package(req,request:Request)->str:
@@ -154,27 +143,16 @@ async def template_task(req:TaskCreate,request:Request,background_tasks:Backgrou
 
 @app.post('/api/report-tasks')
 async def report_task(req:TaskCreate,request:Request,background_tasks:BackgroundTasks,idempotency_key:str|None=Header(None)):
+    from .api_views.report_creation import prepare_report, persist_report, enqueue_report, ReportRequestError
     paths,package=_resolve_files(req.file_ids,_aligned_package(req,request))
-    if len(paths)!=1 or not paths[0].lower().endswith('.xlsx'): raise HTTPException(422,'one_xlsx_required')
-    rules={}
-    from .template_engine import is_slot_template
-    if not is_slot_template(req.template_ref,package):
-        from .structured_template import load_confirmed_template
-        try: rules=load_confirmed_template(store,req.template_ref).get('rules',{})
-        except (KeyError,ValueError): raise HTTPException(409,'confirmed_two_report_template_required')
-    task_id=uuid.uuid4().hex
-    if idempotency_key:
-        existing=idempotent(store,'report:'+idempotency_key,task_id,package)
-        if existing!=task_id: return store.get_task(existing)
-    from core.tools import vocabulary as _vocabulary
-    from .fallback_policy import event_scope_metadata
-    sheet_index=req.sheet_index if req.sheet_index is not None else _vocabulary.sheet_index(package)
-    state=TaskState(id=task_id,package=package,kind='report',phase='queued',template_ref=req.template_ref,input_refs=req.file_ids,metadata={'input_path':paths[0],'report_month':req.report_month,'report_issue':req.issue_number,'report_date':req.publication_date,'sheet_index':sheet_index,'mode':req.mode,**event_scope_metadata(package),'template_rules':task_feature_snapshot(rules),'event_threshold':req.event_threshold or rules.get('event_threshold',.65)})
-    parameters={key:value for key,value in req.model_dump(mode='json').items() if key in ('issue_number','publication_date') and value is not None}
-    if parameters:
-        state.metadata['report_parameters']=parameters
-        state.metadata['report_parameters_ref']=store.put_artifact(task_id,'report_parameters',{'parameters':parameters,'source':'report_processing_form'})
-    store.put_task(state); background_tasks.add_task(run_report_graph,deps,task_id)
+    try:
+        state=prepare_report(store,req,paths,package)
+    except ReportRequestError as exc:
+        raise HTTPException(exc.status,exc.detail) from exc
+    candidate_id=state.id
+    state=persist_report(store,state,req,idempotency_key)
+    if state.id==candidate_id or state.metadata.get('report_dispatch') in ('pending','failed'):
+        state=enqueue_report(store,state,background_tasks,run_report_graph,deps)
     return state
 
 @app.get('/api/report-parameter-suggestions')
@@ -293,19 +271,19 @@ async def generate_draft(task_id,review_only=False):
             await run_writing_graph(deps,task_id,review_only=True)
         else:await make_preview_with_charts(deps,task_id)
     except Exception as exc:
-        state=get_task(task_id);state.phase='facts_frozen'
-        state.metadata['writing_error']='写作未完成，请重试或查看日志。'
-        store.put_task(state,state.revision)
-        store.append_event(task_id,{'type':'writing_failed','error_type':type(exc).__name__})
+        from .api_views.writing import record_writing_failure
+        record_writing_failure(store,get_task(task_id),exc)
 
 @app.post('/api/tasks/{task_id}/preview-draft')
 async def preview_draft(task_id:str,background_tasks:BackgroundTasks):
     state=get_task(task_id)
-    if not state.fact_ref:raise HTTPException(409,'data_review_required')
-    from .reviewers import ACTIVE_PHASES
-    if state.phase in ACTIVE_PHASES:raise HTTPException(409,'writing_in_progress')
-    if state.phase not in ('facts_frozen','awaiting_final_review'):raise HTTPException(409,'invalid_writing_stage')
-    state.phase='writing';state.metadata.pop('writing_error',None);store.put_task(state,state.revision)
+    from .api_views.writing import preview_draft_error
+    error=preview_draft_error(store,state)
+    if error:raise HTTPException(*error)
+    state.phase='writing'
+    state.metadata.pop('writing_error',None)
+    state.metadata.pop('writing_error_code',None)
+    store.put_task(state,state.revision)
     background_tasks.add_task(generate_draft,task_id)
     return state
 
@@ -526,7 +504,9 @@ def template_definition(task_id:str):
     state=get_task(task_id)
     ref=state.metadata.get('confirmed_template_ref') or state.metadata.get('structured_template_ref')
     if not ref: raise HTTPException(404,'structured_template_missing')
-    definition=store.get_artifact(ref)
+    from .structured_template import read_template_artifact,TemplateArtifactUnavailable
+    try: definition=read_template_artifact(store.store_for(store.package_of(task_id)) if hasattr(store,'store_for') else store,ref)
+    except TemplateArtifactUnavailable as exc: raise HTTPException(409,str(exc))
     error,definition=definition_with_charts(definition)
     if error:raise HTTPException(*error)
     if definition.get('status')=='candidate_requires_review':definition=apply_top10_rule_preserving(definition)

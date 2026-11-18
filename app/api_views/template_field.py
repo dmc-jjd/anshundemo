@@ -13,7 +13,7 @@ import copy
 import hashlib
 import json
 
-EDITABLE_KEYS = ('display_name', 'semantic', 'owner')
+EDITABLE_KEYS = ('display_name', 'semantic', 'owner', 'rule', 'reason', 'format')
 OWNERS = ('data', 'writer')
 EDITABLE_STATUSES = ('candidate_requires_review',)
 
@@ -66,6 +66,14 @@ def edit_template_field(template, field_id, patch):
                 return (422, 'field_binding_locked'), None, None
             field['owner'] = owner
             changed.append('owner')
+    for key in ('rule', 'reason', 'format'):
+        if key in keys:
+            if not isinstance(patch[key], str):
+                return (422, 'invalid_template_field_patch'), None, None
+            text = patch[key].strip()
+            if text != field.get(key, ''):
+                field[key] = text
+                changed.append(key)
     if not changed:
         return None, result, field
     field['human_edited'] = sorted(set(field.get('human_edited') or []) | set(changed))

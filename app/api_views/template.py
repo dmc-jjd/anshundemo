@@ -55,7 +55,7 @@ def apply_top10_rule_preserving(definition):
     from ..structured_template import apply_top10_rule
     edited = {}
     for field in definition.get('fields') or []:
-        keys = [key for key in field.get('human_edited') or [] if key in ('display_name', 'semantic')]
+        keys = [key for key in field.get('human_edited') or [] if key in ('display_name', 'semantic', 'rule', 'reason', 'format')]
         if keys:
             edited[field['id']] = {key: field[key] for key in keys if key in field}
     result = apply_top10_rule(definition)
@@ -100,7 +100,20 @@ def apply_definition_patch(store, state, req):
         if req.rules is not None:
             candidate['rules']=rules_for_features(req.rules,candidate.get('rules'))
     except ValueError as exc: return (422,str(exc)),None
+    from ..template_draft import current_draft, rebuild, _log_entries, DRAFT_KIND, DraftError
+    draft = current_draft(store, state)
+    rebased = None
+    if draft:
+        if draft.get('base_ref') != ref:
+            return (409, 'stale_template_candidate'), None
+        try:
+            rebased = rebuild(candidate, _log_entries(draft), '', draft.get('field_edits'))
+        except DraftError as exc:
+            return (exc.status, exc.code), None
     state.metadata['structured_template_ref']=store.put_artifact(state.id,'structured_template_candidate',candidate)
+    if rebased is not None:
+        rebased['base_ref'] = state.metadata['structured_template_ref']
+        state.metadata['manual_template_draft_ref'] = store.put_artifact(state.id, DRAFT_KIND, rebased)
     from ..template_review import digest
     validation=store.get_artifact(state.metadata['template_validation_ref'])
     validation.update(candidate_ref=state.metadata['structured_template_ref'],candidate_hash=digest(candidate))

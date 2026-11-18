@@ -1,0 +1,49 @@
+........................................................................ [ 62%]
+...........................................                              [100%]
+============================== warnings summary ===============================
+app\agent.py:11
+  D:\智能分析报告重构版V5\app\agent.py:11: DeprecationWarning: core.agent.AGENT_DEFINITIONS 是包派生值的旧快照出口，将在下个里程碑移除；请改用 get_prompt(..., package=...) 或 core.packages.load_package(pkg)
+    from core.agent import *  # noqa: F401,F403
+
+app\agent.py:11
+  D:\智能分析报告重构版V5\app\agent.py:11: DeprecationWarning: core.agent.AGENT_PROMPTS 是包派生值的旧快照出口，将在下个里程碑移除；请改用 get_prompt(..., package=...) 或 core.packages.load_package(pkg)
+    from core.agent import *  # noqa: F401,F403
+
+app\agent.py:11
+  D:\智能分析报告重构版V5\app\agent.py:11: DeprecationWarning: core.agent.TEMPLATE_POLICY 是包派生值的旧快照出口，将在下个里程碑移除；请改用 get_prompt(..., package=...) 或 core.packages.load_package(pkg)
+    from core.agent import *  # noqa: F401,F403
+
+app\agent.py:11
+  D:\智能分析报告重构版V5\app\agent.py:11: DeprecationWarning: core.agent.REPORT_PROMPT_PROFILES 是包派生值的旧快照出口，将在下个里程碑移除；请改用 get_prompt(..., package=...) 或 core.packages.load_package(pkg)
+    from core.agent import *  # noqa: F401,F403
+
+app\agent.py:11
+  D:\智能分析报告重构版V5\app\agent.py:11: DeprecationWarning: core.agent.DEFAULT_PROMPT_PROFILE 是包派生值的旧快照出口，将在下个里程碑移除；请改用 get_prompt(..., package=...) 或 core.packages.load_package(pkg)
+    from core.agent import *  # noqa: F401,F403
+
+app\agent.py:11
+  D:\智能分析报告重构版V5\app\agent.py:11: DeprecationWarning: core.agent.RISK_COMPARISON_PROMPT 是包派生值的旧快照出口，将在下个里程碑移除；请改用 get_prompt(..., package=...) 或 core.packages.load_package(pkg)
+    from core.agent import *  # noqa: F401,F403
+
+app\agent.py:11
+  D:\智能分析报告重构版V5\app\agent.py:11: DeprecationWarning: core.agent.RESEARCH_PROMPT 是包派生值的旧快照出口，将在下个里程碑移除；请改用 get_prompt(..., package=...) 或 core.packages.load_package(pkg)
+    from core.agent import *  # noqa: F401,F403
+
+app\agent.py:11
+  D:\智能分析报告重构版V5\app\agent.py:11: DeprecationWarning: core.agent.ANALYSIS_PROMPT 是包派生值的旧快照出口，将在下个里程碑移除；请改用 get_prompt(..., package=...) 或 core.packages.load_package(pkg)
+    from core.agent import *  # noqa: F401,F403
+
+app\agent.py:11
+  D:\智能分析报告重构版V5\app\agent.py:11: DeprecationWarning: core.agent.OUTLOOK_PROMPT 是包派生值的旧快照出口，将在下个里程碑移除；请改用 get_prompt(..., package=...) 或 core.packages.load_package(pkg)
+    from core.agent import *  # noqa: F401,F403
+
+app\agent.py:11
+  D:\智能分析报告重构版V5\app\agent.py:11: DeprecationWarning: core.agent.TEMPLATE_INSTRUCTION 是包派生值的旧快照出口，将在下个里程碑移除；请改用 get_prompt(..., package=...) 或 core.packages.load_package(pkg)
+    from core.agent import *  # noqa: F401,F403
+
+.conda\JJDreport\Lib\site-packages\langgraph\cache\base\__init__.py:8
+  D:\智能分析报告重构版V5\.conda\JJDreport\Lib\site-packages\langgraph\cache\base\__init__.py:8: LangChainPendingDeprecationWarning: The default value of `allowed_objects` will change in a future version. Pass an explicit value (e.g., allowed_objects='messages' or allowed_objects='core') to suppress this warning.
+    from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+115 passed, 11 warnings in 116.17s (0:01:56)

@@ -187,8 +187,28 @@ def validate_values(template:dict,values:dict,allowed_refs:set[str],writer_only=
         if '{{' in str(answer['value']): raise ValueError('nested_template_marker')
         if writer_only and fields[key]['owner']!='writer': raise ValueError('data_field_owned_by_tool')
 
+class TemplateArtifactUnavailable(ValueError):
+    """One health/error contract for management, generation and approval."""
+    def __init__(self, code):
+        self.code = code
+        self.artifact_status = 'missing' if code == 'template_artifact_missing' else 'unreadable'
+        super().__init__(code)
+
+
+def read_template_artifact(store, ref):
+    try:
+        template = store.get_artifact(ref)
+    except (KeyError, FileNotFoundError) as exc:
+        raise TemplateArtifactUnavailable('template_artifact_missing') from exc
+    except (OSError, ValueError) as exc:
+        raise TemplateArtifactUnavailable('template_artifact_unreadable') from exc
+    if not isinstance(template, dict):
+        raise TemplateArtifactUnavailable('template_artifact_unreadable')
+    return template
+
+
 def load_confirmed_template(store,ref:str)->dict:
-    template=store.get_artifact(ref)
+    template=read_template_artifact(store,ref)
     if template.get('status')!='confirmed_by_human' or len(template.get('source_reports',[]))<2:
         raise ValueError('confirmed_two_report_template_required')
     if not template.get('comparison_ref') or not template.get('writer_schema'):

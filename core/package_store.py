@@ -62,7 +62,7 @@ class PackageStores:
         name = str(package or self.default_package)
         if self._base is None:
             return paths.data_root(name)
-        return self._base / 'packages' / name
+        return paths.resolve_data_root(self._base, name)
 
     def store_for(self, package: str | None = None) -> Store:
         """取（必要时建）某个包的 Store。"""
@@ -189,6 +189,14 @@ class PackageStores:
         stored = self._store(package).put_task(state, expected_revision, allow_resume)
         with self._lock:
             self._task_package[state.id] = package
+        return stored
+
+    def create_report_once(self, state, parameters, idempotency_key=None):
+        package = str(state.package or '')
+        if not package:raise ValueError('report_package_required')
+        stored = self._store(package).create_report_once(state, parameters, idempotency_key)
+        with self._lock:
+            self._task_package[stored.id] = package
         return stored
 
     def list_tasks(self):

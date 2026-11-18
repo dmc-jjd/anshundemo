@@ -13,11 +13,16 @@ def edit_structured(store,task_id,values,expected_hash,parameters=None,resolved_
     if not expected_hash or draft['content_hash']!=expected_hash:raise ValueError('stale_draft_hash')
     template=load_confirmed_template(store,state.template_ref);fields={f['id']:f for f in template['fields']}
     merged=dict(draft['slot_values']);allowed=set(draft['evidence_refs'])|{'human_edit'}
+    from core.task_package import resolve_task_package
+    from .writing_pipeline.calculation_context import build_contexts, validate_selection
+    package=resolve_task_package(state=state,store=store)
+    contexts=build_contexts(fields,FrozenReport(store,task_id),merged,{},package)
     for key,value in values.items():
         if key not in fields or fields[key]['owner']!='writer':raise ValueError('only_writer_fields_can_be_edited:'+key)
         answer={'value':value.strip() if isinstance(value,str) else value,'source_refs':['human_edit']}
         try:validate_values(template,{key:answer},allowed,writer_only=True)
         except Exception as exc:raise ValueError(str(exc)[:700]) from exc
+        validate_selection(key,answer,contexts)
         merged[key]=answer
     issues=state.metadata.get('writer_issues',[])
     if parameters is not None:
@@ -29,7 +34,7 @@ def edit_structured(store,task_id,values,expected_hash,parameters=None,resolved_
         state.metadata['report_parameters_ref']=parameter_ref;allowed.add(parameter_ref)
         store.put_task(state,state.revision)
         report=FrozenReport(store,task_id)
-        calculated,data_issues=data_values(template,report)
+        calculated,data_issues=data_values(template,report,package=package)
         merged.update(calculated)
         issues=[x for x in issues if x.get('field_id') not in {f['id'] for f in fields.values() if f['owner']=='data'}]+data_issues
     state=store.get_task(task_id)

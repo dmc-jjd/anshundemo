@@ -6,7 +6,7 @@
   "description": "canvas-editor 打包入口：产出 app/static/vendor/canvas-editor.js",
   "scripts": {
     "build": "node build.mjs",
-    "clean": "node -e \"require('fs').rmSync('../app/static/vendor',{recursive:true,force:true})\""
+    "clean": "node clean.mjs"
   },
   "dependencies": {
     "@hufe921/canvas-editor": "^1.0.0",

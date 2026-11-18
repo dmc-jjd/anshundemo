@@ -143,18 +143,27 @@ def _configure_package(package_dir, data_base=None):
 def _bounded_run(name,arguments,root,task_id,timeout,package_dir=None,data_base=None):
     parent,child=multiprocessing.Pipe(duplex=False)
     proc=multiprocessing.get_context('spawn').Process(target=_run_in_process,args=(name,arguments,root,task_id,child,package_dir,data_base))
-    proc.start(); child.close()
-    ready=parent.poll(timeout)
-    if not ready:
-        proc.terminate(); proc.join(5)
-        if proc.is_alive(): proc.kill(); proc.join()
-        parent.close()
-        return ToolResult(status='error',error_code='timeout',warnings=['worker terminated after timeout'])
-    if ready:
-        status,value=parent.recv(); parent.close()
-        proc.join(5)
+    started=False
+    try:
+        proc.start(); started=True; child.close()
+        if not parent.poll(timeout):
+            proc.terminate()
+            return ToolResult(status='error',error_code='timeout',warnings=['worker terminated after timeout'])
+        try:
+            status,value=parent.recv()
+        except EOFError:
+            proc.join(5)
+            return ToolResult(status='error',error_code='worker_exit',warnings=[f'worker exit code {proc.exitcode}'])
         return ToolResult.model_validate(value) if status=='ok' else ToolResult(status='error',error_code=value['error_code'],warnings=[value['message']])
-    parent.close(); return ToolResult(status='error',error_code='worker_exit',warnings=[f'worker exit code {proc.exitcode}'])
+    finally:
+        parent.close(); child.close()
+        if started:
+            proc.join(5)
+            if proc.is_alive():
+                proc.terminate(); proc.join(5)
+            if proc.is_alive():
+                proc.kill(); proc.join()
+        proc.close()
 
 async def execute_tool(call:ToolCall,context:RunContext)->ToolResult:
     start=time.monotonic(); state=context.store.get_task(context.task_id)
@@ -190,7 +199,8 @@ async def execute_tool(call:ToolCall,context:RunContext)->ToolResult:
     signature=call.idempotency_key or f'{specs[call.tool_name].version}:{call.tool_name}:{call.arguments}:{call.input_refs}'
     if writer_readonly:signature+=f':{state.fact_ref}:{state.metadata.get("report_parameters_ref","")}'
     prior=state.metadata.get('tool_results',{}).get(signature)
-    if prior:
+    # Failed attempts are audit history, not reusable successful results.
+    if prior and prior.get('status')=='ok':
         cached=ToolResult.model_validate(prior)
         if cached.data_ref:
             state.result_refs[_ref_key(call.tool_name,call.arguments)]=cached.data_ref

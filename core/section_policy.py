@@ -51,22 +51,24 @@ def _merge(base: Mapping[str, Any], override: Mapping[str, Any]) -> dict[str, An
 
 
 def load(package: str | None = None) -> dict[str, Any]:
-    """Return the merged `section_two` block for a package, or `{}`."""
+    """Return optional policy; missing or unreadable packages are configuration errors."""
+    from core.packages.registry import load as load_package
+    from core.manifest import PackageError
+    import yaml
+    loaded = load_package(package)
+    loaded.manifest  # Validate required manifest fields and declared agents first.
+    def block(value):
+        if value is None:return {}
+        if not isinstance(value, Mapping):
+            raise ValueError('section_two_must_be_mapping')
+        return dict(value)
+    template_cfg = block((loaded.template or {}).get("section_two"))
     try:
-        from core.packages.registry import load as load_package
-        loaded = load_package(package)
-    except Exception:
-        return {}
-    template_cfg = _as_dict((loaded.template or {}).get("section_two"))
-    manifest_cfg: dict[str, Any] = {}
-    try:
-        import yaml
         raw = yaml.safe_load((loaded.directory / "manifest.yaml").read_text(encoding="utf-8-sig")) or {}
-        if isinstance(raw, Mapping):
-            manifest_cfg = _as_dict(raw.get("section_two"))
-    except Exception:
-        manifest_cfg = {}
-    return _merge(template_cfg, manifest_cfg)
+    except (OSError, yaml.YAMLError) as exc:
+        raise PackageError('manifest_unreadable:manifest.yaml') from exc
+    if not isinstance(raw, Mapping):raise PackageError('manifest_unreadable:manifest.yaml')
+    return _merge(template_cfg, block(raw.get("section_two")))
 
 
 def field_role(field: Mapping[str, Any], policy: Mapping[str, Any] | None, default_role: str | None = None) -> str | None:

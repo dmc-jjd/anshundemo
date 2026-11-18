@@ -9,11 +9,13 @@
 在本目录使用 Python 3.13：
 
 ```powershell
-python -m pip install -r requirements.lock
+python -m pip install --no-index --find-links .tmp/optimization-wheelhouse -r requirements.lock
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8765
 ```
 
-打开 [本地工作台](http://127.0.0.1:8765/)。当前机器已经运行服务时可直接打开。若 pip 无法访问包源，现有环境可直接启动；`requirements.lock` 只钉住直接依赖，尚不是完整传递依赖锁。
+打开 [本地工作台](http://127.0.0.1:8765/)。`requirements.lock` 为 Windows x64 / CPython 3.13 的完整传递依赖哈希锁，包含运行、测试及浏览器验证依赖；已在独立 venv 离线安装、执行 pip check、启动 Uvicorn 并验证 HTTP。离线 wheelhouse 位于 `.tmp/optimization-wheelhouse`，备份为 `.tmp/optimization-dependencies-win-py313.zip`。换机器先解压备份并调整 `--find-links` 路径；jieba 使用本机从固定版本源码构建的 wheel，必须随包保留。其他平台使用 `requirements.txt`，尚未作完整锁验证。
+
+可选工厂入口：`python -m uvicorn app.factory:create_app --factory --host 127.0.0.1 --port 8765`。代码可传入 `Settings(data_root=...)` 创建独立数据实例；模型凭据与客户包注册表仍为部署级配置。导入应用不创建数据目录。剩余优化结果与验收边界见 [收尾报告](docs/verification/2026-11-18-optimization/remaining-report.md)。
 
 ## 已接入的真实材料
 
@@ -28,11 +30,11 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8765
 3. 在任务详情打开结果工件与日志。新任务使用固定代表向量自动归并；事件组、来源行、成员 ID 全部保存。历史两轮候选工具保留供对照。业务人员可执行合并、拆分、独立、排除或暂缓。确认事件组时要提交覆盖所有相关记录且不重复的组；`{"strategy":"accept_keyword_groups"}` 可作为人工明确接受第一轮分组的决定，需先检查第二轮跨组候选。
 4. 确认并锁定本期数据后开始写作。结构化路径由程序计算数据字段，Writer 按槽填写分析文字并可调用冻结数据的只读工具；Matplotlib 绘制五张图并插入原 Word 图位。在“查看报告与缺失项”中补充实际期号、成文日期或缺失文字。人工补充在本地保存，不再发回模型；有缺失字段或图表时不开放终审。写作图会依次运行表达检测、格式审核员和内容审核员，按意见限次退修，再交人工终审；人工保存后不回模型。任务详情“双审核与人工终审”可查看原句、意见及退修记录。见[真实图与双审核验证](docs/真实LangGraph双审核与去AI表达-20261108.md)。
 
-`data/` 保存 SQLite、上传文件和工件。刷新页面后任务 ID 和执行记录仍可读取。停止服务用终端 `Ctrl+C`，再执行上面的启动命令可继续查看已有任务。
+`REPORT_DEMO_DATA` 指定数据基根，客户包任务分别保存到 `data/packages/<包名>/` 的 SQLite、上传文件和工件目录；旧单包数据兼容路径保持。刷新页面后任务 ID 和执行记录仍可读取。停止服务用终端 `Ctrl+C`，再执行上面的启动命令可继续查看已有任务。
 
 ## 模型配置与边界
 
-所有角色和可执行提示词统一维护于 `app/agent.py`，包括模板分析、事件归并/分类/梗概、Writer及历史研究；不同报告可在同文件配置Writer差异。执行、Schema与工具仍分模块维护，见[Agent提示词维护说明](docs/Agent提示词维护说明.md)。历史研究本次实际耗时与费用见[日志核算](docs/历史检索耗时与费用核算-20261108.md)。
+客户角色和提示词由 `core/packages/registry.py` 按包加载，客户覆盖位于 `packages/<包名>/prompts/`，基座缺省位于 `core/prompts/base/`；`app/agent.py` 是兼容导出入口。任务创建必须明确所属客户包并验证模板归属。执行、Schema 与工具仍分模块维护。旧[Agent提示词维护说明](docs/Agent提示词维护说明.md)用于历史参考，当前维护位置以本节和源码为准。
 
 环境变量 `REPORT_MODEL_URL`、`REPORT_MODEL_NAME`、`REPORT_MODEL_KEY` 全部设置后可启用兼容 OpenAI Chat Completions 的动态规划。本地 `.env` 支持模型配置；模型调用的实际成功与失败以任务事件日志为准。模板模型失败或结构校验失败时保留本地结果，但阻断人工确认；任务页可重试，并复用通过校验的批次。工具超时由可终止子进程处理；第二轮近邻使用倒排索引和有界候选检索，阈值与时间窗口未用标注集校准。
 

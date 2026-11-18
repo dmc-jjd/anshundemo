@@ -24,6 +24,16 @@ BASE_READ_ONLY = {'read_evidence', 'parse_report_document', 'compare_report_stru
 BASE_ARGUMENTS = {
     'group_events': {'required': ['records_ref'], 'properties': {'records_ref': 'artifact_ref', 'threshold': 'number (0,1]'}},
     'import_records': {'required': ['path'], 'properties': {'path': 'string', 'sheet_index': 'integer'}},
+    'calculate_metrics': {
+        'type': 'object', 'required': ['records_ref'],
+        'properties': {
+            'records_ref': {'type': 'string', 'minLength': 1,
+                            'description': 'Required: use this task import_records data_ref from results.import_records; never omit or invent a reference.'},
+            'negative_ref': {'type': ['string', 'null'], 'description': 'Optional negative-record artifact reference from this task.'},
+            'confirmed_event_groups_ref': {'type': ['string', 'null'], 'description': 'Optional confirmed event-group artifact reference from this task.'},
+            'denominator': {'type': ['number', 'null'], 'description': 'Optional ratio denominator; zero preserves the existing needs_review result.'},
+        },
+    },
     'filter_records': {'required': ['records_ref', 'scope'], 'properties': {'records_ref': 'artifact_ref', 'scope': 'all|positive|neutral|negative|warning|negative_warning|negative_or_warning|media', 'media_level': 'string'}},
     'propose_keyword_event_candidates': {'required': ['records_ref'], 'properties': {'records_ref': 'artifact_ref', 'keyword_jaccard': 'number'}},
     'propose_vector_event_neighbors': {'required': ['keyword_candidates_ref'], 'properties': {'keyword_candidates_ref': 'artifact_ref', 'min_score': 'number', 'max_neighbors': 'integer'}},

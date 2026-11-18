@@ -1,0 +1,292 @@
+{
+  "task_id": "46851d8fe1544bd985a9bad9f9a49f18",
+  "package": "longchuan_yuebao",
+  "template_name": "龙川县舆情月报V3",
+  "confirmed_ref": "template_version-ca19317b6428a92e3b5e",
+  "total_data_fields": 35,
+  "configured": 23,
+  "missing": 12,
+  "note": "配置审计；未执行本期业务数据，旧 tool/path 仅核查配置，尚非逐字段取值验收",
+  "fields": [
+    {
+      "block": 2,
+      "id": "b2_year",
+      "name": "报告年份",
+      "rule": "取任务报告统计年份",
+      "status": "configured",
+      "detail": "report_year"
+    },
+    {
+      "block": 2,
+      "id": "b2_issue",
+      "name": "报告期号",
+      "rule": "取任务显式期号",
+      "status": "configured",
+      "detail": "issue_number"
+    },
+    {
+      "block": 3,
+      "id": "b3_year",
+      "name": "成文年份",
+      "rule": "取任务成文日期年份",
+      "status": "configured",
+      "detail": "publish_year"
+    },
+    {
+      "block": 3,
+      "id": "b3_month",
+      "name": "成文月份",
+      "rule": "取任务成文日期月份",
+      "status": "configured",
+      "detail": "publish_month"
+    },
+    {
+      "block": 3,
+      "id": "b3_day",
+      "name": "成文日",
+      "rule": "取任务成文日期日",
+      "status": "configured",
+      "detail": "publish_day"
+    },
+    {
+      "block": 5,
+      "id": "b5_report_month",
+      "name": "统计月份",
+      "rule": "取任务报告统计月份",
+      "status": "configured",
+      "detail": "report_month"
+    },
+    {
+      "block": 5,
+      "id": "b5_positive_count",
+      "name": "正面信息数",
+      "rule": "统计全量记录中正面条数",
+      "status": "configured",
+      "detail": "sentiment_count"
+    },
+    {
+      "block": 5,
+      "id": "b5_positive_pct",
+      "name": "正面占比",
+      "rule": "正面条数除以全量记录数，输出含%号",
+      "status": "configured",
+      "detail": "sentiment_percentage"
+    },
+    {
+      "block": 5,
+      "id": "b5_neutral_count",
+      "name": "中性信息数",
+      "rule": "统计全量记录中性条数",
+      "status": "configured",
+      "detail": "sentiment_count"
+    },
+    {
+      "block": 5,
+      "id": "b5_neutral_pct",
+      "name": "中性占比",
+      "rule": "中性条数除以全量记录数，输出含%号",
+      "status": "configured",
+      "detail": "sentiment_percentage"
+    },
+    {
+      "block": 5,
+      "id": "b5_negative_count",
+      "name": "负面信息数",
+      "rule": "统计全量记录负面条数",
+      "status": "configured",
+      "detail": "sentiment_count"
+    },
+    {
+      "block": 5,
+      "id": "b5_negative_pct",
+      "name": "负面占比",
+      "rule": "负面条数除以全量记录数，输出含%号",
+      "status": "configured",
+      "detail": "sentiment_percentage"
+    },
+    {
+      "block": 5,
+      "id": "b5_warning_count",
+      "name": "预警上报数",
+      "rule": "统计原始预警上报条数",
+      "status": "configured",
+      "detail": "{'path': ['warning_raw_count'], 'tool': 'calculate_metrics'}"
+    },
+    {
+      "block": 8,
+      "id": "b8_peak_date",
+      "name": "舆情峰值日期",
+      "rule": "取日统计序列峰值日期，含日字",
+      "status": "configured",
+      "detail": "peak_date"
+    },
+    {
+      "block": 8,
+      "id": "b8_peak_count",
+      "name": "峰值条数",
+      "rule": "取日统计峰值当日条数",
+      "status": "missing",
+      "detail": "现有目录不能精确表达该字段的规则/类型，待开发授权或口径确认"
+    },
+    {
+      "block": 10,
+      "id": "b10_chart_month",
+      "name": "图1月份",
+      "rule": "取任务报告统计月份",
+      "status": "configured",
+      "detail": "report_month"
+    },
+    {
+      "block": 12,
+      "id": "b12_platform_stats",
+      "name": "平台来源统计句",
+      "rule": "按平台条数降序生成最多、其次、此外句式",
+      "status": "configured",
+      "detail": "platform_statistics"
+    },
+    {
+      "block": 14,
+      "id": "b14_chart_month",
+      "name": "图2月份",
+      "rule": "取任务报告统计月份",
+      "status": "configured",
+      "detail": "report_month"
+    },
+    {
+      "block": 16,
+      "id": "b16_month",
+      "name": "信源统计月份",
+      "rule": "取任务报告统计月份",
+      "status": "configured",
+      "detail": "report_month"
+    },
+    {
+      "block": 16,
+      "id": "b16_source_stats",
+      "name": "具体信源统计句",
+      "rule": "按信源条数降序生成来源和条数",
+      "status": "missing",
+      "detail": "现有目录不能精确表达该字段的规则/类型，待开发授权或口径确认"
+    },
+    {
+      "block": 18,
+      "id": "b18_chart_month",
+      "name": "图3月份",
+      "rule": "取任务报告统计月份",
+      "status": "configured",
+      "detail": "report_month"
+    },
+    {
+      "block": 21,
+      "id": "b21_top_gov_count",
+      "name": "重点政务传播条数",
+      "rule": "统计重点政务标题相关传播条数",
+      "status": "missing",
+      "detail": "现有目录不能精确表达该字段的规则/类型，待开发授权或口径确认"
+    },
+    {
+      "block": 22,
+      "id": "b22_month",
+      "name": "媒体报道月份",
+      "rule": "取任务报告统计月份",
+      "status": "configured",
+      "detail": "report_month"
+    },
+    {
+      "block": 22,
+      "id": "b22_media_outlets",
+      "name": "报道媒体总数",
+      "rule": "统计本月报道媒体总数",
+      "status": "missing",
+      "detail": "现有目录不能精确表达该字段的规则/类型，待开发授权或口径确认"
+    },
+    {
+      "block": 22,
+      "id": "b22_media_articles",
+      "name": "媒体报道总条数",
+      "rule": "统计本月媒体报道条数",
+      "status": "missing",
+      "detail": "现有目录不能精确表达该字段的规则/类型，待开发授权或口径确认"
+    },
+    {
+      "block": 22,
+      "id": "b22_central_outlets",
+      "name": "央级媒体家数",
+      "rule": "统计本月央级媒体家数",
+      "status": "missing",
+      "detail": "现有目录不能精确表达该字段的规则/类型，待开发授权或口径确认"
+    },
+    {
+      "block": 22,
+      "id": "b22_central_articles",
+      "name": "央级媒体条数",
+      "rule": "统计本月央级媒体条数",
+      "status": "missing",
+      "detail": "现有目录不能精确表达该字段的规则/类型，待开发授权或口径确认"
+    },
+    {
+      "block": 22,
+      "id": "b22_provincial_outlets",
+      "name": "省级媒体家数",
+      "rule": "统计本月省级媒体家数",
+      "status": "missing",
+      "detail": "现有目录不能精确表达该字段的规则/类型，待开发授权或口径确认"
+    },
+    {
+      "block": 22,
+      "id": "b22_provincial_articles",
+      "name": "省级媒体条数",
+      "rule": "统计本月省级媒体条数",
+      "status": "missing",
+      "detail": "现有目录不能精确表达该字段的规则/类型，待开发授权或口径确认"
+    },
+    {
+      "block": 22,
+      "id": "b22_local_outlets",
+      "name": "地市级媒体家数",
+      "rule": "统计本月地市级媒体家数",
+      "status": "missing",
+      "detail": "现有目录不能精确表达该字段的规则/类型，待开发授权或口径确认"
+    },
+    {
+      "block": 22,
+      "id": "b22_local_articles",
+      "name": "地市级媒体条数",
+      "rule": "统计本月地市级媒体条数",
+      "status": "missing",
+      "detail": "现有目录不能精确表达该字段的规则/类型，待开发授权或口径确认"
+    },
+    {
+      "block": 25,
+      "id": "b25_month",
+      "name": "敏感舆情月份",
+      "rule": "取任务报告统计月份",
+      "status": "configured",
+      "detail": "report_month"
+    },
+    {
+      "block": 25,
+      "id": "b25_sensitive_count",
+      "name": "敏感信息数",
+      "rule": "统计全量负面记录条数",
+      "status": "configured",
+      "detail": "sentiment_count"
+    },
+    {
+      "block": 25,
+      "id": "b25_category_list",
+      "name": "敏感集中领域列表",
+      "rule": "按本月敏感事件分类统计降序列出类别",
+      "status": "configured",
+      "detail": "category_names"
+    },
+    {
+      "block": 48,
+      "id": "b48_table_rows",
+      "name": "呈发印发表格行",
+      "rule": "保持三行结构，印发日期随成文日期",
+      "status": "missing",
+      "detail": "现有目录不能精确表达该字段的规则/类型，待开发授权或口径确认"
+    }
+  ]
+}

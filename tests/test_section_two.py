@@ -267,27 +267,10 @@ def outlook_writer_fixture(tmp_path,monkeypatch,topic_count=4,max_items=5,histor
     return store,topics
 
 
-def _artifact_dirs():
-    """固定的重放样本可能落在旧单根或按包数据根里（数据迁移后搬了位置）。
-
-    按包根优先，再回落旧单根——两种布局都能取到，测试不再依赖迁移是否已执行。
-    """
-    from app.config import DATA as package_root
-    legacy=Path(__file__).parent.parent/'data'
-    return [package_root/'artifacts',legacy/'artifacts']
-
-
 def fixed_exchange(short):
-    name=f'model_exchange-{short}.json'
-    for directory in _artifact_dirs():
-        path=directory/name
-        if path.is_file():break
-    else:
-        raise FileNotFoundError(f'fixture_missing: {name}（已查 {[str(d) for d in _artifact_dirs()]}）')
-    exchange=json.loads(path.read_text(encoding='utf-8'))
-    request=json.loads(next(message['content'] for message in exchange['messages'] if message['role']=='user'))
-    response=json.loads(exchange['response']['choices'][0]['message']['content'])
-    return request,response
+    path = Path(__file__).parent / 'fixtures' / 'outlook_replay' / f'model_exchange-{short}.json'
+    exchange = json.loads(path.read_text(encoding='utf-8'))
+    return exchange['request'], exchange['response']
 
 
 def fixed_outlook_history():

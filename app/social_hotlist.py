@@ -1,4 +1,4 @@
-"""首页「社媒热榜」占位模块：4 个平台恒返回空列表，等数据源接入。
+"""首页「社媒热榜」：用户截图的四平台模拟列表，等待内部数据源。
 
 数据源接入**只改 `_fetch_platform()` 一处**：`profile()` 的返回形状
 （`{platform, collected_at, items}`）是前端与 API 的契约，接真实接口时不要动它，
@@ -9,8 +9,9 @@ PLATFORMS = ('weibo', 'douyin', 'toutiao', 'baidu')
 
 
 def _fetch_platform(platform: str) -> dict:
-    """平台数据源（待接入）。当前恒返回空：不猜、不编、不缓存假数据。"""
-    return {'collected_at': None, 'items': []}
+    """内部接口适配点。当前明确返回截图演示快照，不访问外网。"""
+    from .social_hotlist_demo import snapshot
+    return snapshot(platform)
 
 
 def profile(platform: str) -> dict:

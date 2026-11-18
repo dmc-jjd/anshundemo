@@ -2,20 +2,24 @@
   "package": "longchuan_yuebao",
   "version": "1.0.0",
   "writer_slots": [
-    "b5_sensitive_examples",
-    "b8_top_events",
-    "b21_dynamic_titles",
-    "b21_top_title",
-    "b25_event_examples",
-    "b27_risk_theme",
-    "b28_risk_context",
+    "b5_sensitive_events",
+    "b8_top_info",
+    "b21_gov_titles",
+    "b21_top_gov_title",
+    "b22_central_examples",
+    "b22_leading_level",
+    "b22_provincial_examples",
+    "b22_local_examples",
+    "b25_event_list",
+    "b27_focus_title1",
+    "b28_focus_intro1",
     "numbered_items_1",
-    "b34_risk_theme",
-    "b35_risk_context",
+    "b34_focus_title2",
+    "b35_focus_intro2",
     "numbered_items_2",
-    "b42_case_material",
+    "b42_case_report",
     "b43_case_analysis",
-    "b44_case_suggestions"
+    "b44_case_suggestion"
   ],
   "section_two": {
     "field_roles": {
@@ -54,24 +58,68 @@
     },
     "sentiment": {
       "field": "sentiment",
-      "values": ["正面", "中性", "负面"],
+      "values": [
+        "正面",
+        "中性",
+        "负面"
+      ],
       "scopes": {
-        "negative": {"contains": ["负"]},
-        "positive": {"values": ["正面"]},
-        "neutral": {"values": ["中性"]}
+        "negative": {
+          "contains": [
+            "负"
+          ]
+        },
+        "positive": {
+          "values": [
+            "正面"
+          ]
+        },
+        "neutral": {
+          "values": [
+            "中性"
+          ]
+        }
       }
     },
     "warning": {
       "field": "warning",
-      "truth": ["是", "已预警", "1", "true", "TRUE", "预警"],
+      "truth": [
+        "是",
+        "已预警",
+        "1",
+        "true",
+        "TRUE",
+        "预警"
+      ],
       "scopes": {
-        "warning": {"warning_truth": true, "require_truth_present": true},
+        "warning": {
+          "warning_truth": true,
+          "require_truth_present": true
+        },
         "negative_warning": {
-          "all": [{"warning_truth": true}, {"contains": ["负"]}],
+          "all": [
+            {
+              "warning_truth": true
+            },
+            {
+              "contains": [
+                "负"
+              ]
+            }
+          ],
           "require_truth_present": true
         },
         "negative_or_warning": {
-          "any": [{"contains": ["负"]}, {"warning_truth": true}]
+          "any": [
+            {
+              "contains": [
+                "负"
+              ]
+            },
+            {
+              "warning_truth": true
+            }
+          ]
         }
       }
     }
@@ -132,5 +180,11 @@
       "scope": "all_records",
       "axis_label": "信源"
     }
-  ]
+  ],
+  "calculation_contexts": {
+    "b21_top_gov_count": {
+      "title_field": "b21_top_gov_title",
+      "list_field": "b21_gov_titles"
+    }
+  }
 }

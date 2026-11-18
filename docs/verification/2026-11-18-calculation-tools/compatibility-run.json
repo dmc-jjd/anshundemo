@@ -1,0 +1,21 @@
+{
+  "argv": [
+    "D:\\智能分析报告重构版V5\\.conda\\JJDreport\\python.exe",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "--tb=short",
+    "-rfE",
+    "-p",
+    "no:cacheprovider",
+    "--basetemp=C:\\Users\\knwl\\AppData\\Local\\Temp\\v5-scoped-02dwt8au\\pytest",
+    "tests/test_template_bindings_catalog.py",
+    "tests/test_review_excerpt.py",
+    "tests/test_s7_package_contract.py",
+    "tests/test_structured_template.py"
+  ],
+  "started": 1794997456.0305426,
+  "seconds": 13.395992279052734,
+  "exit_code": 0
+}

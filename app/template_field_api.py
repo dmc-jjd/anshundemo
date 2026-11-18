@@ -22,6 +22,9 @@ class TemplateFieldEdit(BaseModel):
     display_name: str | None = None
     semantic: str | None = None
     owner: str | None = None
+    rule: str | None = None
+    reason: str | None = None
+    format: str | None = None
 
 
 @router.put('/api/templates/{task_id}/fields/{field_id}')
@@ -40,6 +43,26 @@ def edit_template_candidate_field(task_id: str, field_id: str, req: TemplateFiel
     if state.revision != req.expected_revision:
         raise HTTPException(409, 'stale_template_revision')
     patch = {key: getattr(req, key) for key in EDITABLE_KEYS if getattr(req, key) is not None}
+    from .template_draft import current_draft, definition_view, rebuild, _log_entries, DRAFT_KIND, DraftError
+    draft = current_draft(store, state)
+    if draft:
+        if draft.get('base_ref') != ref:
+            raise HTTPException(409, 'stale_template_candidate')
+        base = store.get_artifact(ref)
+        error, _, field = edit_template_field(definition_view(base, draft), field_id, patch)
+        if error:
+            raise HTTPException(*error)
+        edits = dict(draft.get('field_edits') or {})
+        edits[field_id] = {**edits.get(field_id, {}), **patch}
+        try:
+            updated = rebuild(base, _log_entries(draft), ref, edits)
+        except DraftError as exc:
+            raise HTTPException(exc.status, exc.code)
+        state.metadata['manual_template_draft_ref'] = store.put_artifact(task_id, DRAFT_KIND, updated)
+        store.put_task(state, state.revision)
+        store.append_event(task_id, {'type': 'template_field_edited', 'field': field_id,
+                                    'changed': sorted(patch), 'draft_ref': state.metadata['manual_template_draft_ref']})
+        return {'revision': state.revision, 'artifact_ref': ref, 'field': field, 'changed': sorted(patch)}
     error, template, field = edit_template_field(store.get_artifact(ref), field_id, patch)
     if error:
         raise HTTPException(*error)

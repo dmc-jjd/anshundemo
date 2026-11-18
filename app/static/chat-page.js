@@ -4,6 +4,7 @@
 //   2) chatStyle.fontFamily 必须在挂载前设好，否则 deep-chat 会去请求 Google Fonts；
 //   3) 每帧重发整段 HTML（overwrite），折叠块 / 胶囊行 / 正文结构完全由我们控制。
 import '/static/vendor/deep-chat/deepChat.bundle.js';
+import { applyHandoff } from './starbridge-handoff.mjs?v=starbridge-20261118-2';
 
 await customElements.whenDefined('deep-chat');
 
@@ -301,7 +302,16 @@ chat.avatars = {
 chat.auxiliaryStyle = AUX;
 const applyPlaceholder = () => { try { chat.setPlaceholderText(PLACEHOLDER); } catch { /* 未渲染时忽略 */ } };
 applyPlaceholder();
-chat.onComponentRender = applyPlaceholder;
+const applyStarbridge = () => {
+  applyPlaceholder();
+  try {
+    if (applyHandoff(chat, sessionStorage)) document.querySelector('.chat').classList.add('has-thread');
+  } catch (error) {
+    const target = document.querySelector('.empty h1');
+    if (target) target.textContent = '星桥预填失败：' + error.message;
+  }
+};
+chat.onComponentRender = applyStarbridge;
 chat.connect = { stream: true, handler: streamHandler };
 
 // 恢复上次会话：history 必须在挂载前赋值（挂载即首渲染）。
@@ -313,8 +323,10 @@ if (restored && restored.messages.length) {
     .map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text }));
 }
 document.querySelector('#chat-slot').appendChild(chat);
-setTimeout(applyPlaceholder, 200);
-setTimeout(applyPlaceholder, 1200);
+applyStarbridge();
+// 组件初始化及历史消息恢复可能晚于首次挂载，再尝试交接；已消费的数据不会重复填入。
+setTimeout(applyStarbridge, 200);
+setTimeout(applyStarbridge, 1200);
 
 // ---------------------------------------------------------------- 一条 AI 消息的 HTML
 function newTurn() {
@@ -668,7 +680,8 @@ function openSession(id) {
 
 function setEmptyState() {
   const s = activeSession();
-  const has = !!(s && s.messages.length);
+  const draft = chat.shadowRoot?.querySelector('[contenteditable="true"][role="textbox"]')?.innerText;
+  const has = !!(s && s.messages.length) || !!draft?.trim();
   document.querySelector('#chat').classList.toggle('has-thread', has);
 }
 

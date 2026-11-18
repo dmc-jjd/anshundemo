@@ -1,0 +1,101 @@
+{
+  "package": "longchuan_yuebao",
+  "artifacts": [
+    {
+      "ref": "template_version-ca19317b6428a92e3b5e",
+      "sha256": "ca19317b6428a92e3b5e3837b4e04fb7a2be3cdfd69e759e12448e6c22d88540",
+      "matches_index": true
+    },
+    {
+      "ref": "template_version-e053b1277d8e9d4e4830",
+      "sha256": "e053b1277d8e9d4e48308b6ea3e5e17b99b913c13b9886db12486ade51d35f7b",
+      "matches_index": true
+    }
+  ],
+  "data_fields": 35,
+  "effective_binding_configurations": 35,
+  "new_bindings": 12,
+  "unbound_fields": [],
+  "actual_confirmed_schema_synthetic_values": {
+    "b8_peak_count": {
+      "value": "3",
+      "source_refs": [
+        "fact-test"
+      ]
+    },
+    "b16_source_stats": {
+      "value": "市媒（2条），省媒（2条），个人（1条），央媒（1条）",
+      "source_refs": [
+        "fact-test"
+      ]
+    },
+    "b21_top_gov_count": {
+      "value": "3",
+      "source_refs": [
+        "fact-test"
+      ]
+    },
+    "b22_media_outlets": {
+      "value": "4",
+      "source_refs": [
+        "fact-test"
+      ]
+    },
+    "b22_media_articles": {
+      "value": "5",
+      "source_refs": [
+        "fact-test"
+      ]
+    },
+    "b22_central_outlets": {
+      "value": "1",
+      "source_refs": [
+        "fact-test"
+      ]
+    },
+    "b22_central_articles": {
+      "value": "1",
+      "source_refs": [
+        "fact-test"
+      ]
+    },
+    "b22_provincial_outlets": {
+      "value": "1",
+      "source_refs": [
+        "fact-test"
+      ]
+    },
+    "b22_provincial_articles": {
+      "value": "2",
+      "source_refs": [
+        "fact-test"
+      ]
+    },
+    "b22_local_outlets": {
+      "value": "2",
+      "source_refs": [
+        "fact-test"
+      ]
+    },
+    "b22_local_articles": {
+      "value": "2",
+      "source_refs": [
+        "fact-test"
+      ]
+    },
+    "b48_table_rows": {
+      "value": [
+        [
+          "发：各乡镇，县副科以上单位（含驻阳单位）"
+        ],
+        [
+          "网络安全应急指挥中心编印           2026年11月18日印发"
+        ]
+      ],
+      "source_refs": [
+        "params-test"
+      ]
+    }
+  },
+  "scope": "12 new calculations executed against actual V3 schemas with synthetic inputs; 23 old bindings configuration-only; no business report or model call"
+}

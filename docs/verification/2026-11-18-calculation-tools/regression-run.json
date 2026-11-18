@@ -1,0 +1,22 @@
+{
+  "argv": [
+    "D:\\智能分析报告重构版V5\\.conda\\JJDreport\\python.exe",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "--tb=short",
+    "-rfE",
+    "-p",
+    "no:cacheprovider",
+    "--basetemp=C:\\Users\\knwl\\AppData\\Local\\Temp\\v5-scoped-0a7ay04y\\pytest",
+    "tests/test_extended_calculations.py",
+    "tests/test_frozen_writer.py",
+    "tests/test_writing_pipeline.py",
+    "tests/test_report_package_regressions.py",
+    "tests/test_section_two.py"
+  ],
+  "started": 1794997299.8702793,
+  "seconds": 117.98486256599426,
+  "exit_code": 0
+}

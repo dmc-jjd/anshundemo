@@ -1,4 +1,4 @@
-/* 首页两个新模块：今日热点话题（联网采集，20 条 + 类别 TAB 客户端筛选）+ 社媒热榜（4 tab 占位）。
+/* 首页模块：今日热点话题（联网采集）+ 社媒热榜（四平台截图模拟数据）。
  *
  * 缓存语义：进入页面只读 `GET /api/hotspot`（不刷新）；**只有点按钮**才 `POST /api/hotspot/collect`
  * 重新采集。失败只在模块内显示一行错误码（红字），不弹窗、不清空既有列表。
@@ -210,6 +210,7 @@
     if (!panel || !body) return;
     var tabs = Array.prototype.slice.call(panel.querySelectorAll('[data-platform]'));
     if (!tabs.length) return;
+    var requestVersion = 0;
 
     function activePlatform() {
       var current = panel.querySelector('[data-platform][data-state="active"]');
@@ -228,22 +229,40 @@
       body.textContent = '';
       var items = (payload && payload.items) || [];
       if (!items.length) { renderEmpty(); return; }
+      var meta = document.getElementById('socialMeta');
+      if (meta) meta.textContent = payload.demo ? '截图模拟数据 · 全国 · 非实时' : '全国';
       var list = document.createElement('ol');
       list.className = 'social-list';
       items.forEach(function (item, index) {
         var li = document.createElement('li');
-        li.textContent = (item.rank || index + 1) + '. ' + (item.title || '');
+        var rank = document.createElement('span');
+        rank.className = 'social-rank';
+        rank.textContent = item.rank || index + 1;
+        var sentiment = document.createElement('span');
+        sentiment.className = 'social-sentiment' + (item.sentiment === '正' ? ' positive' : '');
+        sentiment.textContent = item.sentiment || '中';
+        sentiment.title = item.sentiment === '正' ? '正面（截图标签）' : '中性（截图标签）';
+        var title = document.createElement('span');
+        title.className = 'social-topic-title';
+        title.textContent = item.title || '';
+        title.title = item.title || '';
+        var heat = document.createElement('span');
+        heat.className = 'social-heat';
+        heat.textContent = item.heat || '';
+        li.appendChild(sentiment); li.appendChild(rank); li.appendChild(title); li.appendChild(heat);
         list.appendChild(li);
       });
       body.appendChild(list);
     }
 
     function load(platform) {
+      var version = ++requestVersion;
+      body.textContent = '';
       fetch('/api/social-hotlist?platform=' + encodeURIComponent(platform),
             { headers: { Accept: 'application/json' } })
-        .then(function (response) { return response.json(); })
-        .then(render)
-        .catch(renderEmpty);
+        .then(function (response) { if (!response.ok) throw Error('social_load_failed'); return response.json(); })
+        .then(function (payload) { if (version === requestVersion) render(payload); })
+        .catch(function () { if (version === requestVersion) renderEmpty(); });
     }
 
     tabs.forEach(function (tab) {

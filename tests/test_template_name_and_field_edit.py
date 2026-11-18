@@ -214,3 +214,71 @@ def test_top10_rule_does_not_override_human_edited_names():
     field = next(item for item in kept['fields'] if item['id'] == 'b99_rows')
     assert field['display_name'] == '人工 TOP10 视图' and field['semantic'] == '人工改过的语义'
     assert field['binding'] == {'tool': 'top10_events', 'path': []}
+
+
+def test_field_descriptions_persist_and_freeze_on_confirmation(tmp_path, monkeypatch):
+    store, _ = _store(tmp_path, monkeypatch)
+    with TestClient(main.app) as client:
+        task_id, state = _create_task(client, store)
+        target = _fields(client, task_id)[0]
+        descriptions = {'rule': '按本期口径计算\n不沿用历史数字',
+                        'reason': '用户审阅后的字段说明', 'format': '整数，不带单位'}
+        saved = client.put(f'/api/templates/{task_id}/fields/{target["id"]}',
+                           json={'expected_revision': state.revision, **descriptions})
+        assert saved.status_code == 200, saved.text
+        field = next(f for f in _fields(client, task_id) if f['id'] == target['id'])
+        for key, value in descriptions.items():
+            assert field.get(key) == value
+            assert key in field['human_edited']
+        definition = client.get(f'/api/templates/{task_id}/definition').json()
+        confirmed = client.post(f'/api/templates/{task_id}/confirm', json={
+            'expected_revision': saved.json()['revision'], 'candidate_ref': definition['artifact_ref'],
+            'reason': 'test', 'rules': RULES, 'resolutions': {}})
+        assert confirmed.status_code == 200, confirmed.text
+        frozen = store.get_artifact(confirmed.json()['metadata']['confirmed_template_ref'])
+        assert all(next(f for f in frozen['fields'] if f['id'] == target['id'])[k] == v
+                   for k, v in descriptions.items())
+        rejected = client.put(f'/api/templates/{task_id}/fields/{target["id"]}',
+                              json={'expected_revision': confirmed.json()['revision'], 'rule': '不能改'})
+        assert rejected.status_code == 409
+        assert rejected.json()['detail'] == 'immutable_confirmed_template'
+
+
+def test_field_description_edits_preserve_unrelated_template_content():
+    from app.api_views.template_field import edit_template_field
+    original = {'status': 'candidate_requires_review', 'fields': [
+        {'id': 'f', 'owner': 'data', 'kind': 'number', 'semantic': '数量',
+         'rule': '旧口径', 'reason': '旧说明', 'binding': {'metric': 'count'},
+         'value_schema': {'type': 'string'}, 'sources': [{'text': '历史数字'}]}],
+        'blocks': [{'index': 22, 'parts': [{'text': '共'}, {'field': 'f'}]}]}
+    before = copy.deepcopy(original)
+    error, edited, field = edit_template_field(original, 'f', {'rule': '', 'reason': '新说明'})
+    assert error is None
+    assert field['rule'] == '' and field['reason'] == '新说明'
+    assert original == before
+    assert edited['blocks'] == original['blocks']
+    assert field['binding'] == original['fields'][0]['binding']
+    assert field['sources'] == original['fields'][0]['sources']
+
+
+def test_field_descriptions_survive_saving_template_rules_with_manual_draft(tmp_path, monkeypatch):
+    store, _ = _store(tmp_path, monkeypatch)
+    with TestClient(main.app) as client:
+        task_id, state = _create_task(client, store)
+        definition = client.get(f'/api/templates/{task_id}/definition').json()['definition']
+        block = next(b for b in definition['blocks'] if b['kind'] == 'paragraph')
+        added = client.post(f'/api/templates/{task_id}/draft/selection', json={
+            'expected_revision': state.revision, 'block': block['index'], 'selected_text': '',
+            'start': 0, 'choice': 'paragraph'})
+        assert added.status_code == 200, added.text
+        field_id = added.json()['field']['id']
+        saved = client.put(f'/api/templates/{task_id}/fields/{field_id}', json={
+            'expected_revision': added.json()['revision'], 'rule': '新规则', 'reason': '新说明'})
+        assert saved.status_code == 200, saved.text
+        changed = client.put(f'/api/templates/{task_id}/definition', json={
+            'expected_revision': saved.json()['revision'], 'fields': {}, 'rules': RULES})
+        assert changed.status_code == 200, changed.text
+        effective = client.get(f'/api/templates/{task_id}/draft').json()
+        assert effective['draft']['base_ref'] == store.get_task(task_id).metadata['structured_template_ref']
+        assert len(effective['draft']['selection_log']) == 1
+        assert next(f for f in effective['definition']['fields'] if f['id'] == field_id)['reason'] == '新说明'

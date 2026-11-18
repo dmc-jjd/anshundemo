@@ -658,13 +658,21 @@ def test_get_never_refreshes_and_post_always_does(store, configured, monkeypatch
     assert second['collected_at'] > first['collected_at']
 
 
-# ---------------------------------------------------------------- 社媒热榜占位
+# ---------------------------------------------------------------- 用户截图模拟社媒热榜（2026-11-18）
 
 
 @pytest.mark.parametrize('platform', ['weibo', 'douyin', 'toutiao', 'baidu'])
-def test_social_hotlist_is_empty_placeholder(platform):
+def test_social_hotlist_contains_screenshot_demo(platform):
     body = client().get('/api/social-hotlist', params={'platform': platform}).json()
-    assert body == {'platform': platform, 'collected_at': None, 'items': []}
+    assert body['platform'] == platform and body['collected_at'] is None
+    assert body['demo'] is True and body['source'] == '用户截图模拟数据'
+    assert len(body['items']) == 20
+    assert [row['rank'] for row in body['items']] == list(range(1, 21))
+    assert all(row['title'] and row['heat'] and row['sentiment'] in ('中', '正') for row in body['items'])
+    first = {'weibo': ('A股', '468.4亿'), 'douyin': ('普京抵达深圳', '1218.4万'),
+             'toutiao': ('深圳机场停满各国领导人…', '4006.7万'),
+             'baidu': ('习近平会见加拿大总理卡尼', '790.4万')}
+    assert (body['items'][0]['title'], body['items'][0]['heat']) == first[platform]
 
 
 def test_social_hotlist_rejects_unknown_platform():

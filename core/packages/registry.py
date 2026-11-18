@@ -25,7 +25,9 @@
 from __future__ import annotations
 
 import os
+from copy import deepcopy
 from functools import lru_cache
+from weakref import WeakValueDictionary
 from pathlib import Path
 from typing import Any
 
@@ -159,6 +161,28 @@ def fingerprint(directory: str | Path) -> tuple[tuple[tuple[str, int, int], ...]
 # --------------------------------------------------------------------------- #
 
 
+class _ProfileView(dict):
+    """Weak-referenceable public mutation view, independent of cache lifetime."""
+
+
+_profile_views = WeakValueDictionary()
+
+
+def _profile_view(directory, source):
+    key = str(directory.resolve())
+    view = _profile_views.get(key)
+    if view is None:
+        view = _ProfileView(deepcopy(source))
+        view.source = deepcopy(source)
+        _profile_views[key] = view
+    elif view.source != source:
+        # Actual configuration edits refresh the same public object in place.
+        view.clear()
+        view.update(deepcopy(source))
+        view.source = deepcopy(source)
+    return view
+
+
 class PackageLoad:
     """一个包的一次完整加载结果；每个派生资源都是**按需**求值且在本对象内只算一次。
 
@@ -223,7 +247,7 @@ class PackageLoad:
 
     @property
     def report_profiles(self) -> dict[str, dict[str, str]]:
-        return self.prompt_bundle['report_profiles']
+        return self._once('report_profiles', lambda: _profile_view(self.directory, self.prompt_bundle['report_profiles']))
 
     @property
     def default_profile(self) -> str:

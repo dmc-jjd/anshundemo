@@ -15,6 +15,7 @@ M2 起默认根是**当前包的包数据根**（`data/packages/<包>/`）：`St
 """
 from __future__ import annotations
 import hashlib, json, os, sqlite3, tempfile, uuid
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 from .paths import data_root
@@ -38,20 +39,65 @@ CREATE TABLE IF NOT EXISTS idempotency(key TEXT PRIMARY KEY, value TEXT);''')
             c.execute('CREATE TABLE IF NOT EXISTS review_drafts(task_id TEXT PRIMARY KEY,analysis_ref TEXT NOT NULL,data_ref TEXT NOT NULL,version INTEGER NOT NULL,updated_at TEXT NOT NULL)')
     def connect(self):
         c=sqlite3.connect(self.db, timeout=30); c.row_factory=sqlite3.Row; return c
-    def put_artifact(self,task_id:str,kind:str,payload:Any)->str:
+    @contextmanager
+    def _artifact_transaction(self):
+        # All artifact writers take the same SQLite lock before touching shared hash files.
+        # Cleanup runs while that lock is held, so a failed create cannot remove a rival's file.
+        c=self.connect(); created=[]
+        try:
+            c.execute('BEGIN IMMEDIATE')
+            yield c,created
+            c.commit()
+        except BaseException:
+            try:
+                for path in created:path.unlink(missing_ok=True)
+            finally:
+                c.rollback()
+            raise
+        finally:
+            c.close()
+    def _put_artifact(self,c,created,task_id,kind,payload,*,owner_scoped=False):
         raw=json.dumps(payload,ensure_ascii=False,sort_keys=True,default=str).encode()
         digest=hashlib.sha256(raw).hexdigest(); aid=f'{kind}-{digest[:20]}'
+        if owner_scoped:
+            identity=hashlib.sha256(task_id.encode()+b'\0'+raw).hexdigest()
+            aid=f'{kind}-{identity[:20]}'
         target=self.files/f'{aid}.json'
         if not target.exists():
+            indexed=c.execute('SELECT 1 FROM artifacts WHERE id=?',(aid,)).fetchone()
             fd,tmp=tempfile.mkstemp(dir=self.files, suffix='.tmp')
             try:
                 with os.fdopen(fd,'wb') as f: f.write(raw); f.flush(); os.fsync(f.fileno())
                 os.replace(tmp,target)
+                if not indexed:created.append(target)
             finally:
                 if os.path.exists(tmp): os.unlink(tmp)
-        with self.connect() as c:
-            c.execute('INSERT OR IGNORE INTO artifacts VALUES(?,?,?,?,?,?)',(aid,task_id,kind,str(target),digest,now()))
+        c.execute('INSERT OR IGNORE INTO artifacts VALUES(?,?,?,?,?,?)',(aid,task_id,kind,str(target),digest,now()))
         return aid
+    def put_artifact(self,task_id:str,kind:str,payload:Any)->str:
+        with self._artifact_transaction() as (c,created):
+            return self._put_artifact(c,created,task_id,kind,payload)
+    def create_report_once(self,state:TaskState,parameters:dict,idempotency_key:str|None=None)->TaskState:
+        """Commit a report, parameters and its package-local idempotency claim together."""
+        candidate=state.model_copy(deep=True)
+        with self._artifact_transaction() as (c,created):
+            if idempotency_key:
+                prior=c.execute('SELECT value FROM idempotency WHERE key=?',(idempotency_key,)).fetchone()
+                if prior:
+                    row=c.execute('SELECT state FROM tasks WHERE id=?',(prior['value'],)).fetchone()
+                    if row:return TaskState.model_validate_json(row['state'])
+                    # Repair a legacy dangling claim only when no task can be returned.
+                    c.execute('DELETE FROM idempotency WHERE key=?',(idempotency_key,))
+                c.execute('INSERT INTO idempotency VALUES(?,?)',(idempotency_key,candidate.id))
+            if parameters:
+                candidate.metadata['report_parameters']=dict(parameters)
+                candidate.metadata['report_parameters_ref']=self._put_artifact(c,created,candidate.id,
+                    'report_parameters',{'parameters':parameters,'source':'report_processing_form'},owner_scoped=True)
+            candidate.metadata['report_dispatch']='pending'
+            from .timing import transition
+            transition(candidate)
+            c.execute('INSERT INTO tasks VALUES(?,?,?)',(candidate.id,candidate.model_dump_json(),candidate.revision))
+        return candidate
     def get_artifact(self,ref:str)->Any:
         # 空引用 = 调用方手里没有产物 id（例如关掉去重/分类后 details 里没有 event_ref），
         # 不是「某个 artifact id 在库里不存在」。给带语义的 ValueError，绝不让 None 进 SQL
@@ -69,6 +115,7 @@ CREATE TABLE IF NOT EXISTS idempotency(key TEXT PRIMARY KEY, value TEXT);''')
         return bool(row and row['task_id']==task_id)
     def put_task(self,state:TaskState,expected_revision:int|None=None,allow_resume:bool=False)->TaskState:
         with self.connect() as c:
+            c.execute('BEGIN IMMEDIATE')
             row=c.execute('SELECT revision,state FROM tasks WHERE id=?',(state.id,)).fetchone()
             if row:
                 if expected_revision is None or row['revision']!=expected_revision: raise ConflictError('stale_task_revision')
@@ -80,7 +127,8 @@ CREATE TABLE IF NOT EXISTS idempotency(key TEXT PRIMARY KEY, value TEXT);''')
                 from .timing import transition
                 transition(state,previous)
                 state.revision=expected_revision+1
-                c.execute('UPDATE tasks SET state=?,revision=? WHERE id=?',(state.model_dump_json(),state.revision,state.id))
+                updated=c.execute('UPDATE tasks SET state=?,revision=? WHERE id=? AND revision=?',(state.model_dump_json(),state.revision,state.id,expected_revision))
+                if updated.rowcount!=1:raise ConflictError('stale_task_revision')
             else:
                 if expected_revision not in (None,0): raise ConflictError('stale_task_revision')
                 from .timing import transition

@@ -45,14 +45,9 @@ def _docx_text(payload):
 
 
 @pytest.fixture(scope='module')
-def demo_candidate():
-    """真实候选模板（含 `b34_top10_rows` 与「负面单一重点预警」字段）。缺失时跳过。"""
-    from core.config import DATA
-    store = Store(DATA)
-    try:
-        return store.get_artifact(CANDIDATE)
-    except (KeyError, FileNotFoundError):
-        pytest.skip('demo 候选模板不在数据目录里')
+def demo_candidate(tmp_path_factory):
+    from fixture_factories import switch_template
+    return switch_template(tmp_path_factory.mktemp('switch-template'))
 
 
 def test_features_default_to_true_and_carry_four_switches():

@@ -66,7 +66,7 @@ def _package_feature_switches():
 FEATURES_SNAPSHOT='task_snapshot'
 
 
-def task_feature_snapshot(rules):
+def task_feature_snapshot(rules,package=None):
     """建报告任务时把**生效**开关算好写进 `template_rules.features`（宿主落盘方案）。
 
     必须落盘，因为 core 侧的消费者（`core/structured_template.template_feature_switches`
@@ -81,9 +81,13 @@ def task_feature_snapshot(rules):
     固定，要换口径就新建任务。`features_source` 标记让 `_template_features` 认出这份值已生效。
     """
     from types import SimpleNamespace
+    from core.packages.context import package_context
+    from core.task_package import resolve_task_package
     probe=SimpleNamespace(metadata={'template_rules':rules},template_ref=None)
+    with package_context(resolve_task_package(package)):
+        features=_template_features(None,probe)
     return {**(rules if isinstance(rules,dict) else {}),
-            'features':_template_features(None,probe),'features_source':FEATURES_SNAPSHOT}
+            'features':features,'features_source':FEATURES_SNAPSHOT}
 
 
 def effective_features(store,state):
@@ -218,12 +222,17 @@ def build_report_graph(dependencies:Dependencies,agents=None):
         return 'process' if not task.fact_ref and not task.metadata.get('human_review_final') and task.phase in ('queued','processing','awaiting_review','analysis_pending') else 'stop'
     def after_processing(value):
         task=dependencies.store.get_task(value['task_id'])
+        if task.phase=='failed':return 'finish'
         # 研判阶段消费的是归组结果：关掉去重就不会有组可研判，直接交给人工数据审核。
         needed=_analysis_refs(_template_features(dependencies.store,task))
         return 'analyse' if needed<=task.result_refs.keys() and not task.cancel_requested else 'finish'
     def after_analysis(value):return 'stop' if dependencies.store.get_task(value['task_id']).phase=='analysis_pending' else 'finish'
+    def await_review(task_id):
+        task=dependencies.store.get_task(task_id)
+        if task.phase=='failed':return task
+        return _await_data_review(dependencies,task_id)
     actions={'validate_input':validate,'data_processing':lambda tid:_process_records(dependencies,tid),
-             'event_analysis':lambda tid:_analyse_report_events(dependencies,tid),'await_data_review':lambda tid:_await_data_review(dependencies,tid)}
+             'event_analysis':lambda tid:_analyse_report_events(dependencies,tid),'await_data_review':await_review}
     # 出口即结束只能走 edges 注册表（GraphSpec.next 只认节点 id）；终审只有一个出口，故为常量路由。
     edges={'validate_input':(entry,{'process':'data_processing','stop':END_TARGET}),
            'data_processing':(after_processing,{'analyse':'event_analysis','finish':'await_data_review'}),
@@ -309,8 +318,8 @@ def build_writing_graph(dependencies:Dependencies,review_only=False,agents=None)
 
 def _task_package(store,task_id):
     """任务所属包（`TaskState.package`）；旧任务为空 → 当前上下文/默认包。"""
-    try: return getattr(store.get_task(task_id),'package','') or None
-    except Exception: return None
+    from core.task_package import resolve_task_package
+    return resolve_task_package(store=store,task_id=task_id)
 
 async def _in_task_package(dependencies:Dependencies,task_id:str,body):
     """后台图运行在**任务所属包**的 ContextVar 里（M2：同进程 A/B 不串包）。
@@ -331,6 +340,8 @@ async def run_writing_graph(dependencies:Dependencies,task_id:str,review_only=Fa
         lambda:_run_writing_graph(dependencies,task_id,review_only,agents))
 
 async def _run_writing_graph(dependencies:Dependencies,task_id:str,review_only=False,agents=None):
+    from .template_engine import validate_task_template
+    validate_task_template(dependencies.store,dependencies.store.get_task(task_id))
     enabled=_enabled_agents(agents)
     _record_agent_scope(dependencies.store,task_id,'writing',enabled)
     graph=build_writing_graph(dependencies,review_only) if agents is None else build_writing_graph(dependencies,review_only,enabled)
@@ -393,7 +404,8 @@ def _sheet_index(state):
     if value is not None:
         return int(value)
     from core.tools import vocabulary
-    return vocabulary.sheet_index(getattr(state,'package',None))
+    from core.task_package import resolve_task_package
+    return vocabulary.sheet_index(resolve_task_package(state=state))
 
 def _args_for(name,state):
 
@@ -423,6 +435,18 @@ async def _process_records(deps:Dependencies,task_id:str):
     if task.metadata.get('human_review_final') and task.result_refs.get('event_analysis'):return task
     store=deps.store; state=store.get_task(task_id)
     if state.fact_ref or state.phase not in ('queued','processing','awaiting_review','analysis_pending'): return state
+    planning = None
+    if state.metadata.get('mode') == 'dynamic' and not state.metadata.get('reprocess_events'):
+        from core.task_package import resolve_task_package
+        from .report_planning import planning_template
+        try:
+            planning = planning_template(store, state, resolve_task_package(state=state, store=store))
+        except (KeyError, ValueError, RuntimeError) as exc:
+            state.phase = 'failed'
+            state.metadata['planning_error'] = str(exc)
+            store.put_task(state, state.revision)
+            store.append_event(task_id, {'type': 'planning_error', 'error': type(exc).__name__, 'message': str(exc)})
+            return state
     features=_template_features(store,state); policy=_processing_policy(features)
     from .tool import get_tool_specs
     # 裁剪**给模型的清单**而不只是执行层拒绝：模型看得见被拒工具就会反复重试，产出垃圾。
@@ -441,20 +465,9 @@ async def _process_records(deps:Dependencies,task_id:str):
             if state.planning_calls>=12 or no_progress>=3: break
             state.planning_calls+=1; store.put_task(state,state.revision)
             try:
-                import json
-                from core import paths
-                from core.layout import manifest_path
-                manifest=json.loads((manifest_path(getattr(state,'package',None) or None)).read_text(encoding='utf-8'))
-                slot_goals=[{'id':x['id'],'semantic':x['semantic'],'scope':x['scope'],'statistical_unit':x['statistical_unit'],'calculation':x['calculation'],'source_fields':x['source_fields_or_calculation'],'review_required':x['review_required']} for x in manifest['placeholders']]
-                from .template_engine import is_slot_template
-                if state.template_ref and not is_slot_template(state.template_ref, getattr(state,'package',None)):
-                    from .structured_template import load_confirmed_template
-                    definition=load_confirmed_template(store,state.template_ref)
-                    slot_goals=[{'id':f['id'],'semantic':f['semantic'],'owner':f['owner'],'value_schema':f['value_schema'],'binding':f.get('binding')} for f in definition['fields']]
-                    manifest={**manifest,'template_id':definition['id']}
-                decision=await invoke_agent('data_processor',{'template_id':manifest['template_id'],'slot_goals':slot_goals,'confirmed_scope_requirements':manifest['scope_requirements'],'input':{'path':state.metadata.get('input_path'),'sheet_index':_sheet_index(state)},'template_rules':state.metadata.get('template_rules',{}),'results':state.result_refs,'tools':available,'instruction':get_prompt('data_processor.next_tool')},ToolDecision,ctx)
+                decision=await invoke_agent('data_processor',{**planning,'input':{'path':state.metadata.get('input_path'),'sheet_index':_sheet_index(state)},'template_rules':state.metadata.get('template_rules',{}),'results':state.result_refs,'tools':available,'instruction':get_prompt('data_processor.next_tool')},ToolDecision,ctx)
             except Exception as e:
-                store.append_event(task_id,{'type':'planning_error','error':type(e).__name__}); break
+                store.append_event(task_id,{'type':'planning_error','error':type(e).__name__,'message':str(e)}); break
             if decision.action=='finish_processing':
                 needed=_needed_refs(features)
                 if needed<=state.result_refs.keys(): break

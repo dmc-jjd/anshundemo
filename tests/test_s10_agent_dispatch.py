@@ -6,7 +6,7 @@
     * 内联步骤：历史调研同时要求「声明了 historical_researcher」且「模板有 outlook 字段」。
 
 V1（A 包行为零变化）由 G-GRAPH / G-GOLDEN 门禁承担，本文件只钉声明解释与裁剪形状。
-临时客户包一律复制 A 包到 `.conda/`（逐文件 `read_bytes`/`write_bytes`——`write_text`
+临时客户包一律复制 A 包到系统临时目录（逐文件 `read_bytes`/`write_bytes`——`write_text`
 在 Windows 上会写出 CRLF，提示词会被污染）。
 """
 
@@ -47,7 +47,6 @@ from core.manifest import load_manifest  # noqa: E402
 from core.ports import Manifest  # noqa: E402
 
 SOURCE_PACKAGE = REPO / 'packages' / 'anshun_monthly'
-SCRATCH = REPO / '.conda'
 EVENT_ROLES = ('event_judge', 'event_classifier', 'event_summarizer')
 
 
@@ -57,13 +56,8 @@ EVENT_ROLES = ('event_judge', 'event_classifier', 'event_summarizer')
 
 
 @pytest.fixture()
-def scratch():
-    SCRATCH.mkdir(parents=True, exist_ok=True)
-    path = pathlib.Path(tempfile.mkdtemp(prefix='agent-dispatch-', dir=str(SCRATCH)))
-    try:
-        yield path
-    finally:
-        shutil.rmtree(path, ignore_errors=True)
+def scratch(tmp_path):
+    return tmp_path
 
 
 def copy_package(dst: pathlib.Path) -> pathlib.Path:

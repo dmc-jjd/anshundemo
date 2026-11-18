@@ -43,7 +43,6 @@ def _load_local_env() -> None:
 
 _load_local_env()
 DATA = Path(os.getenv('REPORT_DEMO_DATA', ROOT / 'data'))
-DATA.mkdir(parents=True, exist_ok=True)
 MODEL_URL = os.getenv('REPORT_MODEL_URL', '')
 MODEL_NAME = os.getenv('REPORT_MODEL_NAME', '')
 MODEL_KEY = os.getenv('REPORT_MODEL_KEY', '')

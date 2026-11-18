@@ -1,0 +1,85 @@
+# 客户字段绑定；通用实现位于 core，已确认V3工件不修改。
+# 媒体范围/身份口径及呈发固定内容由用户于2026-11-18明确确认。
+# 表格第一行由确认模板headers提供，这里仅含余下两行，避免重复呈送行。
+b8_peak_count:
+  metric: peak_count
+  scope: all_records
+b16_source_stats:
+  metric: source_statistics
+  scope: all_records
+  limit: 20
+b21_top_gov_count:
+  metric: selected_material_count
+  scope: all_records
+  filters:
+    media_attribute:
+    - 政务
+  limit: 3
+b22_media_outlets:
+  metric: distinct_source_count
+  scope: all_records
+  filters:
+    media_level: &id001
+    - 全国
+    - 省级
+    - 市级
+  identity_field: source_id
+  identity_fallback:
+  - source
+  - author
+b22_media_articles:
+  metric: filtered_record_count
+  scope: all_records
+  filters:
+    media_level: *id001
+b22_central_outlets:
+  metric: distinct_source_count
+  scope: all_records
+  filters:
+    media_level: &id002
+    - 全国
+  identity_field: source_id
+  identity_fallback:
+  - source
+  - author
+b22_central_articles:
+  metric: filtered_record_count
+  scope: all_records
+  filters:
+    media_level: *id002
+b22_provincial_outlets:
+  metric: distinct_source_count
+  scope: all_records
+  filters:
+    media_level: &id003
+    - 省级
+  identity_field: source_id
+  identity_fallback:
+  - source
+  - author
+b22_provincial_articles:
+  metric: filtered_record_count
+  scope: all_records
+  filters:
+    media_level: *id003
+b22_local_outlets:
+  metric: distinct_source_count
+  scope: all_records
+  filters:
+    media_level: &id004
+    - 市级
+  identity_field: source_id
+  identity_fallback:
+  - source
+  - author
+b22_local_articles:
+  metric: filtered_record_count
+  scope: all_records
+  filters:
+    media_level: *id004
+b48_table_rows:
+  metric: parameterized_table
+  date_format: chinese
+  rows:
+  - - 发：各乡镇，县副科以上单位（含驻阳单位）
+  - - 网络安全应急指挥中心编印           {publication_date}印发

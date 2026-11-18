@@ -21,12 +21,26 @@ def test_templates_skip_missing_artifact_and_tasks_return_summary(tmp_path, monk
         id='large-report', kind='report', phase='awaiting_review',
         metadata={'simulation': True, 'large_snapshot': 'x' * 100_000},
     ))
+    # Management-contract migration chosen explicitly on 2026-11-18: retain a
+    # missing-file row, mark it unavailable, and keep healthy rows selectable.
+    healthy_ref = store.put_artifact('healthy-template', 'template_version', {
+        'writer_schema': {'fields': []}, 'source_reports': ['c.docx', 'd.docx']
+    })
+    store.put_task(TaskState(id='healthy-template', kind='template', phase='template_confirmed',
+                             metadata={'confirmed_template_ref': healthy_ref}))
     monkeypatch.setattr(main, 'store', store)
 
     with TestClient(main.app) as client:
         response = client.get('/api/templates')
         assert response.status_code == 200
-        assert [item['id'] for item in response.json()] == ['anshun-monthly-colored']
+        items = {item['id']: item for item in response.json()}
+        assert set(items) == {'anshun-monthly-colored', ref, healthy_ref}
+        assert items[ref]['task_id'] == 'template-task'
+        assert items[ref]['status'] == 'confirmed_by_human'
+        assert items[ref]['artifact_status'] == 'missing' and '文件缺失' in items[ref]['reason']
+        assert items[healthy_ref]['artifact_status'] == 'available'
+        assert items[healthy_ref]['status'] == 'confirmed_by_human'
+        assert items[healthy_ref]['usable_for_final'] is False  # not a health filter
 
         response = client.get('/api/tasks')
         assert response.status_code == 200
