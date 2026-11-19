@@ -263,6 +263,29 @@ _R='http://schemas.openxmlformats.org/officeDocument/2006/relationships'
 _PIC_URI=_PIC
 
 
+def resize_drawing_image(drawing, pixel_width, pixel_height):
+    """Preserve image width and intrinsic aspect for both DrawingML and legacy VML."""
+    import re
+    ratio=pixel_height/pixel_width
+    for extent in drawing.xpath('.//*[local-name()="extent" or local-name()="ext"]'):
+        if extent.get('cx') and extent.get('cy'):
+            extent.set('cy',str(round(int(extent.get('cx'))*ratio)))
+    for shape in drawing.xpath('.//*[local-name()="shape"][.//*[local-name()="imagedata"]]'):
+        style=shape.get('style','')
+        width=re.search(r'(?:^|;)\s*width\s*:\s*([\d.]+)(pt|in|cm|mm|px)\s*(?:;|$)',style)
+        if not width:raise ValueError('chart_vml_width_missing')
+        height=f'height:{float(width[1])*ratio:g}{width[2]}'
+        if re.search(r'(?:^|;)\s*height\s*:',style):
+            style=re.sub(r'(^|;)\s*height\s*:[^;]*',lambda m:m[1]+height,style)
+        else:style=style.rstrip(';')+';'+height
+        shape.set('style',style)
+    for crop in drawing.xpath('.//*[local-name()="srcRect"]'):
+        for edge in ('l','t','r','b'):crop.set(edge,'0')
+    for image in drawing.xpath('.//*[local-name()="imagedata"]'):
+        for edge in ('cropleft','croptop','cropright','cropbottom'):
+            image.attrib.pop(edge,None)
+
+
 def bind_drawing_image(drawing, rid:str)->None:
     """把一张 PNG 绑到图形槽：已有 blip 的改引用；Word 统计图则改成图片，保留位置和尺寸。"""
     ET.register_namespace('a', _A)

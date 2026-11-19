@@ -24,6 +24,11 @@ def test_legacy_vml_chart_is_replaced_in_report_export(tmp_path):
     with zipfile.ZipFile(io.BytesIO(rendered)) as z:
         assert 'word/media/frozen_chart_1.png' in z.namelist()
         assert b'rIdFrozenChart1' in z.read('word/document.xml')
+        from lxml import etree as ET
+        document=ET.fromstring(z.read('word/document.xml'))
+        shape=document.xpath('//*[local-name()="shape"]')[0]
+        # New image is 40:30, so preserving width 400pt requires height 300pt.
+        assert 'height:300pt' in shape.get('style')
 
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 A = "http://schemas.openxmlformats.org/drawingml/2006/main"

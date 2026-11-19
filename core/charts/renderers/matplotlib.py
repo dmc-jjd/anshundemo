@@ -60,10 +60,13 @@ def chart_payload(report,kind,style=None):
             raise KeyError(_artifact)
     except KeyError:raise ValueError('unknown_chart_source') from None
     if not values:raise ValueError('chart_data_missing:'+kind)
+    raw_values=dict(values)
     if chart.get('label_groups'):
         from core.charts.label_groups import apply_label_groups
         values=apply_label_groups(values,chart.get('label_groups'))
         if not values:raise ValueError('chart_data_missing:'+kind)
+    if chart.get('sort_descending'):
+        values=dict(sorted(values.items(),key=lambda item:-item[1]))
     unit=chart['unit']
     fontpath=Path('C:/Windows/Fonts/msyh.ttc')
     font=FontProperties(fname=str(fontpath),size=12) if fontpath.exists() else FontProperties(family='DejaVu Sans',size=12)
@@ -72,23 +75,31 @@ def chart_payload(report,kind,style=None):
         if style=='pie':
             from core.charts.pie_labels import draw_pie_with_around_labels
             if sum(counts)<=0:raise ValueError('pie_requires_positive_total')
-            fig=Figure(figsize=(8.0,6.8),dpi=160);FigureCanvasAgg(fig);ax=fig.subplots()
-            palette=['#5b9bd5','#70ad47','#ed7d31','#ffc000','#8064a2','#45a6aa','#a5a5a5','#c0504d']
+            compact=chart.get('label_layout')=='report'
+            fig=Figure(figsize=(10,6.4) if compact else (8.0,6.8),dpi=160);FigureCanvasAgg(fig);ax=fig.subplots()
+            palette=chart.get('palette') or ['#5b9bd5','#70ad47','#ed7d31','#ffc000','#8064a2','#45a6aa','#a5a5a5','#c0504d']
             if family=='sentiment':palette=[{'正面':'#70ad47','中性':'#5b9bd5','负面':'#c0504d'}.get(label,'#a5a5a5') for label in labels]
-            draw_pie_with_around_labels(ax,counts,labels,unit=unit,font=font,colors=palette)
+            draw_pie_with_around_labels(ax,counts,labels,unit=unit,font=font,colors=palette,
+                ring_width=chart.get('ring_width'),compact=compact)
+            if chart.get('show_legend'):
+                ax.legend(labels,loc='lower center',bbox_to_anchor=(.5,-.05),ncol=min(len(labels),4),
+                    prop=FontProperties(fname=str(fontpath),size=8) if fontpath.exists() else None,frameon=False)
         else:
             fig=Figure(figsize=(10,4.8),dpi=160,layout='constrained');FigureCanvasAgg(fig);ax=fig.subplots()
             if style=='line':
-                ax.plot(range(len(labels)),counts,color='#16748c',linewidth=2,marker='o' if chart.get('show_point_labels') else None,markersize=4)
+                ax.plot(range(len(labels)),counts,color=chart.get('line_color','#16748c'),linewidth=2,marker='o' if chart.get('show_point_labels') else None,markersize=4)
                 tick_labels=[_daily_tick_label(label,chart) for label in labels]
-                step=max(1,len(labels)//8);ticks=list(range(0,len(labels),step))
+                step=int(chart.get('tick_step') or max(1,len(labels)//8));ticks=list(range(0,len(labels),step))
                 if chart.get('date_label')=='md_zh':
-                    ax.set_xticks(ticks,[tick_labels[i] for i in ticks],fontproperties=font,rotation=40,ha='right')
+                    tick_font=font.copy();tick_font.set_size(8)
+                    ax.set_xticks(ticks,[tick_labels[i] for i in ticks],fontproperties=tick_font,rotation=chart.get('tick_rotation',40),ha='right')
                 else:
                     ax.set_xticks(ticks,[tick_labels[i] for i in ticks])
                 if chart.get('show_point_labels'):
+                    ax.set_ylim(bottom=0,top=max(counts)*1.16 or 1)
                     for index,count in enumerate(counts):
-                        ax.annotate(str(int(count) if float(count).is_integer() else count),(index,count),textcoords='offset points',xytext=(0,6),ha='center',va='bottom',fontsize=8,fontproperties=font)
+                        point_font=font.copy();point_font.set_size(8)
+                        ax.annotate(str(int(count) if float(count).is_integer() else count),(index,count),textcoords='offset points',xytext=(0,6),ha='center',va='bottom',fontproperties=point_font)
             elif style=='barh':
                 bars=ax.barh(range(len(labels)),counts,color='#16748c');ax.set_yticks(range(len(labels)),labels,fontproperties=font);ax.invert_yaxis()
                 ax.bar_label(bars,padding=3,fontsize=10);ax.margins(x=.16)
@@ -101,12 +112,13 @@ def chart_payload(report,kind,style=None):
             ax.set_xlabel('数量（'+unit+'）' if style=='barh' else '日期' if family=='daily' else chart.get('axis_label') or '类别',fontproperties=font)
             if style!='barh':ax.set_ylabel('数量（'+unit+'）',fontproperties=font)
             ax.spines[['top','right']].set_visible(False);ax.grid(axis='x' if style=='barh' else 'y',alpha=.15)
-        out=io.BytesIO();fig.savefig(out,format='png',**({'bbox_inches':'tight','pad_inches':.2} if style=='pie' else {}));fig.clear()
+        out=io.BytesIO();fig.savefig(out,format='png',**({'bbox_inches':'tight','pad_inches':.2} if style=='pie' and not chart.get('label_layout')=='report' else {}));fig.clear()
     return {'chart_type':kind,'style':style,'fact_ref':report.fact_ref,'counts':values,'unit':unit,
             'x_axis':None if style=='pie' else '数量' if style=='barh' else '日期' if family=='daily' else '类别',
             'y_axis':None if style=='pie' else '类别' if style=='barh' else '数量',
             'scope':scope,
             'locality_basis':chart.get('locality_basis'),
+            'raw_counts':raw_values,
             'png_base64':base64.b64encode(out.getvalue()).decode()}
 
 def plot_frozen_chart(args,ctx):

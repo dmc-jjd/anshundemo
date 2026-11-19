@@ -21,6 +21,11 @@ def apply_label_groups(values, spec):
         total = 0
         for name in platforms:
             total += int(leftover.pop(name, 0) or 0)
+        prefixes = [str(prefix) for prefix in item.get('prefixes') or [] if prefix]
+        for name in list(leftover):
+            if any(name == prefix or any(name.startswith(prefix + sep) for sep in ('-', '－', '—'))
+                   for prefix in prefixes):
+                total += int(leftover.pop(name) or 0)
         ordered.append((label, total))
     other_label = str(spec.get("other_label") or "").strip()
     if other_label:

@@ -342,11 +342,8 @@ def render_structured_docx(template:dict,values:dict,allowed_refs:set[str],requi
                     image.verify()
                 # Source images can have another aspect ratio. Preserve the
                 # position and width while keeping current pies truly circular.
-                for extent in drawing.xpath('.//*[local-name()="extent" or local-name()="ext"]'):
-                    if extent.get('cx') and extent.get('cy'):
-                        extent.set('cy',str(round(int(extent.get('cx'))*pixel_height/pixel_width)))
-                for crop in drawing.xpath('.//*[local-name()="srcRect"]'):
-                    for edge in ('l','t','r','b'):crop.set(edge,'0')
+                from core.charts.spec import resize_drawing_image
+                resize_drawing_image(drawing,pixel_width,pixel_height)
                 filename=f'media/frozen_chart_{i}.png';chart_files['word/'+filename]=png
                 rid=f'rIdFrozenChart{i}'
                 if any(r.get('Id')==rid for r in rels):raise ValueError('chart_relationship_collision')

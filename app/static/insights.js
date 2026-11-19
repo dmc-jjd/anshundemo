@@ -19,12 +19,12 @@ function chartStyleEditor(charts,container,onChange,templateTask=null){
  }container.append(grid)
 }
 const renderDocumentBeforeCharts=renderDocument;
-renderDocument=function(definition,container,values=null,onField=null){
+renderDocument=function(definition,container,values=null,onField=null,chartUrls=null){
  if(values===null&&onField===editField&&templateEditor){const editor=templateEditor;editor.chartStyles=Object.fromEntries((definition.charts||[]).map(c=>[c.id,c.style]));
   container.append(node('h3','图表样式'));chartStyleEditor(definition.charts,container,(kind,style)=>{editor.chartStyles[kind]=style;editor.chartStylesDirty=true},editor.id);
   if(editor.confirmed)container.append(button('另存图表样式版本',async()=>{await post(`/api/templates/${editor.id}/chart-version`,{expected_revision:editor.revision,styles:editor.chartStyles});toast('已保存新样式版本，原版本与已有报告保留。');await refresh();await openTemplate(editor.id)}));
   else container.append(node('p','图表样式会随“确认并保存模板”一起保存。',{class:'help'}))
- }renderDocumentBeforeCharts(definition,container,values,onField)
+ }renderDocumentBeforeCharts(definition,container,values,onField,chartUrls)
 };
 const structuredControlsBeforeCharts=structuredDraftControls;
 structuredDraftControls=function(id,x,body){

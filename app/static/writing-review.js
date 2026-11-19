@@ -37,6 +37,7 @@ async function openWritingReview(id){
  if(x.run?.format_limit_reached)body.append(node('p','格式审核已到重试上限，已保留格式意见并继续内容审核。遗留格式问题与内容意见在此统一作最终人工核查。',{class:'notice'}));
  if(view.missing?.length)body.append(node('p',`另外还有 ${view.missing.length} 个字段未完成；在“查看报告与缺失项”补全。`,{class:'notice'}));
  if(view.pending_charts)body.append(node('p',`另外还有 ${view.pending_charts} 张图尚未生成，完成后才可确认终审。`,{class:'notice'}));
+ if(view.definition){const preview=node('details'),paper=node('div');preview.append(node('summary','当前报告预览'));body.append(preview);preview.append(paper);const chartUrls=Object.fromEntries(Object.keys(view.draft.chart_refs||{}).map(name=>[name,`/api/tasks/${id}/charts/${name}`]));renderDocument(view.definition,paper,view.draft.slot_values,null,chartUrls)}
  if(state.phase==='paused')body.append(node('p',(state.metadata?.paused_from_phase==='awaiting_final_review'?'任务已暂停。请先点“继续任务”回到人工终审，再确认报告。':'任务已暂停。请先点“继续任务”。'),{class:'notice'}));
  if(x.run?.repair_error){body.append(node('p',active?'退修未通过校验，已保留有效正文，正在反馈错误并继续审核。':'自动退修已达本阶段上限，已保留上一版有效正文。请按下方原句完成最终人工核查。',{class:'notice'}));const technical=node('details');technical.append(node('summary','查看退修校验原因'),node('pre',x.run.repair_error));body.append(technical)}
  const reason=node('textarea',null,{rows:'2','aria-label':'补充核查说明（选填）',placeholder:'例如：已对照来源核查，该表述符合本期报告口径，保留当前内容。'});

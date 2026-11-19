@@ -273,7 +273,13 @@
       },
       "unit": "条",
       "scope": "all_records",
-      "axis_label": "日期"
+      "axis_label": "日期",
+      "show_point_labels": true,
+      "date_label": "md_zh",
+      "tick_step": 1,
+      "tick_rotation": 90,
+      "line_color": "#5b9bd5",
+      "show_title": false
     },
     {
       "id": "platform",
@@ -287,7 +293,21 @@
       },
       "unit": "条",
       "scope": "all_records",
-      "axis_label": "传播平台"
+      "axis_label": "传播平台",
+      "ring_width": 0.4,
+      "label_layout": "report",
+      "show_legend": true,
+      "show_title": false,
+      "sort_descending": true,
+      "palette": [
+        "#4f81bd",
+        "#c0504d",
+        "#9bbb59",
+        "#8064a2",
+        "#4bacc6",
+        "#f79646",
+        "#2c4d75"
+      ]
     },
     {
       "id": "source",
@@ -301,7 +321,191 @@
       },
       "unit": "条",
       "scope": "all_records",
-      "axis_label": "信源"
+      "axis_label": "信源",
+      "label_layout": "report",
+      "show_title": false,
+      "label_groups": {
+        "groups": [
+          {
+            "label": "微信公众号",
+            "platforms": [
+              "微信公众号",
+              "微信视频号"
+            ],
+            "prefixes": [
+              "微信公众号"
+            ]
+          },
+          {
+            "label": "抖音",
+            "platforms": [
+              "抖音"
+            ],
+            "prefixes": [
+              "抖音"
+            ]
+          },
+          {
+            "label": "今日头条",
+            "platforms": [
+              "今日头条"
+            ],
+            "prefixes": [
+              "今日头条"
+            ]
+          },
+          {
+            "label": "搜狐",
+            "platforms": [
+              "搜狐"
+            ],
+            "prefixes": [
+              "搜狐",
+              "搜狐APP",
+              "搜狐网"
+            ]
+          },
+          {
+            "label": "新浪微博",
+            "platforms": [
+              "新浪微博"
+            ],
+            "prefixes": [
+              "新浪微博"
+            ]
+          },
+          {
+            "label": "百家号",
+            "platforms": [
+              "百家号"
+            ],
+            "prefixes": [
+              "百家号"
+            ]
+          },
+          {
+            "label": "新浪看点",
+            "platforms": [
+              "新浪看点"
+            ],
+            "prefixes": [
+              "新浪看点"
+            ]
+          },
+          {
+            "label": "腾讯网",
+            "platforms": [
+              "腾讯网"
+            ],
+            "prefixes": [
+              "腾讯网"
+            ]
+          },
+          {
+            "label": "快手",
+            "platforms": [
+              "快手"
+            ],
+            "prefixes": [
+              "快手"
+            ]
+          },
+          {
+            "label": "UC",
+            "platforms": [
+              "UC"
+            ],
+            "prefixes": [
+              "UC",
+              "UC头条",
+              "UC浏览器"
+            ]
+          },
+          {
+            "label": "有驾",
+            "platforms": [
+              "有驾"
+            ],
+            "prefixes": [
+              "有驾"
+            ]
+          },
+          {
+            "label": "QQ浏览器",
+            "platforms": [
+              "QQ浏览器"
+            ],
+            "prefixes": [
+              "QQ浏览器"
+            ]
+          },
+          {
+            "label": "河源日报",
+            "platforms": [
+              "河源日报"
+            ],
+            "prefixes": [
+              "河源日报"
+            ]
+          },
+          {
+            "label": "网易",
+            "platforms": [
+              "网易"
+            ],
+            "prefixes": [
+              "网易"
+            ]
+          },
+          {
+            "label": "羊城派",
+            "platforms": [
+              "羊城派"
+            ],
+            "prefixes": [
+              "羊城派"
+            ]
+          },
+          {
+            "label": "蓝鲸咖啡",
+            "platforms": [
+              "蓝鲸咖啡"
+            ],
+            "prefixes": [
+              "蓝鲸咖啡"
+            ]
+          },
+          {
+            "label": "小红书",
+            "platforms": [
+              "小红书"
+            ],
+            "prefixes": [
+              "小红书"
+            ]
+          },
+          {
+            "label": "东方财富网",
+            "platforms": [
+              "东方财富网"
+            ],
+            "prefixes": [
+              "东方财富网"
+            ]
+          },
+          {
+            "label": "新浪财经",
+            "platforms": [
+              "新浪财经"
+            ],
+            "prefixes": [
+              "新浪财经"
+            ]
+          }
+        ],
+        "other_label": "其他"
+      },
+      "sort_descending": true
     }
   ],
   "calculation_contexts": {

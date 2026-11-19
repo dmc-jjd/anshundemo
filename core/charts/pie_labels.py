@@ -11,22 +11,27 @@ def format_pie_label(label, count, total, unit=''):
     return f'{label}, {number}{unit}, {count / total * 100:.2f}%'
 
 
-def draw_pie_with_around_labels(ax, counts, labels, *, unit='', font=None, colors=None, startangle=90):
+def draw_pie_with_around_labels(ax, counts, labels, *, unit='', font=None, colors=None, startangle=90,
+                                ring_width=None, compact=False):
     """在 ``ax`` 上画饼图：标签围在四周，不使用右侧图例。"""
     counts = list(counts)
     labels = list(labels)
     total = sum(counts)
     if total <= 0:
         raise ValueError('pie_requires_positive_total')
-    radius = 0.72
+    radius = 0.95 if compact else 0.72
+    options = {'wedgeprops': {'width': ring_width}} if ring_width else {}
     wedges, texts = ax.pie(
         counts, colors=colors, startangle=startangle,
-        autopct=None, labels=None, radius=radius)
+        autopct=None, labels=None, radius=radius, **options)
     for item in texts:
         item.set_text('')
         item.set_visible(False)
     n = len(counts)
     fontsize = 10 if n <= 8 else 9 if n <= 12 else 8
+    if compact and font is not None:
+        font = font.copy()
+        font.set_size(fontsize)
     min_dy = 0.12 if n <= 8 else 0.10 if n <= 12 else 0.075
     current = float(startangle)
     items = []
@@ -40,14 +45,23 @@ def draw_pie_with_around_labels(ax, counts, labels, *, unit='', font=None, color
             'text': format_pie_label(label, count, total, unit),
             'edge_x': x * radius,
             'edge_y': y * radius,
-            'x': x * (radius + 0.22),
+            'x': (1.07 if x >= 0 else -1.07) if compact else x * (radius + 0.22),
             'y': y * (radius + 0.22),
             'ha': 'left' if x >= 0 else 'right',
         })
-    limit = 1.35
+    limit = 1.20 if compact else 1.35
+    if compact:min_dy=0.15
     for ha in ('left', 'right'):
         group = [item for item in items if item['ha'] == ha]
         group.sort(key=lambda item: item['y'])
+        if compact:
+            gap=min(min_dy,2*limit/max(1,len(group)-1))
+            previous=-limit-gap
+            for index,item in enumerate(group):
+                ceiling=limit-(len(group)-index-1)*gap
+                item['y']=max(previous+gap,min(item['y'],ceiling))
+                previous=item['y']
+            continue
         for index in range(1, len(group)):
             if group[index]['y'] - group[index - 1]['y'] < min_dy:
                 group[index]['y'] = group[index - 1]['y'] + min_dy
@@ -64,17 +78,22 @@ def draw_pie_with_around_labels(ax, counts, labels, *, unit='', font=None, color
                 if group[index]['y'] - group[index - 1]['y'] < min_dy:
                     group[index]['y'] = group[index - 1]['y'] + min_dy
     for item in items:
+        if compact:
+            # Stop leaders before the text column; annotation's automatic
+            # attachment can otherwise cut through neighbouring labels.
+            end_x=item['x']-(0.025 if item['ha']=='left' else -0.025)
+            ax.plot([item['edge_x'],end_x],[item['edge_y'],item['y']],color='#555555',lw=.6)
         text_kw = dict(
             xy=(item['edge_x'], item['edge_y']),
             xytext=(item['x'], item['y']),
             ha=item['ha'], va='center', fontsize=fontsize,
-            arrowprops=dict(arrowstyle='-', color='#555555', lw=0.6, shrinkA=0, shrinkB=0),
+            arrowprops=None if compact else dict(arrowstyle='-', color='#555555', lw=0.6, shrinkA=0, shrinkB=0),
             annotation_clip=False)
         if font is not None:
             text_kw['fontproperties'] = font
         ax.annotate(item['text'], **text_kw)
     ax.set_aspect('equal')
-    ax.set_xlim(-1.7, 1.7)
-    ax.set_ylim(-1.55, 1.55)
+    ax.set_xlim(-2.1 if compact else -1.7, 2.1 if compact else 1.7)
+    ax.set_ylim(-1.4 if compact else -1.55, 1.4 if compact else 1.55)
     ax.axis('off')
     return wedges
