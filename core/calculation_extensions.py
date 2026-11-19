@@ -39,6 +39,10 @@ def calculate(report, spec):
     rows = _rows(report, spec)
     if metric == 'filtered_record_count':
         return str(len(rows)), None
+    if metric in ('distinct_organization_count','organization_names'):
+        from .media_identity import organization_counts
+        counts=organization_counts(rows,spec.organization_aliases,spec.organization_suffixes)
+        return (str(len(counts)) if metric=='distinct_organization_count' else '、'.join(list(counts)[:spec.limit])), None
     if metric == 'distinct_source_count':
         identities = set()
         for row in rows:
@@ -70,12 +74,31 @@ def calculate(report, spec):
             raise MissingReportInput('所选范围缺少有效日期，无法计算峰值条数。')
         return str(max(valid.values())), None
     if metric == 'selected_material_count':
+        rows=[row for row in rows if all(any(term in ' '.join(_text(row.get(k)) for k in ('title','summary','author','source')) for term in group) for group in spec.selection_terms)]
+        if spec.selection_title_terms:rows=[row for row in rows if any(term in _text(row.get('title')) for term in spec.selection_title_terms)]
         candidates = {_text(row.get('title')) for row in rows if _text(row.get('title'))}
         if not candidates:
             raise MissingReportInput('所选范围没有可用选题标题。')
         pool = report._scoped_records(spec)
+        if spec.selection_terms:
+            pool=[row for row in pool if all(any(term in ' '.join(_text(row.get(k)) for k in ('title','summary','author','source')) for term in group) for group in spec.selection_terms)]
         counts = Counter(_text(row.get('title')) for row in pool if _text(row.get('title')) in candidates)
         ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+        if spec.deduplicate_selection:
+            from .tools.dedup import group_by_representative
+            by_id={r['id']:r for r in rows}
+            grouped=group_by_representative(rows,spec.selection_dedup_threshold)
+            candidates_by_event=[]
+            for group in grouped['groups']:
+                titles={_text(by_id[rid].get('title')) for rid in group['member_ids']}
+                lead=sorted(titles,key=lambda title:(-counts[title],title))[0]
+                candidates_by_event.append((lead,sum(counts[t] for t in titles),titles))
+            candidates_by_event.sort(key=lambda item:(-item[1],item[0]))
+            title,count,titles=candidates_by_event[0]
+            return str(count),{'title':title,'count':count,
+                'record_refs':[row['id'] for row in pool if _text(row.get('title')) in titles],
+                'candidates':[{'title':t,'count':n} for t,n,_ in candidates_by_event[:spec.limit]],
+                'method':grouped['method']}
         title, count = ranked[0]
         return str(count), {'title': title, 'count': count,
                             'record_refs': [row['id'] for row in pool if _text(row.get('title')) == title],

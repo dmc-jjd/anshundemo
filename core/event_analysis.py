@@ -239,76 +239,19 @@ async def analyse_events(deps,task_id):
     ambiguities=list({(case['source_id'],case['target_id']):case for case in ambiguities
                       if final_positions[case['source_id']]!=final_positions[case['target_id']]
                       and frozenset((final_positions[case['source_id']],final_positions[case['target_id']])) not in human_distinct}.values())
-    fingerprints=checkpoint.setdefault('classification_members',{g['id']:hashlib.sha256(json.dumps(sorted(g['member_ids'])).encode()).hexdigest() for g in previous.get('groups',[])})
-    for group in final_groups:
-        fingerprint=hashlib.sha256(json.dumps(sorted(group['member_ids'])).encode()).hexdigest()
-        if fingerprints.get(group['id']) not in (None,fingerprint):checkpoint['classes'].pop(group['id'],None)
-        fingerprints[group['id']]=fingerprint
-    local_classes={};pending=[];class_reasons={};manual_conflicts={}
-    for group in final_groups:
-        gid=group['id'];members=[by_id[rid] for rid in group['member_ids']]
-        human_categories={local.get('human_category_overrides',{}).get(rid) for rid in group['member_ids']}
-        human_categories.discard(None)
-        if len(human_categories)==1:
-            local_classes[gid]=next(iter(human_categories));class_reasons[gid]='人工明确指定的事件分类';continue
-        if len(human_categories)>1:
-            manual_conflicts[gid]='合并后的事件包含不同的人工指定分类：'+'、'.join(sorted(human_categories))
-            continue
-        source_categories=Counter(r.get('category') for r in members if r.get('category') in cluster_rules)
-        text=' '.join(r['title']+' '+r.get('summary','')[:600] for r in members[:3])
-        scores={label:sum(text.count(word) for word in terms) for label,terms in cluster_rules.items()}
-        best=max(scores,key=scores.get);high=scores[best]
-        if len(source_categories)==1:
-            local_classes[gid]=next(iter(source_categories));class_reasons[gid]='来源已有有效分类'
-        elif high>0 and list(scores.values()).count(high)==1:
-            local_classes[gid]=best;class_reasons[gid]='本地分类词命中：'+ '、'.join(w for w in cluster_rules[best] if w in text)
-        elif gid not in checkpoint['classes']:pending.append(group)
-    async def classify_batch(batch):
-        payload={'instruction':get_prompt('event_classifier.classify'),
-            'categories':list(cluster_rules)+['其他'],
-            'events':[{'id':g['id'],'evidence':evidence(g['member_ids'])} for g in batch]}
-        feedback=None; error_name=''
-        for attempt in range(3):
-            try:
-                if feedback:payload['correction_errors']=feedback
-                answers=await ask('event_classifier',payload,ClassificationBatch,[g['id'] for g in batch])
-                for answer in answers:
-                    if answer.status=='classified' and answer.category not in set(cluster_rules)|{'其他'}:raise ValueError('unknown_category')
-                return answers,None
-            except ValidationError as exc:
-                error_name='ValidationError'
-                feedback=['.'.join(map(str,e['loc']))+': '+e['msg'] for e in exc.errors(include_url=False,include_input=False)]
-                store.append_event(task_id,{'type':'classification_output_correction','attempt':attempt+1,'errors':feedback})
-            except ValueError as exc:
-                error_name='ValueError'
-                feedback=[str(exc)]
-                store.append_event(task_id,{'type':'classification_output_correction','attempt':attempt+1,'errors':feedback})
-            except Exception as exc:
-                # 传输/模型不可用等错误不做输出纠偏，直接记失败并交由上层汇总。
-                return [],{'stage':'classification','ids':[g['id'] for g in batch],'error':type(exc).__name__}
-        return [],{'stage':'classification','ids':[g['id'] for g in batch],'error':error_name or 'classify_failed'}
-    batches=[pending[offset:offset+12] for offset in range(0,len(pending),12)]
-    for offset in range(0,len(batches),4):
-        if class_failures>=3:break
-        results=await asyncio.gather(*(classify_batch(batch) for batch in batches[offset:offset+4]))
-        for answers,error in results:
-            if error:failures.append(error);class_failures+=1
-            else:
-                checkpoint['classes'].update({a.id:a.model_dump() for a in answers})
-                persist('classification',len(checkpoint['classes']))
-    themes=defaultdict(list);classification_issues=[]
-    for group in final_groups:
-        gid=group['id'];answer=checkpoint['classes'].get(gid)
-        if gid in manual_conflicts:
-            category='待人工分类';class_reasons[gid]=manual_conflicts[gid]
-            classification_issues.append({'event_id':gid,'member_ids':group['member_ids'],'reason':manual_conflicts[gid]})
-        elif gid in local_classes:category=local_classes[gid]
-        elif answer and answer['status']=='classified':category=answer['category'];class_reasons[gid]=answer['reason']
-        elif answer:
-            category='待人工分类';class_reasons[gid]=answer['reason']
-            classification_issues.append({'event_id':gid,'member_ids':group['member_ids'],'reason':answer['reason']})
-        else:category='模型尚未处理';class_reasons[gid]='等待模型完成分类，不属于人工待办'
-        themes[category].extend(group['member_ids'])
+    if features['classification']:
+        from .classify.semantic import classify_units
+        classification=await classify_units(deps,task_id,final_groups,records,
+                                            local.get('human_category_overrides',{}))
+        themes={row['candidate_theme']:row['member_ids'] for row in classification['theme_groups']}
+        classification_issues=classification['classification_issues']
+        class_reasons={row['id']:row['reason'] for row in classification['items']}
+        local_classes={row['id']:row['category'] for row in classification['items']
+                       if row['status']=='classified' and row['source'] in ('bge','human_override')}
+        failures.extend(classification['failures'])
+    else:
+        classification={'classification_counts':{},'items':[]}
+        themes={};classification_issues=[];class_reasons={};local_classes={}
     # TOP10 关掉：不排榜、不调模型写梗概，`top10` 保持空表（模板里也没有这张表）。
     # 开着时这一段逐字节不变。
     ranking=negative_ranking(final_groups,records) if features['top10'] else []
@@ -343,6 +286,8 @@ async def analyse_events(deps,task_id):
         'top10':top10,'top10_rule':{'scope':'negative_and_warning','unit':'deduplicated_event',
             'ranking':'negative_warning_member_count','direction':'descending','display':'serious_concise_summary','summary_min_chars':15,'summary_max_chars':35},
         'pending_model':pending_model,'failures':failures,
+        'classification_counts':classification['classification_counts'],'classification_items':classification['items'],
+        'classification_method':classification.get('method',{}),
         'counts':{'local_event_groups':len(local['groups']),'model_event_groups':len(final_groups),
                   'merge_cases':len(checkpoint['merges']),'human_merge_cases':len(ambiguities),
                   'locally_classified_events':len(local_classes),'events_requiring_model_classification':sum(g['id'] not in local_classes for g in final_groups),

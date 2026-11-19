@@ -26,6 +26,8 @@ def run_scoped(nodes: list[str], run_root: Path) -> int:
     env.update(REPORT_DEMO_DATA=str(root / 'data'), REPORT_PACKAGE='anshun_monthly',
                REPORT_MODEL_URL='', REPORT_MODEL_KEY='', REPORT_MODEL_NAME='',
                REPORT_SEARCH_URL='', REPORT_SEARCH_KEY='',
+               CLASSIFY_BASE_URL='', CLASSIFY_API_KEY='', CLASSIFY_PYTHON='',
+               CLASSIFY_ENCODER='', CLASSIFY_HEAD='',
                PYTHONDONTWRITEBYTECODE='1', PYTHONIOENCODING='utf-8',
                MPLCONFIGDIR=str(root / 'mpl'), XDG_CACHE_HOME=str(root / 'cache'),
                TEMP=str(root), TMP=str(root), V5_SCOPED_ROOT=str(root),

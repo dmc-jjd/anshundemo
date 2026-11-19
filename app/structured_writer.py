@@ -142,6 +142,7 @@ async def write_structured_preview(deps,task_id,agents=None):
     if same:allowed.update(old.get('evidence_refs',[]))
     unknown=[f for f in fields.values() if f['owner']=='data' and f['id'] not in KNOWN
              and not field_calculation_spec(f,package)
+             and f['id'] not in report.writing_contract.get('calculations',{})
              and (f.get('binding') or {}).get('tool') not in ('calculate_metrics','top10_events')]
     if unknown:
         errors=[]
@@ -168,7 +169,9 @@ async def write_structured_preview(deps,task_id,agents=None):
         if errors and not plans:plan_issues=[{'field_id':f['id'],'message':errors[-1]} for f in unknown]
     from core.field_calculations import load as load_field_calculations
     package_plans=load_field_calculations(package)
-    store.put_artifact(task_id,'writer_calculation_plan',{'template_ref':state.template_ref,'fact_ref':state.fact_ref,'calculations':{**KNOWN,**package_plans,**plans}})
+    store.put_artifact(task_id,'writer_calculation_plan',{'template_ref':state.template_ref,'fact_ref':state.fact_ref,
+        'writing_contract_sha256':report.writing_contract.get('sha256'),
+        'calculations':{**KNOWN,**package_plans,**plans,**report.writing_contract.get('calculations',{})}})
     values,issues=data_values(template,report,plans,package=package);issues+=plan_issues
     for key,answer in previous.items():
         current_policy=key in fields and (not second_role(fields[key],package=package) or state.metadata.get('writer_policy_versions',{}).get(key)==policy_for(fields[key],package=package))
@@ -208,7 +211,7 @@ async def write_structured_preview(deps,task_id,agents=None):
     from lxml import etree as ET
     path=Path(template['layout_source'])
     if not path.exists() and (DATA/'uploads'/path.name).exists():path=DATA/'uploads'/path.name
-    from core.charts.spec import chart_slot_drawings as _chart_slot_drawings
+    from core.charts.spec import source_chart_drawings as _chart_slot_drawings
     with zipfile.ZipFile(path) as z:expected=len(_chart_slot_drawings(ET.fromstring(z.read('word/document.xml'))))
     from .chart_spec import styles_for,definitions as _chart_definitions
     planned=_chart_definitions(template)
@@ -220,7 +223,9 @@ async def write_structured_preview(deps,task_id,agents=None):
         result=await writer_tool('plot_frozen_chart',{'chart_type':kind,'style':style})
         if result.get('error'):issues.append({'chart':kind,'message':str(result)})
     outlook_group_started=False
-    for block in template['blocks']:
+    from core.writing_contracts import writing_blocks,group_context
+    contract=report.writing_contract
+    for block in writing_blocks(template,contract):
         ids=list(dict.fromkeys(p['field'] for p in block['parts'] if p.get('field') in fields and fields[p['field']]['owner']=='writer' and p['field'] not in values))
         if outlook_group:
             grouped=[key for key in outlook_group if key in fields and fields[key]['owner']=='writer' and key not in values]
@@ -231,18 +236,37 @@ async def write_structured_preview(deps,task_id,agents=None):
                     ids=list(dict.fromkeys([*grouped,*ids]))
                     outlook_group_started=True
         if not ids:continue
+        joint=group_context(ids,contract,values)
+        try:
+            for group in joint:
+                group['allowed_examples']={}
+                for writer_id,data_id in group.get('example_bindings',{}).items():
+                    spec=dict(contract['calculations'][data_id]);spec['metric']='organization_names';spec['limit']=20
+                    group['allowed_examples'][writer_id]=report.calculate(spec)['value'].split('、')
+        except Exception as exc:
+            issues.extend({'field_id':key,'message':str(exc),'error':type(exc).__name__} for key in ids)
+            continue
         section_role=next((second_role(fields[key],package=package) for key in ids if second_role(fields[key],package=package)),None)
+        if joint:section_role=None
         if section_role=='outlook' and (not history or history['status']!='ready'):
             issues.extend({'field_id':key,'semantic':fields[key].get('display_name',key),'error':'historical_evidence_insufficient','message':'未来风险的候选比较或依据核对未完成；允许历史、季节和地方活动组合选题。'+('；'.join(history.get('errors',[]))[:900] if history else '')} for key in ids)
             continue
         negative=block['index'] in (30,40) or any(fields[k].get('kind')=='paragraph_list' for k in ids)
         query={'focus':'negative_events' if negative else 'media','limit':10}
+        if joint:query=dict(joint[0]['query'])
         if section_role=='analysis':query['distinct_events']=True
-        if not negative:query['sentiments']=['正面','中性']
-        if block['index']==17:query.update(date=report.metrics.get('peak_day'))
+        if not negative and not joint:query['sentiments']=['正面','中性']
+        if block['index']==17 and not joint:query.update(date=report.metrics.get('peak_day'))
         evidence=query_materials(report,query)
-        if not evidence['items']:evidence=query_materials(report,{'focus':'all','limit':10,'date':query.get('date'),'sentiments':query.get('sentiments',[])})
-        if not evidence['items']:evidence=query_materials(report,{'focus':'all','limit':10,'date':query.get('date')})
+        if joint:
+            for group in joint:
+                if group.get('event_list_fields'):
+                    group['allowed_event_titles']={item['title']:item['event_id'] for item in evidence['items'] if item.get('event_id')}
+        if not evidence['items'] and not joint:evidence=query_materials(report,{'focus':'all','limit':10,'date':query.get('date'),'sentiments':query.get('sentiments',[])})
+        if not evidence['items'] and not joint:evidence=query_materials(report,{'focus':'all','limit':10,'date':query.get('date')})
+        if joint and not evidence['items'] and not all(g.get('allow_external_research',False) for g in joint):
+            issues.extend({'field_id':key,'error':'writing_group_material_missing','message':'本组限定范围内无合格材料；未放宽筛选或调用写作模型。'} for key in ids)
+            continue
         allowed.update(x['ref'] for x in evidence['items'])
         current_evidence_refs.update(x['ref'] for x in evidence['items'])
         subset={**template['writer_schema'],'properties':{key:template['writer_schema']['properties'][key] for key in ids}}
@@ -263,6 +287,15 @@ async def write_structured_preview(deps,task_id,agents=None):
             'report_context':report.summary(),'fields':[compact_field(fields[key]) for key in ids],
             'calculated_data_fields':{key:answer for key,answer in values.items() if fields[key]['owner']=='data'},
             'evidence':evidence['items']+[{'ref':report.fact_ref,'type':'confirmed_statistics','data':report.summary()}]}
+        if joint:
+            payload['writing_groups']=joint
+            payload['instruction']+='\n本次为关联组写作：共同确定一个主题或案例，遵守 writing_groups 中成员角色和材料范围；所有 remaining_fields 一次完整返回，不另选其他主题。existing_values 为已写或人工保留的上下文，不得改写。背景只讲该主题的触发条件，不复制全月统计。'
+            if any('topic' in g['members'].values() for g in joint):
+                payload['report_context']={'report_parameters':report.parameters()}
+                payload['calculated_data_fields']={}
+                payload['evidence']=evidence['items']
+                payload['other_group_topics']={key:g['existing_values'][key] for g in group_context(list(values),contract,values) if g['id'] not in {j['id'] for j in joint}
+                    for key,role in g['members'].items() if role=='topic' and key in g['existing_values']}
         linked=[c for c in calculation_contexts if any(c.get(name) in ids for name in ('title_field','list_field'))]
         if linked:
             payload['calculation_selections']=linked
@@ -344,6 +377,13 @@ async def write_structured_preview(deps,task_id,agents=None):
                     else:
                         outlook_repair,errors=outlook_state.feedback(catalog,outlook_low)
                 if set(answer.values)-set(ids):raise ValueError('unknown_or_protected_template_field')
+                if joint:
+                    if set(answer.values)!=set(remaining):raise ValueError('writing_group_must_cover_all_remaining_fields')
+                    from core.writing_contracts import validate_group_answers
+                    validate_group_answers(joint,answer.values)
+                    for key,value in answer.values.items():
+                        validate_values(template,{key:value},allowed,writer_only=True)
+                        validate_selection(key,value,calculation_contexts)
                 for key,value in answer.values.items():
                     try:
                         validate_values(template,{key:value},allowed,writer_only=True)

@@ -327,10 +327,10 @@ def render_structured_docx(template:dict,values:dict,allowed_refs:set[str],requi
         rel_path='word/_rels/document.xml.rels'
         rels=ET.fromstring(zin.read(rel_path)) if rel_path in zin.namelist() else ET.Element('{http://schemas.openxmlformats.org/package/2006/relationships}Relationships')
         content_types=ET.fromstring(zin.read('[Content_Types].xml')) if '[Content_Types].xml' in zin.namelist() else None
-        from core.charts.spec import drawing_ids as _drawing_ids,DEFAULT_DRAWING_IDS,chart_slot_drawings,bind_drawing_image
+        from core.charts.spec import drawing_ids as _drawing_ids,DEFAULT_DRAWING_IDS,source_chart_drawings,bind_drawing_image
         chart_names=_drawing_ids(template)
         # 只替换图表槽，保留封面图和文本框的几何与关系。
-        for i,drawing in enumerate(chart_slot_drawings(root),1):
+        for i,drawing in enumerate(source_chart_drawings(root),1):
             name=chart_names.get(i) or (DEFAULT_DRAWING_IDS[i-1] if i<=len(DEFAULT_DRAWING_IDS) else str(i))
             if name in charts:
                 import base64

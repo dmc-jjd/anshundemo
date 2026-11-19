@@ -5,12 +5,12 @@
     `cluster_event_themes` 是词典打分——两个语义不同的东西被当成一个"分类能力"用。
     客户想要的是一条**有序降级链**：
 
-        BGE(微调模型) → 词典 → LLM → 人工
+        BGE(微调模型) → LLM → 人工（业务入口见 semantic.py）
 
     前一级判不出（置信度低 / 判为新簇）才进下一级。链由客户包 manifest 声明，
     基座只负责按顺序执行与合流，不认识任何具体客户。
 
-本模块只管契约与合流；具体实现（bge/llm/dictionary）各自一个模块。
+本模块保留同步阶段契约及旧工具的合流兼容；业务三级分类由 semantic.py 负责，词典不参与最终定类。
 """
 
 from __future__ import annotations
@@ -36,6 +36,7 @@ class Verdict:
     #: 该判定是否"边界"——需要交给下一级。None 表示由外层按阈值判断
     borderline: bool | None = None
     reason: str = ""
+    model: Mapping[str, Any] = field(default_factory=dict)
 
     @property
     def decided(self) -> bool:

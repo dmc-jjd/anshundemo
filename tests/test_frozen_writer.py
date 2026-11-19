@@ -49,6 +49,38 @@ def test_frozen_calculations_denominators_and_no_silent_parameters(tmp_path):
     q=query_materials(r,{'focus':'negative_events','limit':1})
     assert q['items'][0]['summary'] and q['next_offset']==1
 
+
+@pytest.mark.parametrize('dedup',[False,True])
+def test_frozen_classifications_use_confirmed_records_when_dedup_off(tmp_path,dedup):
+    s,_=fixture(tmp_path);state=s.get_task('r')
+    state.metadata['template_rules']['features']={'dedup':dedup,'classification':True}
+    facts=s.get_artifact(state.fact_ref);refs=dict(facts['result_refs'])
+    if not dedup:
+        refs['confirmed_event_groups']=s.put_artifact('r','groups',{'groups':[]})
+        refs['filter_records:negative_or_warning']=s.put_artifact('r','records',{'records':s.get_artifact(refs['import_records'])['records'][:3]})
+    facts['result_refs']=refs
+    state.fact_ref=s.put_artifact('r','facts',facts);state.result_refs=refs
+    s.put_task(state,state.revision)
+    report=FrozenReport(s,'r');before=s.get_artifact(state.fact_ref)
+    assert report.calculate({'metric':'count','scope':'confirmed_events'})['value']==('2' if dedup else '3')
+    assert report.categories_for()=={'市场监管':1 if dedup else 2,'交通管理':1}
+    assert '市场监管' in report.calculate({'metric':'category_names'})['value']
+    assert report.calculate({'metric':'count','scope':'warning_events'})['value']==('1' if dedup else '2')
+    assert report.summary()['category_event_counts']==report.categories_for()
+    assert query_materials(report,{'focus':'negative_events','limit':20})['total']==3
+    assert report.summary()['warning_record_statistics']=={'total':2,'sentiment_counts':{'正面':0,'中性':0,'负面':2},'sentiment_percentages':{'正面':'0.00%','中性':'0.00%','负面':'100.00%'}}
+    assert s.get_artifact(state.fact_ref)==before
+    if not dedup:assert report.groups==[]  # 不保存或伪造去重产物。
+
+
+def test_invalid_warning_filter_points_to_supported_query(tmp_path):
+    from core.frozen_report import Calculation
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError,match='warning_events'):
+        Calculation.model_validate({'metric':'count','scope':'confirmed_events','filters':{'media_attribute':['预警']}})
+    with pytest.raises(ValidationError,match='filtered_record_count'):
+        Calculation.model_validate({'metric':'count','filters':{'media_level':['省级']}})
+
 def test_matplotlib_five_figures_and_docx_relationships(tmp_path):
     s,t=fixture(tmp_path);r=FrozenReport(s,'r');charts={name:chart_payload(r,name) for name in CHARTS}
     assert all(base64.b64decode(c['png_base64']).startswith(b'\x89PNG') for c in charts.values())

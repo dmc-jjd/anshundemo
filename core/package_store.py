@@ -216,6 +216,14 @@ class PackageStores:
             self._artifact_package[str(ref)] = package
         return ref
 
+    def delete_task(self, task_id, *, keep_artifact_ids=()):
+        package = self.package_of(task_id)
+        removed = self._store(package).delete_task(task_id, keep_artifact_ids=keep_artifact_ids)
+        with self._lock:
+            self._task_package.pop(str(task_id), None)
+            for ref in removed:self._artifact_package.pop(ref, None)
+        return removed
+
     def artifact_belongs_to_task(self, ref: str, task_id: str) -> bool:
         return self._store(self.package_of(task_id)).artifact_belongs_to_task(ref, task_id)
 

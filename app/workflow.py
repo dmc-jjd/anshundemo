@@ -161,8 +161,10 @@ def _required_refs(features):
 
 
 def _analysis_refs(features):
-    """进入事件研判所需的产物。研判消费的是归组结果：关掉去重就没有组可研判，整段跳过。"""
-    return _required_refs(features)|{'group_events'}
+    """Classification consumes records; grouping is required only when dedup is enabled."""
+    refs={'calculate_metrics','filter_records:negative_or_warning'}
+    if features['dedup']:refs.add('group_events')
+    return refs
 
 
 def _needed_refs(features):
@@ -223,9 +225,10 @@ def build_report_graph(dependencies:Dependencies,agents=None):
     def after_processing(value):
         task=dependencies.store.get_task(value['task_id'])
         if task.phase=='failed':return 'finish'
-        # 研判阶段消费的是归组结果：关掉去重就不会有组可研判，直接交给人工数据审核。
+        # Semantic classification is independent of dedup; its input can be raw records.
         needed=_analysis_refs(_template_features(dependencies.store,task))
-        return 'analyse' if needed<=task.result_refs.keys() and not task.cancel_requested else 'finish'
+        features=_template_features(dependencies.store,task)
+        return 'analyse' if (features['dedup'] or features['classification']) and needed<=task.result_refs.keys() and not task.cancel_requested else 'finish'
     def after_analysis(value):return 'stop' if dependencies.store.get_task(value['task_id']).phase=='analysis_pending' else 'finish'
     def await_review(task_id):
         task=dependencies.store.get_task(task_id)
@@ -509,10 +512,15 @@ async def _process_records(deps:Dependencies,task_id:str):
 async def _analyse_report_events(deps:Dependencies,task_id:str):
     store=deps.store
     state=store.get_task(task_id)
-    if _analysis_refs(_template_features(store,state))<=state.result_refs.keys() and not state.cancel_requested:
+    features=_template_features(store,state)
+    if (features['dedup'] or features['classification']) and _analysis_refs(features)<=state.result_refs.keys() and not state.cancel_requested:
         from .event_analysis import analyse_events
-        state.phase='analyzing';store.put_task(state,state.revision)
-        analysis=await analyse_events(deps,task_id)
+        state.phase='analyzing';state.metadata['analysis_pending']=True;store.put_task(state,state.revision)
+        if features['dedup']:
+            analysis=await analyse_events(deps,task_id)
+        else:
+            from core.classify.semantic import analyse_records
+            analysis=await analyse_records(deps,task_id)
         state=store.get_task(task_id)
         if analysis['pending_model']:
             state.phase='analysis_pending';store.put_task(state,state.revision)

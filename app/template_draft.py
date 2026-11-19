@@ -471,12 +471,15 @@ def definition_view(base_definition: dict, draft: dict | None) -> dict:
 
 def view(store, state, base_ref: str, base_definition: dict) -> dict:
     draft = current_draft(store, state)
+    definition = definition_view(base_definition, draft)
+    from .api_views.template_binding_status import binding_status
     return {
+        'binding_status': binding_status(definition['fields'], state.package),
         'revision': state.revision,
         'base_ref': base_ref,
         'draft_ref': state.metadata.get('manual_template_draft_ref'),
         'has_draft': bool(draft),
-        'definition': definition_view(base_definition, draft),
+        'definition': definition,
         'draft': draft,
         'choices': CHOICES,
     }
@@ -542,6 +545,7 @@ def append_selection(store, state, base_ref: str, base_definition: dict, *, bloc
         'block': next(item for item in draft['blocks'] if item['index'] == block),
         'draft': draft,
         'definition': definition_view(base_definition, draft),
+        'binding_status': view(store, state, base_ref, base_definition)['binding_status'],
         'choices': CHOICES,
     }
 
@@ -567,5 +571,6 @@ def undo_selection(store, state, base_ref: str, base_definition: dict) -> dict:
         'has_draft': bool(state.metadata.get('manual_template_draft_ref')),
         'draft': draft,
         'definition': definition_view(base_definition, draft),
+        'binding_status': view(store, state, base_ref, base_definition)['binding_status'],
         'choices': CHOICES,
     }

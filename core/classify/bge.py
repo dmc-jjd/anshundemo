@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import math
 import urllib.error
 import urllib.request
 from typing import Any, Mapping, Sequence
@@ -120,6 +121,10 @@ class BgeStage:
                 confidence = float(item.get("confidence") or 0.0)
             except (TypeError, ValueError):
                 raise ValueError("bge_confidence_not_numeric") from None
+            if not math.isfinite(confidence) or not 0 <= confidence <= 1:
+                raise ValueError("bge_confidence_out_of_range")
+            if rid in by_id:
+                raise ValueError("bge_duplicate_result_id")
             is_new = bool(item.get("is_new_cluster"))
             decided = bool(category) and not is_new
             by_id[rid] = Verdict(
@@ -130,5 +135,6 @@ class BgeStage:
                 borderline=is_new,
                 # 审计要能区分"模型明确给了空类别"与"判为新簇"
                 reason="" if decided else ("new_cluster" if is_new else "no_category_returned"),
+                model=data.get('model') if isinstance(data.get('model'),dict) else {},
             )
         return by_id

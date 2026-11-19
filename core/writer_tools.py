@@ -30,7 +30,7 @@ def query_frozen_materials(args,ctx):
 
 HANDLERS={f.__name__:f for f in (frozen_statistics,query_frozen_materials,plot_frozen_chart)}
 SCHEMAS={'frozen_statistics':Calculation.model_json_schema(),'query_frozen_materials':MaterialQuery.model_json_schema(),'plot_frozen_chart':ChartRequest.model_json_schema()}
-DESCRIPTIONS={'frozen_statistics':'只读计算冻结事实；返回确定数值及来源，不改变口径','query_frozen_materials':'按日期、分类、关键词分页查询冻结记录的标题和原文梗概','plot_frozen_chart':'依据冻结事实用Matplotlib绘图；返回图表引用和统计值'}
+DESCRIPTIONS={'frozen_statistics':'只读计算冻结事实。预警数量用 count + scope=warning_events，不传 filters。预警调性构成直接读 report_context.warning_record_statistics；若需按调性查询原始记录数，用 filtered_record_count + scope=warning_events + sentiment。sentiment_count/sentiment_percentage 仅统计全量原始记录，不能改 scope。media_attribute 是媒体属性（如政务、官媒），不代表预警；不要传 media_attribute=[预警]。category_names/category_statistics/leading_category 用确认范围，去重关闭时按确认原始记录计数。原始记录筛选仅 filtered_record_count/distinct_source_count/selected_material_count/source_statistics/peak_count 支持 filters。返回确定数值及来源，不改变口径。','query_frozen_materials':'按日期、分类、关键词分页查询冻结记录的标题和原文梗概','plot_frozen_chart':'依据冻结事实用Matplotlib绘图；返回图表引用和统计值'}
 def native_tools():return [{'type':'function','function':{'name':n,'description':DESCRIPTIONS[n],'parameters':SCHEMAS[n]}} for n in HANDLERS]
 
 __all__=['FrozenReport','Calculation','MaterialQuery','query_materials','ToolResult','ChartRequest',

@@ -321,7 +321,9 @@ select{cursor:pointer}
 .starbridge-dialog::backdrop{background:rgba(17,35,45,.35)}
 .starbridge-dialog header,.starbridge-dialog footer{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .starbridge-dialog h2{font-size:18px;margin:0}
-.starbridge-note,#starbridgeStatus{font-size:13px;line-height:1.7;color:var(--muted)}
+.starbridge-clients{display:flex;flex-wrap:wrap;gap:12px;margin:20px 0 12px}
+.starbridge-clients [aria-pressed="true"]{background:var(--brand);border-color:var(--brand);color:#fff}
+#starbridgeStatus{font-size:14px;color:var(--ink)}
 #starbridgeTopics{max-height:48vh;overflow:auto;padding:3px}
 .starbridge-dialog fieldset{border:0;padding:0;margin:12px 0 20px;min-width:0}
 .starbridge-dialog legend{font-weight:600;font-size:13px;margin-bottom:8px}
@@ -947,4 +949,22 @@ body .usage-panel > .help{font-size:11px}
   font-size:11px;color:var(--grn-tx);white-space:nowrap}
 .tpl-detail-table .tpl-orig{max-width:420px;color:var(--ink-2);word-break:break-word}
 .tpl-detail-foot{margin-top:14px;display:flex;justify-content:flex-end}
-.template-block-number{font-size:12px;color:var(--muted,#756b63);margin-top:14px;user-select:none;font-family:system-ui,sans-serif;}
+.semantic-field-number{margin-right:3px;font-variant-numeric:tabular-nums;}
+
+.td-matched{color:#27734c;font-weight:500;}
+
+/* Task controls stay separate so deleting never selects a task. */
+.task-row{position:relative;padding:0}
+.task-select{display:flex;flex-direction:column;gap:2px;width:100%;height:100%;min-width:0;
+ text-align:left;padding:9px 54px 9px 11px;border:0;border-radius:6px;background:transparent}
+.task-delete{position:absolute;right:7px;bottom:9px;padding:2px 5px;min-height:26px;
+ font-size:11px;color:var(--red);background:transparent;border:1px solid var(--line-soft)}
+.task-select:focus-visible,.task-delete:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}
+.prompt-summary p,.prompt-template p{margin:5px 0;font-size:12px;line-height:1.6}
+.prompt-template{border-top:1px solid var(--line-soft);padding:12px 0}
+.prompt-template:last-child{padding-bottom:0}
+.prompt-template-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.prompt-template-head strong{font-size:13px;overflow-wrap:anywhere}
+.prompt-template-id{overflow-wrap:anywhere;color:var(--ink-2);font-family:ui-monospace,monospace}
+
+.writing-group-card{border:1px solid var(--line);border-radius:8px;padding:16px;margin:12px 0;min-width:0}.writing-group-card>input,.writing-group-card>textarea{display:block;width:100%;box-sizing:border-box;margin-bottom:12px}.writing-group-members{max-height:320px;overflow:auto}.writing-group-members>div{display:flex;align-items:center;gap:12px;padding:8px;border-bottom:1px solid var(--line-soft);flex-wrap:wrap}.writing-group-members label{flex:1;min-width:160px}.writing-group-members input[type=checkbox]{width:16px;min-height:0;margin-right:8px}

@@ -151,23 +151,51 @@ CREATE TABLE IF NOT EXISTS idempotency(key TEXT PRIMARY KEY, value TEXT);''')
         keep = {str(x) for x in keep_artifact_ids if x}
         deleted: list[str] = []
         with self.connect() as c:
+            c.execute('BEGIN IMMEDIATE')
             rows = c.execute('SELECT id, path FROM artifacts WHERE task_id=?', (task_id,)).fetchall()
+            all_rows = c.execute('SELECT id, path FROM artifacts').fetchall()
+            ids = {row['id'] for row in all_rows}
+            def references(value):
+                if isinstance(value, str):
+                    return {value} & ids
+                if isinstance(value, dict):
+                    return set().union(*(references(x) for x in value.values())) if value else set()
+                if isinstance(value, list):
+                    return set().union(*(references(x) for x in value)) if value else set()
+                return set()
+            # Preserve references from other tasks, drafts and artifacts, including their dependencies.
+            for row in c.execute('SELECT state FROM tasks WHERE id<>?', (task_id,)):
+                keep.update(references(json.loads(row['state'])))
+            for row in c.execute('SELECT analysis_ref,data_ref FROM review_drafts WHERE task_id<>?', (task_id,)):
+                keep.update(x for x in row if x in ids)
+            owned = {row['id'] for row in rows}
+            pending = list((ids - owned) | keep)
+            visited = set()
+            while pending:
+                ref = pending.pop()
+                if ref in visited:continue
+                visited.add(ref)
+                try:
+                    payload = self.get_artifact(ref)
+                except (KeyError, ValueError, OSError):
+                    # Unreadable surviving artifacts may contain references: retain conservatively.
+                    keep.update(owned)
+                    continue
+                found = references(payload) - visited
+                keep.update(found)
+                pending.extend(found)
             for row in rows:
                 aid = row['id']
-                if aid in keep:
-                    continue
-                c.execute('DELETE FROM artifacts WHERE id=?', (aid,))
-                path = self.files / f'{aid}.json'
-                if not path.exists():
-                    path = Path(row['path'])
-                try:
-                    if path.exists():
+                if aid in keep:continue
+                # Only remove canonical artifact files inside this store, never uploads or arbitrary paths.
+                for path in self.files.glob(aid + '.*'):
+                    if path.is_file() and path.resolve().parent == self.files.resolve():
                         path.unlink()
-                except OSError:
-                    pass
+                c.execute('DELETE FROM artifacts WHERE id=?', (aid,))
                 deleted.append(aid)
             c.execute('DELETE FROM events WHERE task_id=?', (task_id,))
             c.execute('DELETE FROM review_drafts WHERE task_id=?', (task_id,))
+            c.execute('DELETE FROM idempotency WHERE value=?', (task_id,))
             c.execute('DELETE FROM tasks WHERE id=?', (task_id,))
         return deleted
     def get_review_draft(self,task_id,analysis_ref=None):
@@ -207,6 +235,8 @@ CREATE TABLE IF NOT EXISTS idempotency(key TEXT PRIMARY KEY, value TEXT);''')
         if decision.action not in item.get('allowed_actions',['confirm','modify','merge','split','independent','exclude','defer']): raise ValueError('action_not_allowed_for_item')
         if item.get('kind')=='data_review' and decision.action!='defer':
             if state.fact_ref:raise ValueError('frozen_facts')
+            if state.metadata.get('analysis_pending') is True or state.phase in ('queued','processing','analyzing'):
+                raise ValueError('model_analysis_pending')
             # 模板开关关掉的段落**没有产物**，这是用户的选择而不是缺件：缺哪段就跳过哪段校验，
             # 但下面仍写出 confirmed_* 产物（允许空组），冻结/写作因此有一条可走的路。
             from .structured_template import template_feature_switches
@@ -220,6 +250,18 @@ CREATE TABLE IF NOT EXISTS idempotency(key TEXT PRIMARY KEY, value TEXT);''')
             groups=(decision.payload.get('groups',(events or {}).get('groups',[]))) or []
             theme_fallback=(events or {}).get('theme_groups') or (themes or {}).get('groups') or []
             theme_groups=(decision.payload.get('themes',theme_fallback)) or []
+            if features['classification'] and events is None:
+                semantic_ref=state.result_refs.get('semantic_classification')
+                if semantic_ref and self.get_artifact(semantic_ref).get('pending_model'):
+                    raise ValueError('model_analysis_pending')
+                # With dedup disabled there is no event-analysis artifact. Validate
+                # classifications against source records instead of skipping review.
+                source=self.get_artifact(state.result_refs['filter_records:negative_or_warning'])['records']
+                expected={row['id'] for row in source}
+                ids=[rid for group in theme_groups for rid in group.get('member_ids',[])]
+                if len(ids)!=len(set(ids)) or set(ids)!=expected:raise ValueError('review_members_must_cover_records_once')
+                if any(not group.get('candidate_theme','').strip() for group in theme_groups):raise ValueError('theme_name_required')
+                if any(group['candidate_theme'] in ('待人工分类','模型尚未处理') and group['member_ids'] for group in theme_groups):raise ValueError('uncertain_classification_unresolved')
             if events is not None:
                 if 'analysis_ref' not in details:raise ValueError('event_analysis_required')
                 if events.get('pending_model'):raise ValueError('model_analysis_pending')

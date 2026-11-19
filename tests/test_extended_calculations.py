@@ -7,6 +7,12 @@ from pydantic import ValidationError
 
 from core.frozen_report import Calculation, FrozenReport, MissingReportInput
 
+V3_MISSING_FIELDS = {
+    'b8_peak_count', 'b16_source_stats', 'b21_top_gov_count', 'b48_table_rows',
+    'b22_media_outlets', 'b22_media_articles', 'b22_central_outlets', 'b22_central_articles',
+    'b22_provincial_outlets', 'b22_provincial_articles', 'b22_local_outlets', 'b22_local_articles',
+}
+
 
 def report():
     r = object.__new__(FrozenReport)
@@ -122,8 +128,10 @@ def test_all_twelve_package_bindings_execute_without_a_planner():
     from core.field_calculations import load
     from app.structured_writer import data_values
     from app.structured_template import _schema
-    bindings = load('longchuan_yuebao')
-    assert len(bindings) == 12
+    # This fixture covers V3's original twelve fields; later templates may add bindings.
+    bindings = {key: value for key, value in load('longchuan_yuebao').items()
+                if key in V3_MISSING_FIELDS}
+    assert set(bindings) == V3_MISSING_FIELDS
     fields = [{'id': key, 'owner': 'data', 'binding': None, 'value_schema':
                {'type': 'array', 'items': {'type': 'array', 'items': {'type': 'string'}}}
                if key == 'b48_table_rows' else {'type': 'string', 'minLength': 1}}
@@ -142,7 +150,8 @@ def test_all_twelve_package_bindings_execute_without_a_planner():
 def test_selection_context_rejects_unrelated_writer_title():
     from app.writing_pipeline.calculation_context import build_contexts, validate_selection
     from core.field_calculations import load
-    bindings = load('longchuan_yuebao')
+    bindings = {key: value for key, value in load('longchuan_yuebao').items()
+                if key in V3_MISSING_FIELDS}
     fields = {key: {'id': key, 'owner': 'data', 'binding': None} for key in bindings}
     fields.update({key: {'id': key, 'owner': 'writer'} for key in ('b21_top_gov_title', 'b21_gov_titles')})
     values = {'b21_top_gov_count': {'value': '3', 'source_refs': ['fact-test']}}

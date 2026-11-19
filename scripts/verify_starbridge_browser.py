@@ -23,7 +23,7 @@ from app.social_hotlist import profile as social_profile
 
 def verify():
     root = Path(__file__).resolve().parents[1]
-    evidence = root / 'docs/verification/2026-11-18-starbridge'
+    evidence = root / 'docs/verification/2026-11-19-starbridge-studio'
     evidence.mkdir(parents=True, exist_ok=True)
     app = FastAPI()
     requests = []
@@ -89,7 +89,7 @@ def verify():
                             return result.get('result', {})
 
                 def evaluate(expression):
-                    result = call('Runtime.evaluate', {'expression': expression, 'returnByValue': True, 'awaitPromise': True})
+                    result = call('Runtime.evaluate', {'expression': expression, 'returnByValue': True, 'awaitPromise': True, 'userGesture': True})
                     if 'exceptionDetails' in result:
                         raise RuntimeError(result['exceptionDetails'])
                     return result.get('result', {}).get('value')
@@ -99,9 +99,10 @@ def verify():
                         if evaluate(expression):
                             return
                         time.sleep(.1)
-                    raise AssertionError((expression, evaluate('({url: location.href, status: document.querySelector("#starbridgeStatus")?.textContent, count: document.querySelectorAll(".starbridge-topic").length, open: document.querySelector("dialog")?.open, body: document.body.innerText.slice(-1500)})'), requests))
+                    raise AssertionError((expression, evaluate('({url: location.href, status: document.querySelector("#starbridgeStatus")?.textContent, count: document.querySelectorAll(".starbridge-topic").length, open: document.querySelector(".starbridge-dialog")?.open, body: document.body.innerText.slice(-1500)})'), requests))
 
                 call('Page.enable')
+                call('Page.bringToFront')
                 call('Emulation.setDeviceMetricsOverride', {'width': 1440, 'height': 1000, 'deviceScaleFactor': 1, 'mobile': False})
                 call('Page.navigate', {'url': f'http://127.0.0.1:{port}/static/index.html'})
                 wait_for('!!document.getElementById("starbridgeOpen") && !!document.querySelector(".starbridge-dialog")')
@@ -118,32 +119,42 @@ def verify():
                 wait_for('document.querySelectorAll(".starbridge-topic").length === 81')
                 assert evaluate('document.querySelector("#starbridgeTopics").textContent.includes("普京抵达深圳") && document.querySelector("#starbridgeTopics").textContent.includes("A股")')
                 assert evaluate('document.querySelector("#starbridgeConfirm").disabled')
-                evaluate('document.querySelector("dialog").close()')
+                evaluate('document.querySelector(".starbridge-dialog").close()')
                 assert evaluate('sessionStorage.getItem("kn-starbridge-draft-v1")') is None
                 evaluate('document.getElementById("starbridgeOpen").click()')
                 wait_for('document.querySelectorAll(".starbridge-topic").length === 81')
                 evaluate('document.querySelectorAll(".starbridge-topic input")[0].click(); document.querySelectorAll(".starbridge-topic input")[2].click()')
                 assert evaluate('document.querySelectorAll(".starbridge-topic input:checked").length') == 1
                 evaluate('document.querySelectorAll(".starbridge-topic input")[0].click()')
+                assert evaluate('document.querySelector("#starbridgeConfirm").disabled')
+                assert evaluate('document.querySelectorAll(".starbridge-topic small, .starbridge-note").length') == 0
+                assert evaluate('document.querySelector("#starbridgeStatus").hidden')
+                evaluate('document.querySelector("[data-client=jiangchuan]").click()')
                 screenshot = call('Page.captureScreenshot', {'format': 'png'})
                 (evidence / 'desktop-selection.png').write_bytes(base64.b64decode(screenshot['data']))
                 call('Emulation.setDeviceMetricsOverride', {'width': 390, 'height': 844, 'deviceScaleFactor': 1, 'mobile': True})
-                assert evaluate('document.querySelector("dialog").getBoundingClientRect().width <= innerWidth')
-                screenshot = call('Page.captureScreenshot', {'format': 'png'})
-                (evidence / 'mobile-selection.png').write_bytes(base64.b64decode(screenshot['data']))
+                assert evaluate('document.querySelector(".starbridge-dialog").getBoundingClientRect().width <= innerWidth')
                 call('Emulation.setDeviceMetricsOverride', {'width': 1440, 'height': 1000, 'deviceScaleFactor': 1, 'mobile': False})
-                evaluate('document.querySelector("#starbridgeConfirm").click()')
-                wait_for('location.pathname === "/static/chat.html" && !!document.querySelector("deep-chat")?.shadowRoot?.querySelector("[contenteditable=true]")?.innerText.includes("浏览器验证选题甲")')
-                text = evaluate('document.querySelector("deep-chat").shadowRoot.querySelector("[contenteditable=true]").innerText')
-                assert '数据包链接：' in text and '一、事件概述' in text and 'citizen_comments' in text
-                time.sleep(1.5)
-                assert evaluate('document.querySelector("deep-chat").shadowRoot.querySelector("[contenteditable=true]").innerText').count('【星桥约稿任务】') == 1
-                assert evaluate('sessionStorage.getItem("kn-starbridge-draft-v1")') is None
-                time.sleep(.3)
+                for client, name in [('jiangchuan', '江川区委'), ('wencheng', '文成县委'), ('yanyuan', '盐源县委')]:
+                    if client != 'jiangchuan':
+                        call('Page.navigate', {'url': f'http://127.0.0.1:{port}/static/index.html'})
+                        wait_for('!!document.querySelector(".starbridge-dialog")')
+                        evaluate('document.getElementById("starbridgeOpen").click()')
+                        wait_for('document.querySelectorAll(".starbridge-topic").length === 81')
+                        assert evaluate('document.querySelectorAll("#starbridgeClients [aria-pressed=true]").length') == 0
+                        evaluate('document.querySelector(".starbridge-topic input").click()')
+                    evaluate(f'document.querySelector("[data-client={client}]").click()')
+                    assert evaluate('document.querySelectorAll("#starbridgeClients [aria-pressed=true]").length') == 1
+                    evaluate('document.querySelector("#starbridgeConfirm").click()')
+                    wait_for('location.pathname === "/static/chat.html" && !!document.querySelector("deep-chat")?.shadowRoot?.querySelector("[contenteditable=true]")?.innerText.includes("浏览器验证选题甲")')
+                    text = evaluate('document.querySelector("deep-chat").shadowRoot.querySelector("[contenteditable=true]").innerText')
+                    assert name in text and '数据包链接：' in text and '一、事件概述' in text and 'citizen_comments' in text
+                    assert text.count('【星桥约稿任务】') == 1
+                    assert evaluate('sessionStorage.getItem("kn-starbridge-draft-v1")') is None
                 screenshot = call('Page.captureScreenshot', {'format': 'png'})
                 (evidence / 'studio-prefilled.png').write_bytes(base64.b64decode(screenshot['data']))
                 assert '/api/chat/stream' not in requests
-                report = {'social_demo_platforms': 4, 'social_demo_items': 80, 'social_demo_rendered': True, 'starbridge_topics': 81, 'single_selection': True, 'prefilled_selected_topic': True, 'inline_package': True, 'prompt': True, 'handoff_consumed': True, 'auto_send_requests': 0, 'mobile_dialog_fits': True, 'requests': requests}
+                report = {'clients_prefilled': 3, 'topics': 81, 'single_selection': True, 'no_small_text': True, 'studio_handoff': True, 'inline_package': True, 'handoff_consumed': True, 'mobile_dialog_fits': True, 'auto_send_requests': 0}
                 (evidence / 'browser-result.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
                 print(json.dumps(report, ensure_ascii=False))
         finally:

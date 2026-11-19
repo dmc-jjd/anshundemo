@@ -23,6 +23,10 @@ def prepare_report(store, request, paths, package):
     except ValueError as exc:
         raise ReportRequestError(409, str(exc)) from exc
     rules = definition.get('rules', {}) if definition is not None else {}
+    from core.writing_contracts import resolve
+    try:contract=resolve(definition or {},package,ref)
+    except (ValueError,TypeError) as exc:raise ReportRequestError(422,'writing_contract_invalid: '+str(exc)) from exc
+    rules={**rules,'features':{**rules.get('features',{}),**contract.get('feature_overrides',{})}}
     sheet = request.sheet_index if request.sheet_index is not None else vocabulary.sheet_index(package)
     return TaskState(
         id=uuid.uuid4().hex, package=package, kind='report', phase='queued',
@@ -32,6 +36,7 @@ def prepare_report(store, request, paths, package):
             'report_issue': request.issue_number, 'report_date': request.publication_date,
             'sheet_index': sheet, 'mode': request.mode, **event_scope_metadata(package),
             'template_rules': task_feature_snapshot(rules, package),
+            'writing_contract':contract,
             'event_threshold': request.event_threshold or rules.get('event_threshold', .65),
         },
     )

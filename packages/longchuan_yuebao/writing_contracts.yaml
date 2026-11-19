@@ -1,0 +1,282 @@
+schema_version: 1
+profiles:
+- template_refs:
+  - template_version-49d0abb1aab9c13aa117
+  contract:
+    groups:
+    - id: gov
+      label: 本地正面政务动态
+      members:
+        block_21_field_8: title_list
+        block_21_field_9: selected_title
+        block_21_field_10: propagation_count
+      instruction: 仅龙川本地正面政务活动；用calculation_selections中的共同候选、重点标题及传播数，不纳入外地政务或负面通报。
+      query:
+        focus: all
+        keyword: 龙川
+        sentiments:
+        - 正面
+        limit: 10
+    - id: sensitive_examples
+      label: 敏感事件举例
+      members:
+        b5_sensitive_events: overview_examples
+        b25_sensitive_event_list: sensitive_examples
+      instruction: 两处从同一组已确认去重事件中选择代表标题；同一处不得重复列同一事件，不自行改写标题。值使用候选原始标题，以”“分隔，不加外围引号。
+      query:
+        focus: negative_events
+        distinct_events: true
+        limit: 10
+      event_list_fields:
+      - b5_sensitive_events
+      - b25_sensitive_event_list
+    - id: risk_one
+      label: 第一关注重点
+      members:
+        b27_topic: topic
+        b28_background: background
+        numbered_items_1: details
+      instruction: 先选一个明确风险主题，背景和全部细节只展开该主题。背景不重复全月总量、负面条数、占比或预警条数。只引用本地证据与有依据的季节条件，不编造具体活动。
+      query:
+        focus: negative_events
+        distinct_events: true
+        limit: 10
+    - id: risk_two
+      label: 第二关注重点
+      members:
+        b34_topic: topic
+        b35_background: background
+        numbered_items_2: details
+      instruction: 选与第一关注重点不同的一个明确主题，背景与全部细节必须同题；不拼多个无关领域，不在背景塞全月统计。
+      query:
+        focus: all
+        keyword: 龙川
+        limit: 10
+    - id: case
+      label: 他山之石案例链
+      members:
+        b42_case_report: case_facts
+        b43_analysis: case_analysis
+        b44_suggestions: local_advice
+      instruction: 锁定一个有可靠来源、适合龙川借鉴的外地舆情案例；三段必须使用同一案例和证据。分析解释该案例，建议面向龙川，不能改成外地工作指令；不要把普通外地宣传报道当舆情案例。
+      query:
+        focus: all
+        sentiments:
+        - 负面
+        exclude_keywords:
+        - 龙川
+        limit: 10
+      allow_external_research: true
+    - id: media
+      label: 媒体机构与报道
+      members:
+        block_22_field_1: organization_total
+        block_22_field_2: article_total
+        block_22_field_3: central_organizations
+        block_22_field_4: central_articles
+        b22_provincial_media_count: provincial_organizations
+        b22_provincial_report_count: provincial_articles
+        block_22_field_5: local_organizations
+        block_22_field_6: local_articles
+        b22_central_media_names: central_examples
+        b22_provincial_media_names: provincial_examples
+        b22_city_media_names: local_examples
+        custom_field_1: comparison
+      instruction: 机构家数按规范机构跨平台合并，报道条数仍按原始明细。示例必须来自同范围的机构统计；省级是否最多比较三层级实际条数，不猜测，不改程序数据。
+        总量纳入全部官媒，分项按原始明确级别：市级与区县级合并地方媒体；源级别其他单列待核实，不擅改级别或为凑合计挪入地方。
+      query:
+        focus: media
+        limit: 10
+      example_bindings:
+        b22_central_media_names: block_22_field_3
+        b22_provincial_media_names: b22_provincial_media_count
+        b22_city_media_names: block_22_field_5
+    calculations:
+      block_22_field_1:
+        metric: distinct_organization_count
+        filters:
+          media_attribute:
+          - 官媒
+        organization_aliases:
+          人民日报客户端: 人民日报
+          人民日报健康客户端: 人民日报
+          南方plus: 南方Plus
+          南方+: 南方Plus
+          羊城派: 羊城派
+        organization_suffixes:
+        - 河源
+        - 龙川
+        - 广州
+        - 深圳
+        - 广东
+        - 综合
+        - 要闻
+        - 资讯
+        - 新闻
+        - 国内
+        - 国际
+        - 国内新闻
+        - 国际新闻
+        - 头条新闻
+        - 社会
+        - 社会万象
+        - 生活
+        - 国内动态
+        - 推荐
+        - 金融
+      block_22_field_2:
+        metric: filtered_record_count
+        filters:
+          media_attribute:
+          - 官媒
+      block_22_field_3:
+        metric: distinct_organization_count
+        filters:
+          media_attribute:
+          - 官媒
+          media_level:
+          - 全国
+        organization_aliases:
+          人民日报客户端: 人民日报
+          人民日报健康客户端: 人民日报
+          南方plus: 南方Plus
+          南方+: 南方Plus
+          羊城派: 羊城派
+        organization_suffixes:
+        - 河源
+        - 龙川
+        - 广州
+        - 深圳
+        - 广东
+        - 综合
+        - 要闻
+        - 资讯
+        - 新闻
+        - 国内
+        - 国际
+        - 国内新闻
+        - 国际新闻
+        - 头条新闻
+        - 社会
+        - 社会万象
+        - 生活
+        - 国内动态
+        - 推荐
+        - 金融
+      block_22_field_4:
+        metric: filtered_record_count
+        filters:
+          media_attribute:
+          - 官媒
+          media_level:
+          - 全国
+      b22_provincial_media_count:
+        metric: distinct_organization_count
+        filters:
+          media_attribute:
+          - 官媒
+          media_level:
+          - 省级
+        organization_aliases:
+          人民日报客户端: 人民日报
+          人民日报健康客户端: 人民日报
+          南方plus: 南方Plus
+          南方+: 南方Plus
+          羊城派: 羊城派
+        organization_suffixes:
+        - 河源
+        - 龙川
+        - 广州
+        - 深圳
+        - 广东
+        - 综合
+        - 要闻
+        - 资讯
+        - 新闻
+        - 国内
+        - 国际
+        - 国内新闻
+        - 国际新闻
+        - 头条新闻
+        - 社会
+        - 社会万象
+        - 生活
+        - 国内动态
+        - 推荐
+        - 金融
+      b22_provincial_report_count:
+        metric: filtered_record_count
+        filters:
+          media_attribute:
+          - 官媒
+          media_level:
+          - 省级
+      block_22_field_5:
+        metric: distinct_organization_count
+        filters:
+          media_attribute:
+          - 官媒
+          media_level:
+          - 市级
+          - 区县级
+        organization_aliases:
+          人民日报客户端: 人民日报
+          人民日报健康客户端: 人民日报
+          南方plus: 南方Plus
+          南方+: 南方Plus
+          羊城派: 羊城派
+        organization_suffixes:
+        - 河源
+        - 龙川
+        - 广州
+        - 深圳
+        - 广东
+        - 综合
+        - 要闻
+        - 资讯
+        - 新闻
+        - 国内
+        - 国际
+        - 国内新闻
+        - 国际新闻
+        - 头条新闻
+        - 社会
+        - 社会万象
+        - 生活
+        - 国内动态
+        - 推荐
+        - 金融
+      block_22_field_6:
+        metric: filtered_record_count
+        filters:
+          media_attribute:
+          - 官媒
+          media_level:
+          - 市级
+          - 区县级
+      block_21_field_10:
+        metric: selected_material_count
+        scope: all_records
+        sentiment: 正面
+        selection_terms:
+        - - 龙川县
+          - 龙川新城
+          - 龙川新闻
+          - 龙川发布
+          - 龙川产业园
+        limit: 3
+        selection_title_terms:
+        - 县委
+        - 县政府
+        - 县人大
+        - 县政协
+        - 县领导
+        - 调研
+        - 部署
+        - 召开会议
+        deduplicate_selection: true
+        selection_dedup_threshold: 0.9
+    feature_overrides:
+      dedup: true
+    note: 用户确认：仅龙川本地正面政务活动；媒体按机构合并跨平台账号；官媒全量990条，地方并入区县级。逐行校验：全国152、省级446、市级360、区县级31，另蛇口电视台1条源级别为其他；地方391条，不自行把其他改为地方。后续新任务去重开启，旧任务与确认模板不改。媒体机构别名表需业务复核。
+      侧聊确认更新：机构以作者为主、空值以同一行来源信息兜底；已知机构加地区/栏目后缀归并本名，羊城派及其河源/综合栏目均归羊城派；报道明细不减少。

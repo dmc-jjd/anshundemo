@@ -34,7 +34,9 @@ def _load_local_env() -> None:
                         'REPORT_SEARCH_URL', 'REPORT_SEARCH_KEY',
                         'REPORT_DEMO_DATA', 'REPORT_MAX_TOOL_CALLS',
                         'REPORT_MAX_PLANNING_CALLS',
-                        'REPORT_PACKAGE'}:
+                        'REPORT_PACKAGE', 'CLASSIFY_BASE_URL', 'CLASSIFY_API_KEY',
+                        'CLASSIFY_PYTHON', 'CLASSIFY_ENCODER', 'CLASSIFY_HEAD',
+                        'CLASSIFY_TIMEOUT', 'CLASSIFY_BATCH', 'CLASSIFY_THREADS'}:
             continue
         value = value.strip()
         if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):

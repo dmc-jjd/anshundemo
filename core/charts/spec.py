@@ -234,7 +234,20 @@ def source_chart_drawings(root):
     slots=chart_slot_drawings(root)
     if any(is_chart_drawing(item) for item in slots):
         return slots
-    pictures=[item for item in slots if item.xpath('.//*[local-name()="blip"]')]
+    # Legacy .doc-to-.docx exports use VML pict/imagedata rather than drawing/blip.
+    # Keep document order across both structures; skip AlternateContent fallbacks
+    # when the same container already has a modern drawing.
+    candidates=root.xpath('//*[local-name()="drawing" or local-name()="pict"]')
+    pictures=[]
+    for item in candidates:
+        if item.xpath('ancestor::*[local-name()="drawing" or local-name()="pict"]'):
+            continue
+        if item.tag.split('}')[-1]=='pict':
+            alternatives=item.xpath('ancestor::*[local-name()="AlternateContent"]')
+            if any(parent.xpath('.//*[local-name()="drawing"]') for parent in alternatives):
+                continue
+        if item.xpath('.//*[local-name()="blip" or local-name()="imagedata"][@r:embed or @r:id]',namespaces={'r':_R}):
+            pictures.append(item)
     if len(pictures)<=1:
         return pictures or slots
     heights=[_drawing_extent(item,'cy') for item in pictures]
@@ -256,6 +269,10 @@ def bind_drawing_image(drawing, rid:str)->None:
     ET.register_namespace('pic', _PIC)
     ET.register_namespace('r', _R)
     rel=f'{{{_R}}}embed'
+    legacy=drawing.xpath('.//*[local-name()="imagedata"]')
+    if legacy:
+        for item in legacy:item.set(f'{{{_R}}}id',rid)
+        return
     blips=drawing.xpath('.//*[local-name()="blip"]')
     if blips:
         for blip in blips:

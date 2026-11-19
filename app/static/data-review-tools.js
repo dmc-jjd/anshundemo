@@ -30,14 +30,16 @@ function createDataEditor(data,id){
 }
 function updateReviewSaveLabel(d){const label=$('#reviewSaveStatus');if(label&&d===dataEditor)label.textContent=d.saveStatus}
 function scheduleReviewSave(d){
- if(d.frozen||d.analysis_pending||!d.analysis_ref)return;const payload=reviewDraftPayload(d),signature=JSON.stringify(payload);
+ if(d.frozen||d.analysis_pending)return;const payload=reviewDraftPayload(d),signature=JSON.stringify(payload);
  if(signature===d.savedSignature)return;
- try{localStorage.setItem('report-review-draft:'+d.id,JSON.stringify({analysis_ref:d.analysis_ref,revision:d.revision,data:payload,saved_at:new Date().toISOString()}))}catch{}
+ let savedLocally=false;try{localStorage.setItem('report-review-draft:'+d.id,JSON.stringify({analysis_ref:d.analysis_ref,revision:d.revision,data:payload,saved_at:new Date().toISOString()}));savedLocally=true}catch{}
+ if(!d.analysis_ref){d.saveStatus=savedLocally?'分类修改已保存到本机，确认本期数据时提交。':'分类修改尚未保存到本机，请保持窗口并确认本期数据。';if(savedLocally)d.savedSignature=signature;updateReviewSaveLabel(d);return}
  d.saveStatus='修改已暂存，正在保存草稿…';updateReviewSaveLabel(d);clearTimeout(d.saveTimer);
  d.saveTimer=setTimeout(()=>flushReviewDraft(d).catch(e=>{d.saveStatus='草稿尚未保存到服务器：'+e.message;updateReviewSaveLabel(d)}),300);
 }
 async function flushReviewDraft(d){
  clearTimeout(d.saveTimer);if(d.frozen||d.analysis_pending)return;
+ if(!d.analysis_ref){scheduleReviewSave(d);return}
  if(d.saveFlight){await d.saveFlight;return flushReviewDraft(d)}
  const payload=structuredClone(reviewDraftPayload(d)),signature=JSON.stringify(payload);if(signature===d.savedSignature)return;
  d.saveStatus='正在保存草稿…';updateReviewSaveLabel(d);
@@ -48,18 +50,24 @@ async function flushReviewDraft(d){
  }).finally(()=>{d.saveFlight=null});
  await d.saveFlight;if(JSON.stringify(reviewDraftPayload(d))!==d.savedSignature)await flushReviewDraft(d);
 }
+function classificationReviewItems(d){
+ if(!d.method?.disabled)return d.groups;
+ // Display raw records individually; these entries are never submitted as event groups.
+ if(!d.recordItems)d.recordItems=Object.entries(d.records).map(([id,r])=>({id:'record:'+id,title:r.title,representative_id:id,member_ids:[id]}));
+ return d.recordItems;
+}
 function reviewGate(d){
  const position=new Map(d.groups.flatMap((g,i)=>g.member_ids.map(id=>[id,i]))),cases=d.merge_ambiguities||[];
  const pending=cases.filter(c=>!d.mergeDecisions[c.id]);
  const conflicts=cases.filter(c=>d.mergeDecisions[c.id]&&((position.get(c.source_id)===position.get(c.target_id))!==(d.mergeDecisions[c.id]==='same')));
  const unknown=new Set(d.themes.filter(g=>['待人工分类','模型尚未处理'].includes(g.candidate_theme)).flatMap(g=>g.member_ids));
- const unclassified=d.groups.filter(g=>g.member_ids.some(id=>unknown.has(id)));
+ const unclassified=classificationReviewItems(d).filter(g=>g.member_ids.some(id=>unknown.has(id)));
  const briefs=(d.top10||[]).filter(row=>{const brief=d.briefPatches[row.fingerprint]||row,n=[...(brief.summary||'').trim()].length;return brief.status!=='complete'||n<15||n>35});
  return {pending,conflicts,unclassified,briefs,ready:!pending.length&&!conflicts.length&&!unclassified.length&&!briefs.length&&!d.groupsDirty};
 }
 function assignEventCategory(d,eventId,category){
  if(!category.trim()||['待人工分类','模型尚未处理'].includes(category))throw Error('请选择明确的事件分类。');
- const event=d.groups.find(g=>g.id===eventId);if(!event)throw Error('事件已更新，请重新选择。');
+ const event=classificationReviewItems(d).find(g=>g.id===eventId);if(!event)throw Error('审核内容已更新，请重新选择。');
  const ids=new Set(event.member_ids);for(const theme of d.themes)theme.member_ids=theme.member_ids.filter(id=>!ids.has(id));
  let target=d.themes.find(g=>g.candidate_theme===category);if(!target){target={candidate_theme:category,member_ids:[]};d.themes.push(target)}
  target.member_ids.push(...ids);normalizeGroups(d);
@@ -88,10 +96,10 @@ function renderReviewGate(){
 }
 function renderPendingCategoryControls(container,d,g){
  if(d.frozen||d.analysis_pending)return;
- const row=node('section',null,{class:'event-category-controls'}),known=[...new Set(d.themes.map(t=>t.candidate_theme).filter(c=>!['待人工分类','模型尚未处理'].includes(c)))];
+ const recordMode=!!d.method?.disabled,row=node('section',null,{class:'event-category-controls'}),known=[...new Set(d.themes.map(t=>t.candidate_theme).filter(c=>!['待人工分类','模型尚未处理'].includes(c)))];
  const select=node('select',null,{'aria-label':'此事件的分类'});select.append(node('option','请选择此事件的分类',{value:''}));for(const name of [...new Set([...known,'其他'])])select.append(node('option',name,{value:name}));
  const custom=node('input',null,{'aria-label':'自定义事件分类',placeholder:'或填写自定义分类'});
- row.append(node('strong','按整个事件分类'),node('p','事件关系决定哪些记录属于同一件事。合并后原分类一致就沿用；原分类冲突或尚无明确分类时，需要在这里补选最终分类，不再交回模型。',{class:'help'}),select,custom,button('应用此事件分类',()=>{assignEventCategory(d,g.id,custom.value.trim()||select.value);d.selected=null;renderData();toast('本事件全部来源已归入指定分类，正在保存草稿。')}));container.append(row);
+ row.append(node('strong',recordMode?'按单条记录分类':'按整个事件分类'),node('p',recordMode?'本期未启用事件去重。每条来源记录独立分类，不会因标题相同而合并。':'事件关系决定哪些记录属于同一件事。合并后原分类一致就沿用；原分类冲突或尚无明确分类时，需要在这里补选最终分类，不再交回模型。',{class:'help'}),select,custom,button(recordMode?'应用此记录分类':'应用此事件分类',()=>{assignEventCategory(d,g.id,custom.value.trim()||select.value);d.selected=null;renderData();toast(recordMode?'此记录已归入指定分类，确认本期数据时提交。':'本事件全部来源已归入指定分类，正在保存草稿。')}));container.append(row);
 }
 
 async function finishRelationshipChoice(d){renderData();if(!reviewGate(d).pending.length&&!reviewGate(d).conflicts.length){await refreshReviewAnalysis(d)}}

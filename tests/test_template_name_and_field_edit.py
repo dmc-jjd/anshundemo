@@ -15,6 +15,8 @@ import copy
 import io
 import zipfile
 
+import pytest
+
 from fastapi.testclient import TestClient
 
 import app.main as main
@@ -261,7 +263,12 @@ def test_field_description_edits_preserve_unrelated_template_content():
     assert field['sources'] == original['fields'][0]['sources']
 
 
-def test_field_descriptions_survive_saving_template_rules_with_manual_draft(tmp_path, monkeypatch):
+@pytest.mark.parametrize('features', [
+    dict(dedup=False, classification=False, first_warning=False, top10=False),
+    dict(dedup=False, classification=True, first_warning=False, top10=True),
+    dict(dedup=True, classification=True, first_warning=True, top10=True),
+])
+def test_field_descriptions_survive_saving_template_rules_with_manual_draft(tmp_path, monkeypatch, features):
     store, _ = _store(tmp_path, monkeypatch)
     with TestClient(main.app) as client:
         task_id, state = _create_task(client, store)
@@ -276,9 +283,14 @@ def test_field_descriptions_survive_saving_template_rules_with_manual_draft(tmp_
             'expected_revision': added.json()['revision'], 'rule': '新规则', 'reason': '新说明'})
         assert saved.status_code == 200, saved.text
         changed = client.put(f'/api/templates/{task_id}/definition', json={
-            'expected_revision': saved.json()['revision'], 'fields': {}, 'rules': RULES})
+            'expected_revision': saved.json()['revision'], 'fields': {}, 'rules': {**RULES, 'features': features}})
         assert changed.status_code == 200, changed.text
         effective = client.get(f'/api/templates/{task_id}/draft').json()
         assert effective['draft']['base_ref'] == store.get_task(task_id).metadata['structured_template_ref']
         assert len(effective['draft']['selection_log']) == 1
+        reloaded = client.get(f'/api/templates/{task_id}/definition').json()
+        assert reloaded['definition']['rules']['features'] == features
+        assert effective['definition']['rules']['features'] == features
+        assert not store.get_task(task_id).metadata.get('confirmed_template_ref')
+        assert store.get_task(task_id).phase == 'awaiting_template_confirmation'
         assert next(f for f in effective['definition']['fields'] if f['id'] == field_id)['reason'] == '新说明'

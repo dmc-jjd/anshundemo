@@ -12,6 +12,19 @@ from PIL import Image
 
 from core.charts.spec import source_image
 
+def test_legacy_vml_chart_is_replaced_in_report_export(tmp_path):
+    import base64
+    from core.structured_template import render_structured_docx,_schema
+    path=tmp_path/'vml.docx'
+    picture='<w:pict xmlns:v="urn:schemas-microsoft-com:vml"><v:shape style="width:400pt;height:200pt"><v:imagedata r:id="old"/></v:shape></w:pict>'
+    _write_docx(path,[picture],{'word/media/old.png':_png('red')},[('old',R+'/image','media/old.png')])
+    template={'layout_source':str(path),'source_reports':[{'sha256':hashlib.sha256(path.read_bytes()).hexdigest()}],'fields':[],'blocks':[],'output_schema':_schema([]),'charts':[{'id':'daily','drawing_index':1}]}
+    payload={'png_base64':base64.b64encode(_png('blue')).decode()}
+    rendered=render_structured_docx(template,{},set(),require_complete=True,charts={'daily':payload})
+    with zipfile.ZipFile(io.BytesIO(rendered)) as z:
+        assert 'word/media/frozen_chart_1.png' in z.namelist()
+        assert b'rIdFrozenChart1' in z.read('word/document.xml')
+
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
@@ -203,3 +216,27 @@ def test_ruyuan_layout_source_is_not_the_cover():
     assert data != cover
     with Image.open(io.BytesIO(data)) as image:
         assert image.width > 100 and image.height > 80
+
+
+@pytest.mark.parametrize('mixed', [False, True])
+def test_vml_source_pictures_in_document_order(tmp_path, mixed):
+    path=tmp_path/'legacy-pictures.docx'
+    first=_png((11,44,77));second=_png((77,44,11))
+    def vml(rid):
+        return f'<w:pict xmlns:v="urn:schemas-microsoft-com:vml"><v:shape><v:imagedata r:id="{rid}"/></v:shape></w:pict>'
+    drawings=['<w:pict xmlns:v="urn:schemas-microsoft-com:vml"><v:imagedata/></w:pict>',vml('rId1'), _pic(2,'rId2','second',5000000,2500000) if mixed else vml('rId2')]
+    _write_docx(path,drawings,{'word/media/first.png':first,'word/media/second.png':second},[
+        ('rId1',R+'/image','media/first.png'),('rId2',R+'/image','media/second.png')])
+    template=_template(path)
+    assert source_image(template,'platform',data_root=tmp_path)==(first,'image/png')
+    assert source_image(template,'daily',data_root=tmp_path)==(second,'image/png')
+
+
+def test_vml_fallback_does_not_duplicate_modern_image(tmp_path):
+    path=tmp_path/'alternate.docx';first=_png((10,20,30));second=_png((30,20,10))
+    modern=_pic(1,'rId1','first',5000000,2500000)
+    alternate=f'<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"><mc:Choice Requires="wps">{modern}</mc:Choice><mc:Fallback><w:pict xmlns:v="urn:schemas-microsoft-com:vml"><v:shape><v:imagedata r:id="rId1"/></v:shape></w:pict></mc:Fallback></mc:AlternateContent>'
+    _write_docx(path,[alternate,_pic(2,'rId2','second',5000000,2500000)],
+        {'word/media/first.png':first,'word/media/second.png':second},[
+        ('rId1',R+'/image','media/first.png'),('rId2',R+'/image','media/second.png')])
+    assert source_image(_template(path),'daily',data_root=tmp_path)==(second,'image/png')

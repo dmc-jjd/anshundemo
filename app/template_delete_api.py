@@ -29,3 +29,13 @@ def delete_template_task(task_id: str, force: bool = False):
             body.update(payload)
         return JSONResponse(status_code=error[0], content=body)
     return payload
+
+
+@router.delete('/api/tasks/{task_id}')
+def delete_any_task(task_id: str, force: bool = False):
+    from . import main
+    from .api_views.task_delete import delete_task
+    error, payload = delete_task(main.store, task_id, force)
+    if error:
+        return JSONResponse(status_code=error[0], content={'detail': error[1], **(payload or {})})
+    return payload

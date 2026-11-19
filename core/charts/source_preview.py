@@ -15,7 +15,7 @@ _PALETTE = ['#5b9bd5', '#ed7d31', '#a5a5a5', '#ffc000', '#4472c4', '#70ad47', '#
 
 def preview_source_drawing(archive, drawing):
     """Return (png_or_jpeg_bytes, mime) for one chart slot in a historical docx."""
-    blips = drawing.xpath('.//*[local-name()="blip"]')
+    blips = drawing.xpath('.//*[local-name()="blip" or local-name()="imagedata"][@r:embed or @r:id]', namespaces={'r': _R[1:-1]})
     if blips:
         return _embedded_image(archive, blips[0])
     if drawing.xpath('.//*[local-name()="chart"]'):
@@ -38,7 +38,7 @@ def _target_name(rel, base='word/'):
 
 
 def _embedded_image(archive, blip):
-    rid = blip.get(_R + 'embed')
+    rid = blip.get(_R + 'embed') or blip.get(_R + 'id')
     rels = _rels(archive, 'word/_rels/document.xml.rels')
     name = _target_name(rels.get(rid))
     if not name.startswith('word/media/'):

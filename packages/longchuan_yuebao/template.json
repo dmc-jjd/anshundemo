@@ -3,6 +3,27 @@
   "version": "1.0.0",
   "writer_slots": [
     "b5_sensitive_events",
+    "b8_top_events",
+    "b22_central_media_names",
+    "b22_provincial_media_names",
+    "b22_city_media_names",
+    "b25_sensitive_event_list",
+    "b27_topic",
+    "b28_background",
+    "b34_topic",
+    "b35_background",
+    "b42_case_report",
+    "b43_analysis",
+    "b44_suggestions",
+    "numbered_items_1",
+    "numbered_items_2",
+    "custom_field_1",
+    "block_21_field_8",
+    "block_21_field_9",
+    "custom_field_3",
+    "custom_field_4",
+    "custom_field_5",
+    "custom_field_6",
     "b8_top_info",
     "b21_gov_titles",
     "b21_top_gov_title",
@@ -13,13 +34,20 @@
     "b25_event_list",
     "b27_focus_title1",
     "b28_focus_intro1",
-    "numbered_items_1",
     "b34_focus_title2",
     "b35_focus_intro2",
-    "numbered_items_2",
-    "b42_case_report",
     "b43_case_analysis",
-    "b44_case_suggestion"
+    "b44_case_suggestion",
+    "b5_sensitive_examples",
+    "b21_dynamic_titles",
+    "b21_top_title",
+    "b25_event_examples",
+    "b27_risk_theme",
+    "b28_risk_context",
+    "b34_risk_theme",
+    "b35_risk_context",
+    "b42_case_material",
+    "b44_case_suggestions"
   ],
   "section_two": {
     "field_roles": {
@@ -132,8 +160,103 @@
       ]
     },
     "cluster_terms": {
-      "未分类": [
-        "未分类"
+      "交通管理": [
+        "交通",
+        "公交",
+        "停车",
+        "道路",
+        "司机",
+        "车辆",
+        "驾考"
+      ],
+      "文化旅游": [
+        "景区",
+        "游客",
+        "黄果树",
+        "旅游",
+        "门票",
+        "民宿"
+      ],
+      "社会民生": [
+        "物业",
+        "供水",
+        "停水",
+        "工资",
+        "住房",
+        "社保",
+        "房产",
+        "首付",
+        "欠薪"
+      ],
+      "市场监管": [
+        "商家",
+        "消费",
+        "价格",
+        "退货",
+        "商品",
+        "食品",
+        "退款",
+        "餐饮",
+        "汉堡",
+        "售后"
+      ],
+      "社会治安": [
+        "盗窃",
+        "诈骗",
+        "治安",
+        "报警",
+        "殴打",
+        "寻人",
+        "失踪"
+      ],
+      "安全生产": [
+        "火灾",
+        "消防",
+        "矿井",
+        "生产安全",
+        "爆炸"
+      ],
+      "教育管理": [
+        "学校",
+        "学生",
+        "教师",
+        "校园",
+        "考试"
+      ],
+      "医疗卫生": [
+        "医院",
+        "医生",
+        "治疗",
+        "医疗",
+        "药品"
+      ],
+      "环境保护": [
+        "污染",
+        "排污",
+        "环保",
+        "河流",
+        "垃圾"
+      ],
+      "城市管理": [
+        "城管",
+        "违建",
+        "市容",
+        "环卫"
+      ],
+      "执政形象": [
+        "干部",
+        "政务",
+        "公职",
+        "行政执法",
+        "作风"
+      ],
+      "自然灾害": [
+        "洪灾",
+        "洪水",
+        "地震",
+        "滑坡",
+        "泥石流",
+        "暴雨"
       ]
     }
   },
@@ -185,6 +308,10 @@
     "b21_top_gov_count": {
       "title_field": "b21_top_gov_title",
       "list_field": "b21_gov_titles"
+    },
+    "block_21_field_10": {
+      "title_field": "block_21_field_9",
+      "list_field": "block_21_field_8"
     }
   }
 }

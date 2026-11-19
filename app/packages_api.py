@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from core.packages import registry as package_registry
 
@@ -132,3 +132,12 @@ def packages() -> list[dict]:
         entry['default'] = bool(default) and item.get('package') == default
         items.append(entry)
     return items
+
+
+@router.get('/api/prompt-status')
+def get_prompt_status(request: Request):
+    from . import main
+    from .api_views.template_library import list_templates
+    from .api_views.prompt_adaptation import prompt_status
+    package = resolve_package(request.headers.get('X-Report-Package', ''))
+    return prompt_status(package, list_templates(main.store, package))

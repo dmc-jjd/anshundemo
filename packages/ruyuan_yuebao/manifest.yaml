@@ -58,13 +58,10 @@ features:
     enabled: true
     stages:
       - kind: bge
-        enabled: false
-        confidence_threshold: 0.75
-      - kind: dictionary
         enabled: true
-        confidence_threshold: 0.0
+        confidence_threshold: 0.75
       - kind: llm
-        enabled: false
+        enabled: true
   dedup:
     enabled: true
   first_warning:

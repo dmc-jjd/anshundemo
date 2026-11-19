@@ -56,7 +56,7 @@ skills:
   pack: skill-core
   use: [lieflat-less-ai-tone, source-binding]
 
-# 产物声明：本客户要哪些可审产物。属地与事件分类按客户口径不启用（见 features）。
+# 产物声明：本客户要哪些可审产物。属地不启用；分类能力供已明确开启的模板使用（见 features）。
 capabilities:
   require: [records, metrics, charts, events, documents]
 
@@ -67,10 +67,16 @@ features:
   # 整体称谓以满足 TEMPLATE 段的非空要求。
   locality:
     enabled: false
-  # 客户口径：不做事件分类（数据源「事件分类」整列为空，且报告无主题分布段），
-  # 故关闭；词表留一条占位以满足 TEMPLATE 段的非空要求。
+  # 用户确认：本次新模板开启自动分类，采用安顺 12 类。
+  # V2/V3 的模板级分类开关仍为 false；最终开关按包与模板相与。
   event_classification:
-    enabled: false
+    enabled: true
+    stages:
+      - kind: bge
+        enabled: true
+        confidence_threshold: 0.75
+      - kind: llm
+        enabled: true
   # 敏感舆情明确含「老旧信息重复发布」，重复发布口径在报告里可见，去重开启。
   dedup:
     enabled: true

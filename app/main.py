@@ -510,13 +510,20 @@ def template_definition(task_id:str):
     error,definition=definition_with_charts(definition)
     if error:raise HTTPException(*error)
     if definition.get('status')=='candidate_requires_review':definition=apply_top10_rule_preserving(definition)
+    if not state.metadata.get('confirmed_template_ref'):
+        from .template_draft import definition_view,current_draft
+        definition=definition_view(definition,current_draft(store,state))
     questions=[dict(x,details=dict(x['details'])) for x in state.review_items if x['kind']=='template_business_question']
     if questions and state.metadata.get('template_input_ref'):
         packet=store.get_artifact(state.metadata['template_input_ref'])
         source_lookup={(d['id'],b['index']):b['text'] for d in packet['source_reports'] for b in d['blocks']}
         for question in questions:
             question['details']['sources']=[{**s,'text':source_lookup.get((s['report_id'],s['block']),'')} for s in question['details'].get('sources',[])]
+    from core.writing_contracts import resolve as writing_contract
+    try:contract=writing_contract(definition,store.package_of(task_id) if hasattr(store,'package_of') else state.package,ref)
+    except (ValueError,TypeError) as exc:raise HTTPException(422,'writing_contract_invalid: '+str(exc))
     return {'revision':state.revision,'artifact_ref':ref,'definition':definition,
+            'writing_contract':contract,
             'model_review_validated':bool(state.metadata.get('template_validation_ref')),
             'local_definition':store.get_artifact(state.metadata['local_template_ref']) if state.metadata.get('local_template_ref') else None,
             'questions':questions}
@@ -561,6 +568,7 @@ class TemplateDefinitionPatch(BaseModel):
     fields:dict[str,dict]=Field(default_factory=dict)
     rules:dict|None=None
     chart_styles:dict[str,str]|None=None
+    writing_groups:list[dict]|None=None
 
 @app.put('/api/templates/{task_id}/definition')
 def revise_template_definition(task_id:str,req:TemplateDefinitionPatch):

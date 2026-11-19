@@ -34,7 +34,7 @@
 
   const S = {
     taskId: null, container: null, onField: null, onRevision: null,
-    revision: 0, choices: [], definition: null, draft: null,
+    revision: 0, choices: [], definition: null, draft: null, bindingStatus: null,
     card: null, busy: false, ready: false, highlight: null
   };
 
@@ -109,8 +109,12 @@
     const total = (S.definition?.fields || []).length;
     bar.append(node('b', '手动定义：选中正文里的文字，再回答一道选择题。'));
     bar.append(node('span', `已定义 ${draft ? draft.selection_log.length : 0} 处 · 模板字段 ${total} 个`, { class: 'td-count' }));
-    if (draft?.pending?.needs_binding?.length) {
-      bar.append(node('span', `· ${draft.pending.needs_binding.length} 个字段待配数据来源`, { class: 'td-warn' }));
+    const status = S.bindingStatus || {pending: draft?.pending?.needs_binding || [], matched: []};
+    if (status.pending.length) {
+      bar.append(node('span', `· ${status.pending.length}个字段待匹配数据来源`, { class: 'td-warn' }));
+    }
+    if (status.matched.length) {
+      bar.append(node('span', `· ${status.matched.length}个字段已完成自动匹配数据来源`, { class: 'td-matched' }));
     }
     bar.append(node('span', null, { class: 'td-spacer' }));
     const undo = node('button', '撤销上一步', { type: 'button' });
@@ -350,6 +354,7 @@
   function applyState(data) {
     if (data.definition) S.definition = data.definition;
     if ('draft' in data) S.draft = data.draft;
+    S.bindingStatus = data.binding_status || null;
     if (Array.isArray(data.choices) && data.choices.length) S.choices = data.choices;
     if (typeof data.revision === 'number') {
       S.revision = data.revision;

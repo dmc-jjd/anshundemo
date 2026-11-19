@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "templates": [
+    {
+      "template_ref": "template_version-49d0abb1aab9c13aa117",
+      "status": "adapted",
+      "adapted_at": "2026-11-19T06:32:33.341214+00:00",
+      "bundle_digest": "9b22468685c41e5010e24335a3019f9834a6976118bfb3ec74f0571cb13b9d5f"
+    },
+    {
+      "template_ref": "template_version-ca19317b6428a92e3b5e",
+      "status": "adapted",
+      "adapted_at": "2026-11-19T03:22:41.054169+00:00",
+      "bundle_digest": "ffffe5882b8cfa80ecdc8ae6cf1b18b0202d0b4dcaa6b84dfa60916a604ae207"
+    },
+    {
+      "template_ref": "template_version-e053b1277d8e9d4e4830",
+      "status": "pending",
+      "note": "旧版仍缺重点政务传播数、媒体报道统计两项绑定；未登记完整适配。"
+    }
+  ],
+  "generated_at": "2026-11-19T14:32:32.8903059+08:00",
+  "bundle_digest": "9b22468685c41e5010e24335a3019f9834a6976118bfb3ec74f0571cb13b9d5f"
+}

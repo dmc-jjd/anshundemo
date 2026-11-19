@@ -79,7 +79,7 @@ def test_model_failure_is_machine_pending_and_checkpoint_can_resume(tmp_path):
         calls.append(role)
         if role=='event_judge' and 'events' in payload:return {'groups':[{'group_ids':[p['id']]} for p in payload['events']],'uncertain_pairs':[]}
         if role=='event_judge':return {'items':[{'id':p['id'],'decision':'same','reason':'同一主体同一事件'} for p in payload['pairs']]}
-        if role=='event_classifier':return {'items':[{'id':p['id'],'status':'classified','category':'其他','reason':'来源叙述完整'} for p in payload['events']]}
+        if role=='event_classifier':return {'items':[{'id':p['id'],'status':'classified','category':'社会民生','reason':'来源叙述完整'} for p in payload['events']]}
         return {'items':[{'id':p['id'],'status':'complete','summary':'来源反映同一主体发生有关情况。','source_refs':[p['evidence'][0]['ref']]} for p in payload['events']]}
     ready=asyncio.run(analyse_events(Dependencies(store,recovered),'t'))
     assert not ready['pending_model'] and len(ready['groups'])==1
@@ -122,7 +122,7 @@ def test_top10_invalid_coverage_is_repaired_and_resume_keeps_merge_state(tmp_pat
             assert 'validation_error' in payload and ids[1] in payload['validation_error']
             return {'groups':[{'group_ids':[id]} for id in ids],'uncertain_pairs':[]}
         if role=='event_judge':return {'items':[{'id':x['id'],'decision':'different','reason':'different facts'} for x in payload['pairs']]}
-        if role=='event_classifier':return {'items':[{'id':x['id'],'status':'classified','category':'其他','reason':'classified from content'} for x in payload['events']]}
+        if role=='event_classifier':return {'items':[{'id':x['id'],'status':'classified','category':'社会民生','reason':'classified from content'} for x in payload['events']]}
         return {'items':[{'id':x['id'],'status':'complete','summary':'来源反映有关情况，具体事实以原文为准。','source_refs':[x['evidence'][0]['ref']]} for x in payload['events']]}
     result=asyncio.run(analyse_events(Dependencies(store,model),'t'))
     assert not result['pending_model'] and attempts==2

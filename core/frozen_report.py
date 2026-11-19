@@ -24,7 +24,7 @@ class Calculation(BaseModel):
                    'category_names','category_statistics','leading_category','platform_names','platform_statistics',
                    'platform_count','platform_source_detail','period_start','period_end','record_table',
                    'county_statistics','report_month','report_year','next_month','issue_number','publish_month','publish_day','publish_year','top10','constant',
-                   'peak_count','source_statistics','filtered_record_count','distinct_source_count','selected_material_count','parameterized_table']
+                   'peak_count','source_statistics','filtered_record_count','distinct_source_count','distinct_organization_count','organization_names','selected_material_count','parameterized_table']
     scope:Literal['all_records','confirmed_events','warning_events','negative_warning_events']='all_records'
     sentiment:Literal['正面','中性','负面']|None=None
     limit:int=Field(default=6,ge=1,le=20)
@@ -34,18 +34,35 @@ class Calculation(BaseModel):
     platforms:list[str]=Field(default_factory=list)
     exclude_platforms:list[str]=Field(default_factory=list)
     value:str|None=None
-    filters:dict[Literal['media_level','media_attribute','platform','source','author','source_id','sentiment'],list[str]]=Field(default_factory=dict)
+    filters:dict[Literal['media_level','media_attribute','platform','source','author','source_id','sentiment'],list[str]]=Field(default_factory=dict,description='仅 filtered_record_count/distinct_source_count/selected_material_count/source_statistics/peak_count 支持。count 不接收 filters；预警用 scope=warning_events，不能用 media_attribute=预警。按预警调性计原始记录用 filtered_record_count + scope=warning_events + sentiment。')
     identity_field:Literal['source_id','source']='source_id'
     identity_fallback:list[Literal['source','author','platform']]=Field(default_factory=lambda:['source','author'])
     rows:list[list[str]]=Field(default_factory=list,max_length=20)
     date_format:Literal['iso','chinese']='iso'
+    selection_terms:list[list[str]]=Field(default_factory=list,description='选题条件：每组至少命中一词，各组同时满足；只用于 selected_material_count。')
+    selection_title_terms:list[str]=Field(default_factory=list,description='活动业务条件，只匹配标题，不用正文顺带提及的其他议题作为选题依据。')
+    deduplicate_selection:bool=False
+    selection_dedup_threshold:float=Field(default=.9,gt=0,le=1)
+    organization_aliases:dict[str,str]=Field(default_factory=dict,description='机构别名到规范机构名的明确映射，不按账号ID计家数。')
+    organization_suffixes:list[str]=Field(default_factory=list,description='可移除的明确地区/栏目后缀；仅在机构本名已知且以连字符分隔时生效，不作模糊匹配。')
 
     @model_validator(mode='after')
     def validate_extension(self):
+        if self.deduplicate_selection and self.metric!='selected_material_count':raise ValueError('deduplicate_selection 仅供选题计数使用。')
+        if self.selection_title_terms and (self.metric!='selected_material_count' or any(not s.strip() for s in self.selection_title_terms)):
+            raise ValueError('selection_title_terms 仅供 selected_material_count 使用且词项非空。')
+        if self.selection_terms and (self.metric!='selected_material_count' or any(not group or any(not s.strip() for s in group) for group in self.selection_terms)):
+            raise ValueError('selection_terms 仅供 selected_material_count 使用，条件组不能为空。')
+        if self.organization_aliases and self.metric not in ('distinct_organization_count','organization_names'):
+            raise ValueError('organization_aliases 仅供机构统计使用。')
+        if self.organization_suffixes and (self.metric not in ('distinct_organization_count','organization_names') or any(not s.strip() for s in self.organization_suffixes)):
+            raise ValueError('organization_suffixes 仅供机构统计使用，词项不能为空。')
         if any(not values or any(not v.strip() for v in values) for values in self.filters.values()):
             raise ValueError('filters 需要非空的精确匹配值列表。')
-        if self.filters and self.metric not in ('filtered_record_count','distinct_source_count','selected_material_count','source_statistics','peak_count'):
-            raise ValueError('该运算不支持 filters；不能静默忽略筛选。')
+        if any(value in ('预警','已预警') for value in self.filters.get('media_attribute',[])):
+            raise ValueError('预警是 warning 标记，不是 media_attribute；请去掉该筛选，使用 scope=warning_events。按调性计原始记录用 filtered_record_count + scope=warning_events + sentiment。')
+        if self.filters and self.metric not in ('filtered_record_count','distinct_source_count','distinct_organization_count','organization_names','selected_material_count','source_statistics','peak_count'):
+            raise ValueError('该运算不支持 filters；不能静默忽略筛选。原始记录筛选计数请使用 filtered_record_count；事件数请使用 count + scope，不传 filters。')
         if self.metric=='parameterized_table':
             from string import Formatter
             if not self.rows or any(not row or len(row)>20 for row in self.rows):
@@ -58,14 +75,14 @@ class Calculation(BaseModel):
         return self
 
 CALCULATION_CATALOG={
- 'count':'指定范围的记录数或去重事件数；事件内多条只计一次',
+ 'count':'指定范围计数；去重开启按确认事件计一次，关闭按确认原始记录逐条计。预警用scope=warning_events，不支持filters；原始记录筛选计数改用filtered_record_count',
  'scaled_count':'全量记录条数除以10000；万条单位，不带单位字样',
  'sentiment_count':'全量记录中指定调性的条数',
  'sentiment_percentage':'指定调性条数/全量记录数，输出带百分号的百分数',
  'warning_percentage':'确认重点预警范围内的事件数/全量记录数，输出百分数',
  'peak_date':'默认是全量记录的信息峰值日期；若高峰口径不是全量，必须显式设置 scope 或 sentiment，按与图表相同的筛选口径重算日序列高峰。格式X月X，可选择加年、加日字',
- 'category_names':'指定事件范围按已确认分类计数降序的类别列表',
- 'category_statistics':'指定事件范围的全部类别、事件数与占比',
+ 'category_names':'指定确认范围按已确认分类计数降序的类别列表；去重关闭时按原始记录计数',
+ 'category_statistics':'指定确认范围的全部类别、数量与占比；去重开启计事件、关闭计原始记录',
  'leading_category':'最高类别与占比的完整表述',
  'platform_names':'全量记录中实际平台条数降序，输出平台名称列表',
  'platform_statistics':'全量记录中实际平台、条数、占比的完整条目',
@@ -85,6 +102,8 @@ CALCULATION_CATALOG={
  'source_statistics':'按 source 分组统计原始记录条数，降序、同数按名称排序，输出来源（N条），最多limit项；缺信源单列未知；支持filters/scope/sentiment',
  'filtered_record_count':'按 filters 的字段取值精确筛选原始记录条数：字段间AND、字段内OR；可叠加scope/sentiment，不做事件去重',
  'distinct_source_count':'筛选后按identity_field去重计家数；主键缺失以identity_fallback组成身份；不能辨识身份时报缺输入，不把所有缺值合为一家',
+ 'distinct_organization_count':'按规范媒体机构计家数；作者优先、具体来源兜底，organization_aliases合并跨平台别名；泛平台名称不算机构，缺身份阻断并给出记录ID',
+ 'organization_names':'与机构计数使用同一范围及别名表，返回按报道条数排序的规范机构名列表',
  'selected_material_count':'filters选出候选标题，在同scope/sentiment的原始记录中按去首尾空白后的完全相同标题计算传播数；选最高标题，同数按标题排序；同时返回selection依据，不做语义归并',
  'parameterized_table':'rows为数据行二维数组（不含模板表头）；替换{publication_date}/{report_month}/{issue_number}，日期格式iso或chinese；缺本期参数时报缺输入，不沿用历史日期'}
 
@@ -100,9 +119,30 @@ class FrozenReport:
     @cached_property
     def records(self):return self.store.get_artifact(self.refs['import_records'])['records']
     @cached_property
+    def writing_contract(self):return self.state.metadata.get('writing_contract') or {}
+    @cached_property
     def by_id(self):return {r['id']:r for r in self.records}
     @cached_property
     def groups(self):return self.store.get_artifact(self.refs['confirmed_event_groups'])['groups'] if self.refs.get('confirmed_event_groups') else []
+    @cached_property
+    def record_mode(self):
+        from .structured_template import template_feature_switches
+        return not template_feature_switches(self.state,getattr(self,'store',None))['dedup']
+    @cached_property
+    def classification_enabled(self):
+        from .structured_template import template_feature_switches
+        return template_feature_switches(self.state,getattr(self,'store',None))['classification']
+    @cached_property
+    def statistical_units(self):
+        if not self.record_mode:return self.groups
+        # A read-only view of the confirmed population, never a persisted dedup artifact.
+        source_ref=self.refs.get('filter_records:negative_or_warning')
+        if not source_ref:raise MissingReportInput('冻结事实缺少已确认的原始记录范围。')
+        rows=self.store.get_artifact(source_ref)['records']
+        ids=[row['id'] for row in rows]
+        if len(ids)!=len(set(ids)) or not set(ids)<=self.by_id.keys():
+            raise ValueError('invalid_frozen_record_population')
+        return [{'id':rid,'representative_id':rid,'member_ids':[rid]} for rid in ids]
     @cached_property
     def categories(self):
         if not self.refs.get('confirmed_theme_groups'):return {}
@@ -117,13 +157,15 @@ class FrozenReport:
         def matches(g):
             rows=[self.by_id[rid] for rid in g['member_ids']]
             return scope=='confirmed_events' or any(self.warned(r) and (scope!='negative_warning_events' or r.get('sentiment')=='负面') for r in rows)
-        return [g for g in self.groups if matches(g)]
+        return [g for g in self.statistical_units if matches(g)]
     def warning_scope(self):
         rules=self.state.metadata.get('template_rules',{})
         return 'warning_events' if rules.get('first_warning_scope')=='warning' else 'confirmed_events'
     def categories_for(self,scope='confirmed_events'):
         counts=Counter()
         for g in self.events(scope):
+            if self.record_mode and self.classification_enabled and any(rid not in self.categories for rid in g['member_ids']):
+                raise MissingReportInput('已确认原始记录缺少分类，不可用未分类补齐。')
             labels={self.categories.get(rid,'未分类') for rid in g['member_ids']}
             if len(labels)!=1:raise ValueError('frozen_event_category_conflict')
             counts[next(iter(labels))]+=1
@@ -210,7 +252,7 @@ class FrozenReport:
         spec=Calculation.model_validate(spec);m=spec.metric;p=self.parameters();total=int(self.metrics.get('record_count',0))
         pct=lambda value,denom:format(value/denom*100,f'.{spec.precision}f')+'%' if denom else '0.'+'0'*spec.precision+'%'
         selection=None
-        if m in ('peak_count','source_statistics','filtered_record_count','distinct_source_count','selected_material_count','parameterized_table'):
+        if m in ('peak_count','source_statistics','filtered_record_count','distinct_source_count','distinct_organization_count','organization_names','selected_material_count','parameterized_table'):
             from .calculation_extensions import calculate
             value,selection=calculate(self,spec)
         elif m.startswith('publish_'):
@@ -306,16 +348,23 @@ class FrozenReport:
         if selection is not None:result['selection']=selection
         return result
     def summary(self):
+        warning_rows=[r for r in self.records if self.warned(r)]
+        warning_counts={name:sum(r.get('sentiment')==name for r in warning_rows) for name in ('正面','中性','负面')}
+        warning_stats={'total':len(warning_rows),'sentiment_counts':warning_counts,
+            'sentiment_percentages':{name:format(n/len(warning_rows)*100,'.2f')+'%' if warning_rows else '0.00%' for name,n in warning_counts.items()}}
         return {'fact_ref':self.fact_ref,'report_parameters':self.parameters(),'record_count':self.metrics.get('record_count'),
                 'scope_policy':{'section_one_categories_and_localities':'confirmed_events',
                                 'confirmed_events_population':self.state.metadata.get('event_scope','negative_or_warning'),
                                 'first_warning_events':self.warning_scope(),'top10':'negative_warning_events',
-                                'note':'第一部分事件统计使用已确认并集事件；TOP10使用负面且预警交集内原始记录数。两者不可互换。'},
+                                'counting_unit':'record' if self.record_mode else 'deduplicated_event',
+                                'note':'去重关闭时按已确认范围逐条记录统计；开启时按已确认归并事件统计。预警调性构成使用 warning_record_statistics，分母为预警原始记录数。'},
                 'sentiment':self.metrics.get('sentiment'),'platform':self.metrics.get('platform'),'daily_count':self.metrics.get('daily_count'),
-                'peak_day':self.metrics.get('peak_day'),'confirmed_event_count':len(self.groups),
-                'warning_scope':self.warning_scope(),'category_event_counts':self.categories_for() if self.groups else {},
-                'county_event_counts':self.counties_for() if self.groups else {},
+                'peak_day':self.metrics.get('peak_day'),'confirmed_event_count':len(self.statistical_units),
+                'warning_scope':self.warning_scope(),'warning_record_statistics':warning_stats,
+                'category_event_counts':self.categories_for() if self.statistical_units else {},
+                'county_event_counts':self.counties_for() if self.statistical_units else {},
                 'county_basis':'冻结属地识别的唯一候选；跨区及不明单列，不推测归属',
+                'writing_calculations':self.writing_contract.get('calculations',{}),
                 'top10':[{'rank':r['rank'],'summary':r['summary'],'negative_warning_count':r['negative_warning_count']} for r in self.facts.get('top10',[])]}
 
 class MaterialQuery(BaseModel):
@@ -324,13 +373,14 @@ class MaterialQuery(BaseModel):
     date:str|None=None
     category:str|None=None
     keyword:str=''
+    exclude_keywords:list[str]=Field(default_factory=list)
     sentiments:list[Literal['正面','中性','负面']]=Field(default_factory=list)
     distinct_events:bool=False
     offset:int=Field(default=0,ge=0,le=30000)
     limit:int=Field(default=8,ge=1,le=20)
 
 def query_materials(report,args):
-    q=MaterialQuery.model_validate(args);positions={rid:g for g in report.groups for rid in g['member_ids']}
+    q=MaterialQuery.model_validate(args);positions={rid:g for g in report.statistical_units for rid in g['member_ids']}
     source_counts=Counter(r.get('source','') for r in report.records)
     def is_media(r):return any(x in str(r.get('media_level','')) for x in ('中央','全国','省级','央级'))
     rows=[]
@@ -341,6 +391,7 @@ def query_materials(report,args):
         if q.sentiments and r.get('sentiment') not in q.sentiments:continue
         if q.category and report.categories.get(r['id'])!=q.category:continue
         if q.keyword and q.keyword not in r['title']+' '+r.get('summary',''):continue
+        if any(word in r['title']+' '+r.get('summary','') for word in q.exclude_keywords):continue
         rows.append(r)
     rows.sort(key=lambda r:(-int(is_media(r)),-len(positions.get(r['id'],{}).get('member_ids',[])),-source_counts[r.get('source','')],r['id']))
     # Avoid filling the packet with syndicated copies of one title.

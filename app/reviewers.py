@@ -169,6 +169,9 @@ def payload_for(store,state,role):
         'forecast_basis':history,'excluded_human_fields':[key for key,value in fields.items() if 'human_edit' in value['source_refs']],
         'last_repair_validation_error':state.metadata.get('writing_review_run',{}).get('repair_error'),
         'last_repair_field_errors':state.metadata.get('writing_review_run',{}).get('repair_field_errors',[])}
+    from core.writing_contracts import group_context
+    payload['writing_groups']=group_context(list(fields),report.writing_contract,draft.get('slot_values',{}))
+    payload['instruction']+='\n逐组核查 writing_groups：主题、背景、条目必须同题；案例事实、分析、建议必须对应同一案例，建议落到报告客户；背景不得重复全月统计。机构家数与报道条数分开，按契约计算定义审核，不以旧模板账号口径替代。逻辑串题需报 logic，不能仅当文风问题。'
     if role=='content_reviewer':
         payload['style']={'metrics':style.get('metrics',{}),'semantic_candidates':style.get('semantic_candidates',[]),'project_findings':style.get('project_findings',[])}
         payload['skill']={**skill_context(),'application':get_prompt('style.application',profile)}
@@ -308,10 +311,19 @@ async def revise_draft(deps,task_id):
         'issues':[{'id':i['id'],**i['details']} for i in issues],'readonly_data':[v for v in fields.values() if v['owner']=='data'],
         'frozen_context':FrozenReport(store,task_id).summary(),'correction_errors':[state.metadata['writing_review_run']['repair_error']] if state.metadata['writing_review_run'].get('repair_error') else [],
         'skill':{**skill_context(),'application':get_prompt('style.application',profile)}}
+    from core.writing_contracts import group_context,repair_allowed
+    frozen_report=FrozenReport(store,task_id)
+    contract=frozen_report.writing_contract
+    payload['writing_groups']=group_context(list(allowed_fields),contract,draft.get('slot_values',{}))
+    payload['instruction']+='\n关联组退修必须参照 writing_groups 的整组正文及共同案例。仅改 editable_fields，不改程序数据或人工字段。修正 logic/fact 可替换机器引错案例带入的日期数字，但必须使用给定来源；文风修改仍须保留数字。列表可在字段 schema 允许的条数内调整，不删空。'
     from .section_two import role as section_role, analysis_length_limits
     package=_task_package(state, store)
     for item in payload['editable_fields']:
-        item['required_numbers']=numbers(item['value'])
+        targets=[i['details'] for i in issues if i['details']['field_id']==item['id']]
+        logical=repair_allowed(item['id'],targets,contract,definitions[item['id']],item.get('source_refs'))
+        item['repair_mode']='logic_replacement' if logical else 'minimal_edit'
+        item['required_numbers']=[] if logical else numbers(item['value'])
+        if logical:item['number_rule']='仅可保留或改用给定来源支持的数字；不得改动 readonly_data。允许在字段 schema 内调整列表条数。'
         minimum,maximum=analysis_length_limits(package, definitions.get(item['id']))
         if section_role(definitions[item['id']], package=package)=='analysis' and (minimum is not None or maximum is not None):
             schema={**item.get('value_schema',{})}
@@ -350,9 +362,23 @@ async def revise_draft(deps,task_id):
                     if patch.after==patch.before or patch.after==before_value:
                         declined.update(i['id'] for i in targeted);continue  # Keep its issue open; do not discard other valid patches.
                     if not set(patch.source_refs)<=allowed:raise ValueError('repair_source_not_available')
-                    if not any(i['details']['kind']=='fact' for i in targeted) and numbers(before_value)!=numbers(patch.after):raise ValueError('style_repair_changed_fact_numbers')
+                    logical=repair_allowed(key,[i['details'] for i in targeted],contract,definitions[key],patch.source_refs)
+                    if logical:
+                        added=set(numbers(patch.after))-set(numbers(before_value))
+                        source_text=[]
+                        for ref in patch.source_refs:
+                            if ref in frozen_report.by_id:
+                                row=frozen_report.by_id[ref]
+                                source_text.extend(str(row.get(k) or '') for k in ('title','summary','published'))
+                            elif ref.startswith('historical_page-'):
+                                page=store.get_artifact(ref)
+                                if not page.get('read_error'):
+                                    source_text.extend(str(page.get(k) or '') for k in ('title','content','published_at'))
+                        supported=set(numbers(' '.join(source_text)))
+                        if added-supported:raise ValueError('logic_repair_new_numbers_require_record_evidence')
+                    if not logical and not any(i['details']['kind']=='fact' for i in targeted) and numbers(before_value)!=numbers(patch.after):raise ValueError('style_repair_changed_fact_numbers')
                     if re.search(r'若|如果|可能|通常',text(before_value)) and not re.search(r'若|如果|可能|通常|或|风险',text(patch.after)):raise ValueError('repair_removed_judgment_qualifications')
-                    if isinstance(before_value,list) and (not isinstance(patch.after,list) or len(before_value)!=len(patch.after)):raise ValueError('repair_changed_list_structure')
+                    if isinstance(before_value,list) and (not isinstance(patch.after,list) or (not logical and len(before_value)!=len(patch.after))):raise ValueError('repair_changed_list_structure')
                     minimum,maximum=analysis_length_limits(package, definitions.get(key))
                     too_short=minimum is not None and (not isinstance(patch.after,str) or len(patch.after)<minimum)
                     too_long=maximum is not None and isinstance(patch.after,str) and len(patch.after)>maximum

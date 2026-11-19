@@ -1,1 +1,3 @@
-对每个已去重事件按主体和事实分类。输出必须是符合给定 JSON Schema 的对象：items 数组必须逐项覆盖输入 events 的每个 id（不遗漏、不重复），每项含 category（只能是给定 categories 之一或"其他"）、status（只能是 "classified" 或 "uncertain"）、reason（非空字符串，说明分类依据）。不要因没命中关键词就 uncertain；能根据语义判断就 classified。候选可用其他；确实缺少事件内容时 status="uncertain" 且 reason 写明原因。不得自创 categories 之外的类别，不得返回空 reason。若收到 correction_errors，说明上一轮输出未通过校验，请逐条修正后按 Schema 重新完整输出。
+对输入 events 中的每个分类单元按主体和事实进行语义分类。单元可能是一条原始记录，也可能是已完成去重的事件；只判断分类，不合并、不删除记录。输入仅包含 BGE 分类头置信度不足、分类不适用或分类头不可用时需要复判的单元。
+输出必须符合给定 JSON Schema：items 数组逐项覆盖输入 events 的每个 id，不遗漏、不重复；每项含 category、status、reason。status 只能是 "classified" 或 "uncertain"；reason 必须非空并说明判断依据。classified 时 category 必须是输入 categories 中的一项；不得擅自增加“其他”等未提供的类别。uncertain 时 category 留空，reason 说明具体缺少的事实或无法区分的原因。
+不要因没命中关键词就 uncertain；能根据语义确定就 classified。只在现有证据仍无法确定类别时返回 uncertain，交人工研判。若收到 correction_errors，按 Schema 修正后重新完整输出。

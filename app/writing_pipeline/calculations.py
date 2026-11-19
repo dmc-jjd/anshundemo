@@ -18,7 +18,7 @@ for name,sentiment in [('positive','正面'),('neutral','中性'),('negative','�
     KNOWN['b17_'+name+'_ratio']={'metric':'sentiment_percentage','sentiment':sentiment}
 
 def calculation_for(field,report,plans,package=None,*,spec_resolver):
-    spec=plans.get(field['id']) or KNOWN.get(field['id']) or spec_resolver(field,package)
+    spec=(getattr(report,'writing_contract',{}).get('calculations') or {}).get(field['id']) or plans.get(field['id']) or KNOWN.get(field['id']) or spec_resolver(field,package)
     if spec:
         spec=Calculation.model_validate(spec).model_dump()
         if field['id'] in ('b17_warning_count','b17_warning_ratio'):spec['scope']=report.warning_scope()

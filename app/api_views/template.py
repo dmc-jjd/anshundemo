@@ -99,6 +99,9 @@ def apply_definition_patch(store, state, req):
             candidate=with_styles(candidate,req.chart_styles)
         if req.rules is not None:
             candidate['rules']=rules_for_features(req.rules,candidate.get('rules'))
+        if getattr(req,'writing_groups',None) is not None:
+            candidate.setdefault('rules',{})['writing_groups']=req.writing_groups
+        from core.writing_contracts import resolve
     except ValueError as exc: return (422,str(exc)),None
     from ..template_draft import current_draft, rebuild, _log_entries, DRAFT_KIND, DraftError
     draft = current_draft(store, state)
@@ -110,6 +113,9 @@ def apply_definition_patch(store, state, req):
             rebased = rebuild(candidate, _log_entries(draft), '', draft.get('field_edits'))
         except DraftError as exc:
             return (exc.status, exc.code), None
+    from ..template_draft import definition_view
+    try:resolve(definition_view(candidate,rebased))
+    except (ValueError,TypeError) as exc:return (422,str(exc)),None
     state.metadata['structured_template_ref']=store.put_artifact(state.id,'structured_template_candidate',candidate)
     if rebased is not None:
         rebased['base_ref'] = state.metadata['structured_template_ref']
@@ -185,6 +191,11 @@ def rules_for_features(rules, stored=None):
         for key in rule['rules']:
             result.pop(key, None)
     result['features'] = features
+    if 'writing_groups' in effective:
+        from core.writing_contracts import WritingGroup
+        result['writing_groups']=[WritingGroup.model_validate(g).model_dump() for g in effective['writing_groups']]
+    elif isinstance(stored,dict) and 'writing_groups' in stored:
+        result['writing_groups']=stored['writing_groups']
     return result
 
 
@@ -487,6 +498,8 @@ def confirm_candidate(store, state, req):
     # 版式不做副本：`layout_source` 始终指回原始版式，删段记录在 `omitted_sections`。
     try:
         candidate['rules']=rules_for_features(req.rules or candidate.get('rules'),candidate.get('rules'))
+        from core.writing_contracts import resolve
+        resolve(candidate)
     except (ValueError,TypeError) as exc:return (422,str(exc)),None
     features=candidate['rules']['features']
     if features['top10']:
@@ -494,6 +507,8 @@ def confirm_candidate(store, state, req):
     else:
         candidate.pop('top10_rule',None)
     candidate=omit_disabled_sections(candidate,features)
+    try:resolve(candidate)
+    except (ValueError,TypeError) as exc:return (422,str(exc)),None
     for item in state.review_items:
         if item['kind']=='template_candidate':item.update(status='resolved',decision={'action':'confirm','reason':req.reason})
     business_decisions=[{'question':i['question'],'answer':i.get('decision',{}).get('answer') or i.get('decision',{}).get('payload',{}).get('answer','')} for i in state.review_items if i['kind']=='template_business_question']

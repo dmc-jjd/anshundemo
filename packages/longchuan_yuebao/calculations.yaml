@@ -1,6 +1,3 @@
-# 客户字段绑定；通用实现位于 core，已确认V3工件不修改。
-# 媒体范围/身份口径及呈发固定内容由用户于2026-11-18明确确认。
-# 表格第一行由确认模板headers提供，这里仅含余下两行，避免重复呈送行。
 b8_peak_count:
   metric: peak_count
   scope: all_records
@@ -83,3 +80,67 @@ b48_table_rows:
   rows:
   - - 发：各乡镇，县副科以上单位（含驻阳单位）
   - - 网络安全应急指挥中心编印           {publication_date}印发
+block_22_field_1:
+  metric: distinct_source_count
+  scope: all_records
+  filters:
+    media_level: &id005
+    - 全国
+    - 省级
+    - 市级
+  identity_field: source_id
+  identity_fallback:
+  - source
+  - author
+block_22_field_2:
+  metric: filtered_record_count
+  scope: all_records
+  filters:
+    media_level: *id005
+block_22_field_3:
+  metric: distinct_source_count
+  scope: all_records
+  filters:
+    media_level: &id006
+    - 全国
+  identity_field: source_id
+  identity_fallback:
+  - source
+  - author
+block_22_field_4:
+  metric: filtered_record_count
+  scope: all_records
+  filters:
+    media_level: *id006
+block_22_field_5:
+  metric: distinct_source_count
+  scope: all_records
+  filters:
+    media_level: &id007
+    - 市级
+  identity_field: source_id
+  identity_fallback:
+  - source
+  - author
+block_22_field_6:
+  metric: filtered_record_count
+  scope: all_records
+  filters:
+    media_level: *id007
+custom_field_2:
+  metric: category_names
+  scope: negative_warning_events
+  limit: 6
+block_48_field_7:
+  metric: parameterized_table
+  date_format: chinese
+  rows:
+  - - 发：各乡镇，县副科以上单位（含驻阳单位）
+  - - 网络安全应急指挥中心编印           {publication_date}印发
+block_21_field_10:
+  metric: selected_material_count
+  scope: all_records
+  filters:
+    media_attribute:
+    - 政务
+  limit: 3

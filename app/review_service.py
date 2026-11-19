@@ -22,6 +22,7 @@ def review_data(store,task_id):
     if 'group_events' not in state.result_refs and features['dedup']:
         return {'legacy':True,'message':'此历史任务使用旧的逐项确认流程。请按新规则重新处理后查看整体数据。'}
     analysis=store.get_artifact(state.result_refs['event_analysis']) if state.result_refs.get('event_analysis') else None
+    semantic=store.get_artifact(state.result_refs['semantic_classification']) if state.result_refs.get('semantic_classification') else None
     automatic=store.get_artifact(state.result_refs['group_events']) if state.result_refs.get('group_events') else None
     events=(store.get_artifact(state.result_refs['confirmed_event_groups']) if state.fact_ref
             else analysis or automatic or {'groups':[]})
@@ -38,7 +39,9 @@ def review_data(store,task_id):
         'human_relationship_history':automatic.get('human_relationship_decisions',[]) if automatic else [],
         'human_merge_decisions':analysis.get('human_merge_decisions',{}) if analysis else {},
         'merge_ambiguities':analysis.get('merge_ambiguities',[]) if analysis and not state.fact_ref else [],
-        'classification_issues':analysis.get('classification_issues',[]) if analysis and not state.fact_ref else [],
+        'classification_issues':(analysis or semantic or {}).get('classification_issues',[]) if not state.fact_ref else [],
+        'classification_counts':(analysis or semantic or {}).get('classification_counts',{}),
+        'classification_method':analysis.get('classification_method',{}) if analysis else (semantic or {}).get('method',{}),
         'analysis_counts':({**analysis.get('counts',{}),'human_merge_cases':0,'human_classification_events':0,'human_classification_records':0} if state.fact_ref and analysis else analysis.get('counts',{}) if analysis else {}),
         'top10':store.get_artifact(state.fact_ref).get('top10',[]) if state.fact_ref else analysis.get('top10',[]) if analysis else [],
         'metrics':store.get_artifact(state.fact_ref)['metrics'] if state.fact_ref else store.get_artifact(state.result_refs['calculate_metrics']),

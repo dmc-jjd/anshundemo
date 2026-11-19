@@ -182,10 +182,10 @@ def test_assemble_builds_chain_from_manifest_features():
 
 
 def test_assemble_end_to_end_classifies_with_dictionary_only():
-    from app.config import PACKAGE_DIR
-    from core.manifest import load_manifest
-
-    features = load_manifest(PACKAGE_DIR).features
+    # The synchronous compatibility API still supports dictionary-only callers.
+    # The report manifest now uses the async BGE -> LLM -> human pipeline.
+    features = {'event_classification': {'enabled': True, 'stages': [
+        {'kind': 'dictionary', 'enabled': True}, {'kind': 'llm', 'enabled': False}]}}
     records = [{"id": "1", "title": "公交车司机争执", "summary": "道路交通"},
                {"id": "2", "title": "完全无关", "summary": "zzz"}]
 
@@ -194,4 +194,4 @@ def test_assemble_end_to_end_classifies_with_dictionary_only():
     by_id = {v.record_id: v for v in verdicts}
     assert by_id["1"].category == "交通管理"
     assert by_id["2"].source == SOURCE_UNRESOLVED
-    assert plan.skipped == ("llm",), "A 包声明了 llm 但未实现，必须出现在 skipped"
+    assert plan.skipped == ("llm",), "同步兼容层不执行异步 LLM，业务流程由 semantic.py 执行"

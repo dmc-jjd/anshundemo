@@ -3,7 +3,8 @@
 为什么需要这一层（verifier 抓到的真问题）：
     之前 `features` 只被解析进 `Manifest.features`，**没有任何生产消费者**，
     于是"未来只改 manifest"是一句空话——客户改 yaml 不会产生任何效果。
-    这个模块是那个缺失的装配器，`build_classification_chain()` 是唯一入口。
+    这个模块保留同步分类工具的装配兼容；报告业务入口现为 `core.classify.semantic`，
+    在那里执行带检查点和异步模型调用的 BGE→LLM→人工流程，本模块不驱动报告。
 
 设计取舍：
     - 只装配**已实现**的 kind；未实现的 kind（如 llm）跳过并在返回值里报告，

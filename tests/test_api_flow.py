@@ -8,7 +8,7 @@ from app.workflow import Dependencies
 async def analysis_adapter(role,payload):
     if role=='event_judge' and 'events' in payload:return {'groups':[{'group_ids':[x['id']]} for x in payload['events']],'uncertain_pairs':[]}
     if role=='event_judge':return {'items':[{'id':x['id'],'decision':'different','reason':'synthetic test'} for x in payload['pairs']]}
-    if role=='event_classifier':return {'items':[{'id':x['id'],'category':'其他','status':'classified','reason':'synthetic test'} for x in payload['events']]}
+    if role=='event_classifier':return {'items':[{'id':x['id'],'category':payload['categories'][0],'status':'classified','reason':'synthetic test'} for x in payload['events']]}
     if role=='event_summarizer':return {'items':[{'id':x['id'],'status':'complete','summary':'来源记录反映有关问题，具体情况以原文为准。','source_refs':[x['evidence'][0]['ref']]} for x in payload['events']]}
     raise ValueError('unexpected role')
 

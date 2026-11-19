@@ -34,12 +34,11 @@ def test_classification_stages_are_ordered_and_degradable():
     stages = load_manifest(PACKAGE_DIR).features["event_classification"]["stages"]
 
     kinds = [s["kind"] for s in stages]
-    assert kinds == ["bge", "dictionary", "llm"], "降级链顺序必须是 bge→dictionary→llm"
-    # 现在没有微调模型，bge 与 llm 必须关闭，词典是唯一生效级
+    assert kinds == ["bge", "llm"], "业务分类必须先 BGE 再 LLM，不得被词典短路"
     by_kind = {s["kind"]: s for s in stages}
-    assert by_kind["bge"]["enabled"] is False
-    assert by_kind["llm"]["enabled"] is False
-    assert by_kind["dictionary"]["enabled"] is True
+    assert by_kind["bge"]["enabled"] is True
+    assert by_kind["bge"]["confidence_threshold"] == .75
+    assert by_kind["llm"]["enabled"] is True
 
 
 # ---------------------------------------------------------- 词典 stage 与现状等价
