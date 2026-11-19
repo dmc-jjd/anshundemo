@@ -92,3 +92,35 @@ def test_workflow_stale_groups_stop_before_models_and_review(tmp_path):
     result=asyncio.run(_analyse_report_events(Dependencies(store),'t'))
     assert result.phase=='analysis_pending' and result.metadata['analysis_pending']
     assert result.metadata['event_scope_error'].startswith('event_scope_mismatch')
+
+
+@pytest.mark.parametrize('ready',[False,True])
+def test_dynamic_planner_cannot_classify_before_scope_is_ready(tmp_path,monkeypatch,ready):
+    import app.workflow as workflow
+    import app.report_planning as planning
+    from core.schemas import ToolDecision
+    store,_,full,wanted=scoped(tmp_path);state=store.get_task('t')
+    if not ready:state.result_refs.pop('filter_records:negative_or_warning')
+    state.metadata.update(mode='dynamic',input_path='test.xlsx')
+    store.put_task(state,state.revision)
+    features={'dedup':True,'classification':True,'top10':False,'first_warning':False,'locality':False}
+    monkeypatch.setattr(workflow,'_template_features',lambda *a:features)
+    monkeypatch.setattr(planning,'planning_template',lambda *a:{})
+    async def decide(*a):
+        return ToolDecision(action='call_tool',tool_name='classify_records',arguments={'records_ref':full})
+    monkeypatch.setattr(workflow,'invoke_agent',decide)
+    calls=[]
+    async def execute(call,ctx):
+        current=store.get_task('t')
+        if call.tool_name=='filter_records':
+            current.result_refs['filter_records:'+call.arguments['scope']]=wanted
+        elif call.tool_name=='classify_records':
+            assert 'filter_records:negative_or_warning' in current.result_refs
+            assert call.arguments['records_ref']==wanted
+        current.result_refs[call.tool_name]=wanted
+        store.put_task(current,current.revision);calls.append(call.tool_name)
+        return ToolResult(status='ok',data_ref=wanted)
+    monkeypatch.setattr(workflow,'execute_tool',execute)
+    asyncio.run(workflow._process_records(Dependencies(store),'t'))
+    assert 'classify_records' in calls
+    if not ready:assert calls.index('filter_records')<calls.index('classify_records')

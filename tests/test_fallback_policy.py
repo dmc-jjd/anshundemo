@@ -65,12 +65,12 @@ def test_ruyuan_fallback_omits_closed_locality_and_has_no_anshun_slots():
     assert plan["version"] == VERSION
 
 
-def test_longchuan_fallback_omits_closed_locality_classification_and_top10():
+def test_longchuan_fallback_keeps_classification_and_omits_closed_locality_and_top10():
     plan = build_fallback_plan(_state("longchuan_yuebao"), "model_not_configured")
     assert "resolve_locality" not in plan["steps"]
-    assert "classify_records" not in plan["steps"]
-    assert "cluster_event_themes" not in plan["steps"]
-    assert "discover_topics" not in plan["steps"]
+    assert "classify_records" in plan["steps"]
+    assert "cluster_event_themes" in plan["steps"]
+    assert "discover_topics" in plan["steps"]
     assert "select_materials" not in plan["steps"]
     assert "import_records" in plan["steps"]
     assert "group_events" in plan["steps"]

@@ -487,7 +487,19 @@ async def _process_records(deps:Dependencies,task_id:str):
             if decision.tool_name not in _PLANNER_TOOLS or decision.tool_name not in policy.allow:
                 no_progress+=1; continue
             before=len(state.result_refs)
-            call=ToolCall(call_id=uuid.uuid4().hex,tool_name=decision.tool_name,arguments=decision.arguments,reason=decision.reason)
+            arguments=dict(decision.arguments)
+            from core.event_scope import enforced,reference,SCOPED_TOOLS,EventScopeError
+            if enforced(state) and decision.tool_name in SCOPED_TOOLS:
+                try:
+                    arguments['records_ref']=reference(state)
+                except EventScopeError as exc:
+                    if exc.code!='event_scope_not_ready':raise
+                    # A planner may request classification before filtering. Complete
+                    # prerequisites through the local fallback, without executing it early.
+                    store.append_event(task_id,{'type':'planner_prerequisite_deferred',
+                        'tool':decision.tool_name,'reason':str(exc)})
+                    break
+            call=ToolCall(call_id=uuid.uuid4().hex,tool_name=decision.tool_name,arguments=arguments,reason=decision.reason)
             await execute_tool(call,ctx)
             no_progress=0 if len(store.get_task(task_id).result_refs)>before else no_progress+1
     state=store.get_task(task_id)
