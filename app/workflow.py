@@ -413,6 +413,13 @@ def _sheet_index(state):
 def _args_for(name,state):
 
     r=state.result_refs
+    from core.event_scope import enforced,reference,SCOPED_TOOLS
+    if enforced(state) and name in SCOPED_TOOLS:
+        args={'records_ref':reference(state)}
+        if name=='group_events':args['threshold']=state.metadata.get('event_threshold',.65)
+        if name=='propose_keyword_event_candidates':args['scope_label']=state.metadata['event_scope']
+        if name=='discover_topics':args['cluster_ref']=r.get('cluster_event_themes')
+        return args
     if name=='import_records': return {'path':state.metadata['input_path'],'sheet_index':_sheet_index(state)}
     if name=='calculate_metrics': return {'records_ref':r['import_records'],'negative_ref':r.get('filter_records')}
     if name=='filter_records': return {'records_ref':r['import_records'],'scope':'negative'}
@@ -516,11 +523,25 @@ async def _analyse_report_events(deps:Dependencies,task_id:str):
     if (features['dedup'] or features['classification']) and _analysis_refs(features)<=state.result_refs.keys() and not state.cancel_requested:
         from .event_analysis import analyse_events
         state.phase='analyzing';state.metadata['analysis_pending']=True;store.put_task(state,state.revision)
-        if features['dedup']:
-            analysis=await analyse_events(deps,task_id)
-        else:
-            from core.classify.semantic import analyse_records
-            analysis=await analyse_records(deps,task_id)
+        from core.event_scope import EventScopeError
+        try:
+            if features['dedup']:
+                analysis=await analyse_events(deps,task_id)
+            else:
+                from core.classify.semantic import analyse_records
+                analysis=await analyse_records(deps,task_id)
+        except EventScopeError as exc:
+            state=store.get_task(task_id)
+            state.phase='analysis_pending';state.metadata['analysis_pending']=True
+            state.metadata['event_scope_error']=str(exc)
+            state.metadata['failure_message']='事件范围校验未通过，请按新规则重新处理。'+str(exc)
+            store.put_task(state,state.revision)
+            store.append_event(task_id,{'type':'event_scope_validation_failed','error':exc.code,'message':str(exc)})
+            store.append_event(task_id,{'type':'phase','phase':'analysis_pending'})
+            return state
+        state=store.get_task(task_id)
+        if state.metadata.pop('event_scope_error',None):
+            state.metadata.pop('failure_message',None);store.put_task(state,state.revision)
         state=store.get_task(task_id)
         if analysis['pending_model']:
             state.phase='analysis_pending';store.put_task(state,state.revision)

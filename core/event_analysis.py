@@ -87,6 +87,8 @@ async def analyse_events(deps,task_id):
     from .tools import vocabulary
     cluster_rules=vocabulary.cluster_terms()   # 按当前包解析（不再读 core/tool 的旧名快照）
     store=deps.store;state=store.get_task(task_id)
+    from .event_scope import check_groups
+    check_groups(store,state,store.get_artifact(state.result_refs['group_events']))
     # 模板级开关：TOP10 关掉时该阶段整段不跑（不调模型、不产梗概）；开着时逐字不变。
     features=template_feature_switches(state,store)
     local=store.get_artifact(state.result_refs['group_events'])

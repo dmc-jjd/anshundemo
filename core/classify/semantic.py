@@ -41,6 +41,8 @@ async def classify_units(deps,task_id,units,records,overrides=None):
     from core import paths
 
     store=deps.store
+    from core.event_scope import check_records
+    check_records(store,store.get_task(task_id),records)
     labels=list(vocabulary.cluster_terms())
     config=load_manifest(paths.package_dir()).features.get('event_classification') or {}
     bge_config=next((s for s in config.get('stages',[]) if s.get('kind')=='bge'),{})
@@ -168,7 +170,8 @@ async def classify_units(deps,task_id,units,records,overrides=None):
 
 async def analyse_records(deps,task_id):
     store=deps.store;state=store.get_task(task_id)
-    source_ref=state.result_refs['filter_records:negative_or_warning']
+    from core.event_scope import enforced,reference
+    source_ref=reference(state) if enforced(state) else state.result_refs['filter_records:negative_or_warning']
     records=store.get_artifact(source_ref)['records']
     units=[{'id':r['id'],'member_ids':[r['id']]} for r in records]
     result=await classify_units(deps,task_id,units,records)

@@ -188,6 +188,13 @@ async def execute_tool(call:ToolCall,context:RunContext)->ToolResult:
     for tool,scopes in hints.SCOPE_ENUM.items():
         if call.tool_name==tool and call.arguments.get('scope') not in scopes:
             return ToolResult(status='error',error_code=hints.SCOPE_ERROR_CODE.get(tool,'unapproved_filter_scope'))
+    from .event_scope import check_tool,EventScopeError
+    try:
+        check_tool(context.store,state,call.tool_name,call.arguments)
+    except EventScopeError as exc:
+        context.store.append_event(context.task_id,{'type':'tool_result','tool':call.tool_name,
+            'status':'error','error_code':exc.code,'warnings':[str(exc)],'call_id':call.call_id})
+        return ToolResult(status='error',error_code=exc.code,warnings=[str(exc)])
     writer_readonly=call.tool_name in policy.phases.get(context.phase,())
     budget=policy.budget(context.phase)
     if writer_readonly:
