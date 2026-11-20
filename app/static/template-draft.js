@@ -505,6 +505,16 @@
   /* ---------------------------------------------------------------- 挂载 */
   async function mount({ taskId, container, onField, onRevision, confirmed } = {}) {
     if (!taskId || !container) return;
+    // The task list can carry redacted or stale confirmation metadata. The
+    // template definition is the authoritative source for editability.
+    if (confirmed) {
+      try {
+        const authority = await api(`/api/templates/${taskId}/definition`);
+        confirmed = authority?.definition?.status === 'confirmed_by_human';
+      } catch (_) {
+        // Keep the caller's value only when the authority endpoint is unavailable.
+      }
+    }
     if (confirmed) {
       // 已确认模板不可再手动定义：只只读展示三轮研判的终审参考意见。
       await mountHumanReview({ taskId, container });
