@@ -3,9 +3,8 @@
   "templates": [
     {
       "template_ref": "template_version-4c7860e7b7e3d204c6d8",
-      "status": "adapted",
-      "adapted_at": "2026-11-20T02:38:54.628878+00:00",
-      "bundle_digest": "c1175be749b0cc78fbec4e82ed83c7bb2b2f8d2f2df5c39b8bb939a46b34e9e0"
+      "status": "pending",
+      "note": "V3提示词已按未来两个月前瞻更新；V2未完成兼容适配，暂不标记已适配。"
     },
     {
       "template_ref": "template_version-1280a15c3f1d93d7ef91",
