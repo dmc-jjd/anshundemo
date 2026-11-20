@@ -15,7 +15,7 @@ import json
 
 EDITABLE_KEYS = ('display_name', 'semantic', 'owner', 'rule', 'reason', 'format')
 OWNERS = ('data', 'writer')
-EDITABLE_STATUSES = ('candidate_requires_review',)
+EDITABLE_STATUSES = ('candidate_requires_review', 'candidate')
 
 
 def _digest(template):

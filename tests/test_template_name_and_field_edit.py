@@ -144,6 +144,21 @@ def test_field_edit_persists_after_reload(tmp_path, monkeypatch):
         assert stale.status_code == 409 and stale.json()['detail'] == 'stale_template_revision'
 
 
+def test_revision_candidate_allows_field_edit(tmp_path, monkeypatch):
+    store, _ = _store(tmp_path, monkeypatch)
+    with TestClient(main.app) as client:
+        task_id, state = _create_task(client, store)
+        candidate = store.get_artifact(state.metadata['structured_template_ref'])
+        candidate['status'] = 'candidate'
+        state.metadata['structured_template_ref'] = store.put_artifact(task_id, 'structured_template_candidate', candidate)
+        store.put_task(state, state.revision)
+        target = next(field for field in _fields(client, task_id) if not field.get('binding'))
+        saved = client.put(f'/api/templates/{task_id}/fields/{target["id"]}',
+                           json={'expected_revision': state.revision, 'semantic': 'V3候选人工编辑'})
+        assert saved.status_code == 200, saved.text
+        assert saved.json()['field']['semantic'] == 'V3候选人工编辑'
+
+
 def test_confirmed_version_and_bad_patches_are_rejected_explicitly(tmp_path, monkeypatch):
     store, _ = _store(tmp_path, monkeypatch)
     with TestClient(main.app) as client:
