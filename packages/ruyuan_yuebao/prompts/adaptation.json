@@ -4,10 +4,16 @@
     {
       "template_ref": "template_version-4c7860e7b7e3d204c6d8",
       "status": "adapted",
-      "adapted_at": "2026-11-19T10:39:31.035331+00:00",
-      "bundle_digest": "e31bea1adc45a0658a57f72fa6d841be2b92dcf8a671cb44976ca92ce6a39ad3"
+      "adapted_at": "2026-11-20T02:38:54.628878+00:00",
+      "bundle_digest": "c1175be749b0cc78fbec4e82ed83c7bb2b2f8d2f2df5c39b8bb939a46b34e9e0"
+    },
+    {
+      "template_ref": "template_version-1280a15c3f1d93d7ef91",
+      "status": "adapted",
+      "adapted_at": "2026-11-20T02:38:54.628878+00:00",
+      "bundle_digest": "c1175be749b0cc78fbec4e82ed83c7bb2b2f8d2f2df5c39b8bb939a46b34e9e0"
     }
   ],
-  "generated_at": "2026-11-19T10:37:33.014092+00:00",
-  "bundle_digest": "e31bea1adc45a0658a57f72fa6d841be2b92dcf8a671cb44976ca92ce6a39ad3"
+  "generated_at": "2026-11-20T02:38:54.343Z",
+  "bundle_digest": "c1175be749b0cc78fbec4e82ed83c7bb2b2f8d2f2df5c39b8bb939a46b34e9e0"
 }
