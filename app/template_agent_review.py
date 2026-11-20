@@ -28,6 +28,17 @@ def status_for(definition,questions,metadata):
         result[section]={'total':len(rows),'addressed':sum(row['status']=='addressed' for row in rows),'items':rows}
     return result
 
+def normalize_review_targets(definition):
+    """Keep model advice locatable after a dynamic field replaces legacy slots."""
+    fields={f['id']:f for f in definition.get('fields',[])}
+    dynamic=next((f for f in fields.values() if f.get('category_coverage_scope')),None)
+    if not dynamic:return definition
+    for item in definition.get('human_review_items') or []:
+        if item.get('field_id') in fields:continue
+        if item.get('field_id') in ('b27_item','b28_item') or '类别' in str(item.get('message','')):
+            item['legacy_field_id']=item.get('field_id');item['field_id']=dynamic['id'];item['target_block']=dynamic.get('block')
+    return definition
+
 def record_dispositions(definition,questions,metadata,entries):
     available=status_for(definition,questions,metadata)
     allowed={('opinion',row['id']) for row in available['opinions']['items']}|{('business',row['id']) for row in available['business']['items']}

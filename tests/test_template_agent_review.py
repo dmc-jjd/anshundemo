@@ -1,5 +1,12 @@
 import pytest
-from app.template_agent_review import status_for, record_dispositions
+from app.template_agent_review import status_for, record_dispositions, normalize_review_targets
+
+def test_legacy_category_review_points_to_dynamic_field():
+    definition={'fields':[{'id':'numbered_items_1','category_coverage_scope':'negative_warning_events','block':19}],
+                'human_review_items':[{'field_id':'b28_item','message':'类别条目超过10项'}]}
+    result=normalize_review_targets(definition)
+    assert result['human_review_items'][0]['field_id']=='numbered_items_1'
+    assert result['human_review_items'][0]['target_block']==19
 
 def fixture():
     return {'fields':[{'id':'a'}],'blocks':[],'rules':{},'human_review_items':[{'message':'检查分类数量','field_id':'a'}]}

@@ -522,7 +522,8 @@ def template_definition(task_id:str):
     from core.writing_contracts import resolve as writing_contract
     try:contract=writing_contract(definition,store.package_of(task_id) if hasattr(store,'package_of') else state.package,ref)
     except (ValueError,TypeError) as exc:raise HTTPException(422,'writing_contract_invalid: '+str(exc))
-    from .template_agent_review import status_for
+    from .template_agent_review import status_for,normalize_review_targets
+    definition=normalize_review_targets(definition)
     agent_review=status_for(definition,questions,state.metadata)
     definition={**definition,'agent_review_status':agent_review}
     return {'revision':state.revision,'artifact_ref':ref,'definition':definition,
