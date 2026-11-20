@@ -221,7 +221,9 @@ function renderWritingGroupBadges(container,groups){for(const chip of container.
 async function openTemplate(id){
  openDialog('预览并确认模板');$('#dialogBody').textContent='正在载入模板…';
  const x=await api(`/api/templates/${id}/definition`),t=await api('/api/tasks/'+id);
- templateEditor={id,revision:x.revision,candidateRef:x.artifact_ref,definition:x.definition,writingContract:x.writing_contract,changes:{},resolutions:{},confirmed:!!t.metadata.confirmed_template_ref};
+ // The task list intentionally redacts internal confirmation refs. Use the
+ // authoritative definition status/phase so an unconfirmed V3 candidate stays editable.
+ templateEditor={id,revision:x.revision,candidateRef:x.artifact_ref,definition:x.definition,writingContract:x.writing_contract,changes:{},resolutions:{},confirmed:x.definition.status==='confirmed_by_human'||t.phase==='template_confirmed'};
  const body=$('#dialogBody');body.replaceChildren();if(templateEditor.definition.revision_source)body.append(node('p','本候选由已确认模板派生；本次未重新调用模型。请审阅本轮修订后亲自确认。',{class:'template-agent-review-status'}));const tabs=node('div',null,{class:'review-tabs'}),view=node('div');
  const preview=()=>{view.replaceChildren();renderDocument(x.definition,view,null,editField);renderWritingGroupBadges(view,x.writing_contract?.groups||[]);window.TemplateDraft?.mount({taskId:id,container:view,onField:editField,onRevision:r=>{templateEditor.revision=r},confirmed:templateEditor.confirmed})};
  tabs.append(button(x.model_review_validated?'模型研判后模板':'历史本地候选',preview),button(`${x.definition.source_reports.length} 份来源报告`,async()=>{view.replaceChildren(node('p','正在载入全部来源…'));const sources=await api(`/api/templates/${id}/sources`);view.replaceChildren();for(const source of sources){const d=node('details');d.append(node('summary',source.name));const paper=node('div',null,{class:'report-paper'});source.blocks.forEach(b=>paper.append(node('p',b.text)));d.append(paper);view.append(d)}}));
