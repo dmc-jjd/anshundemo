@@ -159,6 +159,8 @@ def test_revision_candidate_allows_field_edit(tmp_path, monkeypatch):
         assert saved.json()['field']['semantic'] == 'V3候选人工编辑'
 
 
+
+
 def test_confirmed_version_and_bad_patches_are_rejected_explicitly(tmp_path, monkeypatch):
     store, _ = _store(tmp_path, monkeypatch)
     with TestClient(main.app) as client:

@@ -59,6 +59,8 @@ def edit_template_candidate_field(task_id: str, field_id: str, req: TemplateFiel
         except DraftError as exc:
             raise HTTPException(exc.status, exc.code)
         state.metadata['manual_template_draft_ref'] = store.put_artifact(task_id, DRAFT_KIND, updated)
+        from .template_agent_review import rebase_addressed_dispositions
+        rebase_addressed_dispositions(definition_view(base, updated), state.metadata)
         store.put_task(state, state.revision)
         store.append_event(task_id, {'type': 'template_field_edited', 'field': field_id,
                                     'changed': sorted(patch), 'draft_ref': state.metadata['manual_template_draft_ref']})
