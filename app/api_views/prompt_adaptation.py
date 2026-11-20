@@ -37,17 +37,31 @@ def prompt_status(package, templates):
         error = str(exc)
         record = {}
     entries = {x.get('template_ref'): x for x in record.get('templates', [])}
+    # A package has one active prompt bundle version. The most recent confirmed
+    # template recorded against the current digest is the only template that is
+    # considered adapted; every other confirmed template needs rematching.
+    active_ref = None
+    active_at = None
+    for ref, entry in entries.items():
+        if entry.get('status') != 'adapted' or entry.get('bundle_digest') != digest or not entry.get('adapted_at'):
+            continue
+        try:
+            stamp = datetime.fromisoformat(str(entry['adapted_at']).replace('Z', '+00:00'))
+        except ValueError:
+            continue
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=timezone.utc)
+        if active_at is None or stamp > active_at:
+            active_ref, active_at = ref, stamp
     items = []
     for template in templates:
         if template.get('status') not in ('confirmed_by_human', 'confirmed'):
             continue
         entry = entries.get(template['id'], {})
-        status = entry.get('status', 'unrecorded')
-        if status == 'adapted':
-            status = ('adapted' if entry.get('bundle_digest') == digest and entry.get('adapted_at') else 'stale')
-        if status not in ('adapted', 'stale', 'pending', 'unrecorded'):status = 'unrecorded'
+        status = 'adapted' if template['id'] == active_ref else 'needs_rematch'
         items.append({'template_ref': template['id'], 'name': template.get('name', template['id']),
-                      'status': status, 'adapted_at': entry.get('adapted_at'), 'note': entry.get('note', '')})
+                      'status': status, 'adapted_at': entry.get('adapted_at') if status == 'adapted' else None,
+                      'note': entry.get('note', '') if status == 'needs_rematch' else ''})
     files = [p for p in directory.rglob('*') if p.is_file() and p.name != 'adaptation.json']
     updated = max((p.stat().st_mtime for p in files), default=None)
     return {'package': package, 'bundle_digest': digest,

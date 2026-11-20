@@ -109,10 +109,10 @@ async function loadPromptStatus(package=currentWorkbenchPackage()){
   host.replaceChildren(intro);
   host.append(node('p','客户包内提示词共用；模板确认后，仍需完成提示词适配并记录。',{class:'aux'}));
   if(data.record_error)host.append(node('p','适配记录无法读取，请检查 prompts/adaptation.json。',{class:'notice'}));
-  const labels={adapted:'已适配',pending:'待适配',stale:'提示词已变化，待复核',unrecorded:'适配记录缺失'};
+  const labels={adapted:'已适配',needs_rematch:'提示词已变化，需重新匹配'};
   for(const t of data.templates||[]){
    const row=node('article',null,{class:'prompt-template'}),head=node('div',null,{class:'prompt-template-head'});
-   head.append(node('strong',t.name),node('span',labels[t.status]||labels.unrecorded,{class:'pill '+(t.status==='adapted'?'ok':'warn')}));
+   head.append(node('strong',t.name),node('span',labels[t.status]||labels.needs_rematch,{class:'pill '+(t.status==='adapted'?'ok':'warn')}));
    row.append(head,node('p','适用模板 ID：'+t.template_ref,{class:'prompt-template-id'}),node('p','适配时间：'+promptTime(t.adapted_at),{class:'aux'}));
    if(t.note)row.append(node('p',t.note,{class:'aux'}));host.append(row);
   }

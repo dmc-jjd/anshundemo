@@ -15,7 +15,7 @@ def test_missing_history_does_not_invent_generation_time(tmp_path,monkeypatch):
     setup_package(tmp_path,monkeypatch)
     result=subject.prompt_status('test',[{'id':'template_version-a','name':'report','status':'confirmed_by_human'}])
     assert result['generated_at'] is None and result['files_updated_at']
-    assert result['templates'][0]['status']=='unrecorded'
+    assert result['templates'][0]['status']=='needs_rematch'
 
 
 def test_adaptation_changes_when_effective_prompts_change(tmp_path,monkeypatch):
@@ -26,10 +26,10 @@ def test_adaptation_changes_when_effective_prompts_change(tmp_path,monkeypatch):
     (tmp_path/'prompts'/'adaptation.json').write_text(json.dumps(record))
     templates=[{'id':'template_version-a','name':'old','status':'confirmed_by_human'}, {'id':'template_version-b','name':'new','status':'confirmed_by_human'}]
     result=subject.prompt_status('test',templates)
-    assert [x['status'] for x in result['templates']]==['adapted','unrecorded']
+    assert [x['status'] for x in result['templates']]==['adapted','needs_rematch']
     bundle['prompts']['writer.general']='changed text'
     result=subject.prompt_status('test',templates)
-    assert result['templates'][0]['status']=='stale'
+    assert result['templates'][0]['status']=='needs_rematch'
     assert result['generated_at'] is None
 
 
@@ -38,10 +38,19 @@ def test_pending_record_and_corrupt_metadata_are_visible(tmp_path,monkeypatch):
     record={'schema_version':1,'templates':[{'template_ref':'v-new','status':'pending','note':'提示词尚未更新'}]}
     path=tmp_path/'prompts'/'adaptation.json';path.write_text(json.dumps(record))
     templates=[{'id':'v-new','status':'confirmed_by_human'}]
-    assert subject.prompt_status('test',templates)['templates'][0]['status']=='pending'
+    assert subject.prompt_status('test',templates)['templates'][0]['status']=='needs_rematch'
     path.write_text('{broken')
     result=subject.prompt_status('test',templates)
-    assert result['record_error'] and result['templates'][0]['status']=='unrecorded'
+    assert result['record_error'] and result['templates'][0]['status']=='needs_rematch'
+
+def test_only_latest_template_uses_active_prompt_version(tmp_path,monkeypatch):
+    bundle=setup_package(tmp_path,monkeypatch); digest=subject.bundle_digest(bundle)
+    record={'schema_version':1,'bundle_digest':digest,'templates':[
+        {'template_ref':'old','status':'adapted','adapted_at':'2026-11-19T01:00:00+00:00','bundle_digest':digest},
+        {'template_ref':'new','status':'adapted','adapted_at':'2026-11-20T01:00:00+00:00','bundle_digest':digest}]}
+    (tmp_path/'prompts'/'adaptation.json').write_text(json.dumps(record))
+    result=subject.prompt_status('test',[{'id':'old','name':'旧','status':'confirmed_by_human'},{'id':'new','name':'新','status':'confirmed_by_human'}])
+    assert [x['status'] for x in result['templates']]==['needs_rematch','adapted']
 
 
 def test_endpoint_uses_selected_package(monkeypatch,tmp_path):
