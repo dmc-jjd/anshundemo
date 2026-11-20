@@ -1,5 +1,5 @@
 import pytest
-from app.template_agent_review import status_for, record_dispositions, normalize_review_targets
+from app.template_agent_review import status_for, record_dispositions, normalize_review_targets, rebase_addressed_dispositions
 
 def test_legacy_category_review_points_to_dynamic_field():
     definition={'fields':[{'id':'numbered_items_1','category_coverage_scope':'negative_warning_events','block':19}],
@@ -7,6 +7,13 @@ def test_legacy_category_review_points_to_dynamic_field():
     result=normalize_review_targets(definition)
     assert result['human_review_items'][0]['field_id']=='numbered_items_1'
     assert result['human_review_items'][0]['target_block']==19
+
+def test_addressed_opinion_survives_user_candidate_edit():
+    definition=fixture();metadata={};item=status_for(definition,[],metadata)['opinions']['items'][0]
+    record_dispositions(definition,[],metadata,[{'kind':'opinion','id':item['id'],'status':'addressed','note':'已处理','evidence':'字段 a'}])
+    definition['fields'].append({'id':'user_added','owner':'writer'})
+    rebase_addressed_dispositions(definition,metadata)
+    assert status_for(definition,[],metadata)['opinions']['addressed']==1
 
 def fixture():
     return {'fields':[{'id':'a'}],'blocks':[],'rules':{},'human_review_items':[{'message':'检查分类数量','field_id':'a'}]}

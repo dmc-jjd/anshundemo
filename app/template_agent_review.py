@@ -50,3 +50,12 @@ def record_dispositions(definition,questions,metadata,entries):
         if entry['status']=='addressed' and not entry.get('evidence','').strip():raise ValueError('review_disposition_evidence_required')
         saved[entry['kind']+':'+entry['id']]={**entry,'definition_hash':_fingerprint(definition),'updated_at':datetime.now(timezone.utc).isoformat()}
     metadata['agent_review_dispositions']=saved
+
+def rebase_addressed_dispositions(definition,metadata):
+    """Keep completed agent opinions completed when a user edits the candidate draft."""
+    saved=metadata.get('agent_review_dispositions') or {}
+    if not saved:return
+    fingerprint=_fingerprint(definition)
+    for key,record in saved.items():
+        if isinstance(record,dict) and record.get('kind')=='opinion' and record.get('status')=='addressed':
+            record['definition_hash']=fingerprint

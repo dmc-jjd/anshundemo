@@ -508,6 +508,8 @@ def _save(store, state, base_ref: str, base_definition: dict, log: list[dict]) -
     previous = current_draft(store, state)
     draft = rebuild(base_definition, log, base_ref, (previous or {}).get('field_edits'))
     state.metadata['manual_template_draft_ref'] = store.put_artifact(state.id, DRAFT_KIND, draft)
+    from .template_agent_review import rebase_addressed_dispositions
+    rebase_addressed_dispositions(definition_view(base_definition,draft), state.metadata)
     store.put_task(state, state.revision)
     return draft
 

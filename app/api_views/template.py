@@ -124,6 +124,8 @@ def apply_definition_patch(store, state, req):
     try:resolve(definition_view(candidate,rebased))
     except (ValueError,TypeError) as exc:return (422,str(exc)),None
     state.metadata['structured_template_ref']=store.put_artifact(state.id,'structured_template_candidate',candidate)
+    from ..template_agent_review import rebase_addressed_dispositions
+    rebase_addressed_dispositions(candidate, state.metadata)
     if rebased is not None:
         rebased['base_ref'] = state.metadata['structured_template_ref']
         state.metadata['manual_template_draft_ref'] = store.put_artifact(state.id, DRAFT_KIND, rebased)
