@@ -453,6 +453,7 @@
     head.append(node('strong', `模型终审参考意见 ${items.length} 条`));
     head.append(node('span', '这些是模型的参考意见，可忽略，不要求逐条处理。', { class: 'td-advice-readonly' }));
     panel.append(head);
+    panel.append(window.TemplateAgentReview.banner(definition.agent_review_status?.opinions || {total:items.length,addressed:0}));
     // 只分两级展示：重要（仅供参考，红）/ 建议（灰）。
     const groups = [
       { label: '重要（仅供参考）', cls: 'td-important', items: items.filter(item => item.severity === '重要') },
@@ -465,6 +466,8 @@
       const list = node('ul');
       for (const item of group.items) {
         const li = node('li');
+        const record=definition.agent_review_status?.opinions?.items?.find(r=>r.index===items.indexOf(item));
+        li.append(window.TemplateAgentReview.item(record));
         if (item.checklist) li.append(node('span', item.checklist, { class: 'td-advice-field' }));
         li.append(node('p', item.message || '', { class: 'td-advice-msg' }));
         const row = node('div', null, { class: 'td-advice-locate-row' });

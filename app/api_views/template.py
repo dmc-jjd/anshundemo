@@ -94,13 +94,20 @@ def apply_definition_patch(store, state, req):
     if any(set(patch)-{'display_name'} for patch in req.fields.values()):return (422,'semantic_changes_require_model_review'),None
     try:
         candidate=revise_candidate(store.get_artifact(ref),req.fields)
+        if getattr(req,'structural_changes',None) is not None:
+            from ..template_compare import parse_report_document
+            from ..template_structure_edits import apply_structure_edits
+            documents=[parse_report_document(s['path']) for s in candidate['source_reports']]
+            if any(d['sha256']!=s['sha256'] for d,s in zip(documents,candidate['source_reports'])):
+                return (422,'structure_source_hash_mismatch'),None
+            candidate=apply_structure_edits(candidate,req.structural_changes,documents)
         if req.chart_styles is not None:
             from ..chart_spec import with_styles
             candidate=with_styles(candidate,req.chart_styles)
         if req.rules is not None:
             candidate['rules']=rules_for_features(req.rules,candidate.get('rules'))
         if getattr(req,'writing_groups',None) is not None:
-            candidate.setdefault('rules',{})['writing_groups']=req.writing_groups
+            candidate['rules']={**(candidate.get('rules') or {}),'writing_groups':req.writing_groups}
         from core.writing_contracts import resolve
     except ValueError as exc: return (422,str(exc)),None
     from ..template_draft import current_draft, rebuild, _log_entries, DRAFT_KIND, DraftError
@@ -191,6 +198,10 @@ def rules_for_features(rules, stored=None):
         for key in rule['rules']:
             result.pop(key, None)
     result['features'] = features
+    for key in ('forecast_month_count','optional_field_groups'):
+        if key in effective:result[key]=copy.deepcopy(effective[key])
+        elif isinstance(stored,dict) and key in stored:result[key]=copy.deepcopy(stored[key])
+    if 'forecast_month_count' in result and (type(result['forecast_month_count']) is not int or not 1<=result['forecast_month_count']<=12):raise ValueError('invalid_forecast_month_count')
     if 'writing_groups' in effective:
         from core.writing_contracts import WritingGroup
         result['writing_groups']=[WritingGroup.model_validate(g).model_dump() for g in effective['writing_groups']]
@@ -480,6 +491,10 @@ def confirm_candidate(store, state, req):
     manual_source=validation.get('source')==MANUAL_SOURCE
     if manual_source and manual is None:return (409,'template_semantic_review_required'),None
     policy=MANUAL_POLICY_VERSION if manual_source else POLICY_VERSION
+    if validation.get('source')=='confirmed_template_revision':
+        from ..template_revision import REVISION_POLICY,valid_revision_source
+        if not valid_revision_source(store,state,candidate):return (409,'invalid_revision_source'),None
+        policy=REVISION_POLICY
     if (validation.get('validation')!='passed' or validation.get('candidate_hash')!=digest(candidate)
         or validation.get('candidate_ref')!=req.candidate_ref or validation.get('policy_version')!=policy
         or validation.get('input_ref')!=state.metadata.get('template_input_ref')

@@ -118,7 +118,7 @@ def _schema(fields,writer_only=False):
             'required':['value','source_refs']}
     schema={'$schema':'https://json-schema.org/draft/2020-12/schema',
             'type':'object','additionalProperties':False,'properties':properties}
-    if not writer_only:schema['required']=list(properties)
+    if not writer_only:schema['required']=[f['id'] for f in fields if not f.get('optional')]
     return schema
 
 def build_structured_template(documents:list[dict],comparison_ref:str)->dict:
@@ -177,11 +177,19 @@ def build_structured_template(documents:list[dict],comparison_ref:str)->dict:
     payload['id']='structured-'+hashlib.sha256(json.dumps(payload,sort_keys=True,ensure_ascii=False).encode()).hexdigest()[:20]
     return payload
 
+def block_is_omitted(block,values):
+    keys=[p['field'] for p in block.get('parts',[]) if p.get('field')]
+    return bool(block.get('optional') and keys and all(not str(values.get(k,{}).get('value') or '').strip() for k in keys))
+
 def validate_values(template:dict,values:dict,allowed_refs:set[str],writer_only=False,require_complete=False)->None:
     schema=copy.deepcopy(template['writer_schema' if writer_only else 'output_schema'])
     if not require_complete:schema.pop('required',None)
     Draft202012Validator(schema).validate(values)
     fields={f['id']:f for f in template['fields']}
+    if require_complete:
+        for group in template.get('rules',{}).get('optional_field_groups',[]):
+            present=[bool(str(values.get(k,{}).get('value') or '').strip()) for k in group]
+            if any(present) and not all(present):raise ValueError('optional_group_incomplete')
     for key,answer in values.items():
         if not set(answer['source_refs'])<=allowed_refs: raise ValueError('invalid_template_source_ref')
         if '{{' in str(answer['value']): raise ValueError('nested_template_marker')
@@ -323,6 +331,7 @@ def render_structured_docx(template:dict,values:dict,allowed_refs:set[str],requi
         root=ET.fromstring(zin.read('word/document.xml'));body=root.find(W+'body')
         original=list(body)
         _render_omissions(template,body,original,W)
+        original=dict(enumerate(original))
         charts=charts or {};chart_files={}
         rel_path='word/_rels/document.xml.rels'
         rels=ET.fromstring(zin.read(rel_path)) if rel_path in zin.namelist() else ET.Element('{http://schemas.openxmlformats.org/package/2006/relationships}Relationships')
@@ -400,6 +409,10 @@ def render_structured_docx(template:dict,values:dict,allowed_refs:set[str],requi
                 insert_cursors[after]=new_el
         for block in template['blocks']:
             element=original[block['index']]
+            if block_is_omitted(block,values):
+                parent=element.getparent()
+                if parent is not None:parent.remove(element)
+                continue
             if block.get('unmatched'):
                 set_text(element,'{{UNMATCHED_BLOCK_'+str(block['index'])+'}}')
                 continue
@@ -433,12 +446,15 @@ def render_structured_docx(template:dict,values:dict,allowed_refs:set[str],requi
                     element.append(row)
             elif block.get('unmatched'):
                 set_text(element,'{{UNMATCHED_BLOCK_'+str(block['index'])+'}}')
-            elif block.get('insert_after_index') is not None:
+            elif block.get('insert_after_index') is not None or block.get('render_rebuild'):
                 chunks=[];missing=False
                 for part in block['parts']:
                     if 'text' in part:chunks.append(part['text']);continue
                     key=part['field']
-                    if key in values:chunks.append(str(values[key]['value']))
+                    if key in values:
+                        value=str(values[key]['value'])
+                        if block.get('optional') and not value.strip():missing=True;break
+                        chunks.append(value)
                     elif block.get('optional'):missing=True;break
                     else:chunks.append('{{'+key+'}}')
                 if missing:

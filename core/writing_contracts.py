@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 class WritingGroup(BaseModel):
@@ -15,6 +16,9 @@ class WritingGroup(BaseModel):
     example_bindings:dict[str,str]=Field(default_factory=dict)
     event_list_fields:list[str]=Field(default_factory=list)
     allow_external_research:bool=False
+    context_scope:Literal['all_records','confirmed_events','warning_events','negative_warning_events']|None=None
+    count_unit:Literal['events','records']='events'
+    include_statistics:bool=True
 
 class WritingContract(BaseModel):
     model_config=ConfigDict(extra='forbid')
@@ -47,6 +51,8 @@ def validate_contract(raw,fields):
 
 def resolve(template,package=None,template_ref=None):
     fields={f['id']:f for f in template.get('fields',[])}
+    for group in (template.get('rules') or {}).get('optional_field_groups',[]):
+        if not isinstance(group,list) or len(group)<2 or len(group)!=len(set(group)) or any(k not in fields or not fields[k].get('optional') for k in group):raise ValueError('invalid_optional_field_group')
     raw={'groups':(template.get('rules') or {}).get('writing_groups',[])}
     if package:
         from .packages.registry import load

@@ -140,7 +140,9 @@ def render_analysis(plan,allowed,package=None):
 def forecast_window(report):
     year,month=map(int,report.parameters()['report_month'].split('-'))
     periods=[]
-    for offset in (1,2):
+    count=report.state.metadata.get('template_rules',{}).get('forecast_month_count',2) if getattr(report,'state',None) else 2
+    if type(count) is not int or not 1<=count<=12:raise ValueError('invalid_forecast_month_count')
+    for offset in range(1,count+1):
         index=year*12+month-1+offset;periods.append(f'{index//12:04}-{index%12+1:02}')
     package=_package_of(getattr(report,'store',None),getattr(getattr(report,'state',None),'id',None))
     region=_section_policy.region_name(_policy(package),package=package,fallback='')

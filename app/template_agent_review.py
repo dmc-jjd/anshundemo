@@ -1,0 +1,41 @@
+"""Evidence-backed agent notes; never confirms a template or resolves user decisions."""
+import copy
+import hashlib
+import json
+from datetime import datetime, timezone
+
+def _hash(value):
+    return hashlib.sha256(json.dumps(value,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
+
+def _fingerprint(definition):
+    return _hash({key:definition.get(key) for key in ('fields','blocks','rules','writer_schema')})
+
+def status_for(definition,questions,metadata):
+    fingerprint=_fingerprint(definition)
+    saved=metadata.get('agent_review_dispositions',{})
+    result={}
+    sources=[('opinions','opinion',definition.get('human_review_items') or []),('business','business',questions)]
+    for section,kind,items in sources:
+        rows=[]
+        for index,item in enumerate(items):
+            identity=_hash(item) if kind=='opinion' else item['id']
+            record=saved.get(kind+':'+identity,{})
+            current=record.get('definition_hash')==fingerprint
+            state=record.get('status','pending') if current else ('stale' if record else 'pending')
+            rows.append({'id':identity,'index':index,'status':state,'note':record.get('note',''),
+                         'evidence':record.get('evidence',''),'answer':record.get('answer','') if current else '',
+                         'updated_at':record.get('updated_at')})
+        result[section]={'total':len(rows),'addressed':sum(row['status']=='addressed' for row in rows),'items':rows}
+    return result
+
+def record_dispositions(definition,questions,metadata,entries):
+    available=status_for(definition,questions,metadata)
+    allowed={('opinion',row['id']) for row in available['opinions']['items']}|{('business',row['id']) for row in available['business']['items']}
+    saved=copy.deepcopy(metadata.get('agent_review_dispositions',{}))
+    for entry in entries:
+        if (entry['kind'],entry['id']) not in allowed:raise ValueError('unknown_review_disposition')
+        if entry['status'] not in ('addressed','pending','needs_user'):raise ValueError('invalid_review_disposition_status')
+        if not entry.get('note','').strip():raise ValueError('review_disposition_note_required')
+        if entry['status']=='addressed' and not entry.get('evidence','').strip():raise ValueError('review_disposition_evidence_required')
+        saved[entry['kind']+':'+entry['id']]={**entry,'definition_hash':_fingerprint(definition),'updated_at':datetime.now(timezone.utc).isoformat()}
+    metadata['agent_review_dispositions']=saved

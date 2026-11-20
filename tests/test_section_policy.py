@@ -168,7 +168,14 @@ def test_ruyuan_package_config_if_present():
     cfg = template["section_two"]
     assert cfg["field_roles"]["numbered_items_1"] == "general"
     assert cfg["field_roles"]["b46_risk_tip_1"] == "outlook"
-    assert cfg["outlook_fields"] == ["b46_risk_tip_1", "b47_risk_tip_2", "b48_risk_tip_3", "b49_risk_tip_4", "b50_risk_tip_5"]
+    legacy = ["b46_risk_tip_1", "b47_risk_tip_2", "b48_risk_tip_3", "b49_risk_tip_4", "b50_risk_tip_5"]
+    current = ["b46_risk1", "b47_risk2", "b48_risk3", "b49_risk4", "b50_risk5"]
+    ordered = section_policy.outlook_field_ids(cfg)
+    assert len(ordered) == len(set(ordered))
+    assert set(ordered) == set(legacy + current)
+    for template_fields in (legacy, current):
+        assert [key for key in ordered if key in template_fields] == template_fields
+        assert all(role({"id": key}, policy=cfg) == "outlook" for key in template_fields)
     assert cfg["locality_evidence"]["from_vocabulary"] is True
     assert "乳源" in cfg["locality_evidence"]["region"] or "示例" in cfg["locality_evidence"]["region"]
     manifest = yaml.safe_load((pkg / "manifest.yaml").read_text(encoding="utf-8-sig"))

@@ -15,6 +15,12 @@ window.WritingGroups = (() => {
         const instruction=el('textarea');instruction.rows=3;instruction.value=group.instruction||'';instruction.placeholder='共同主题、材料范围和一致性要求';instruction.setAttribute('aria-label','关联组写作要求');instruction.disabled=readonly;
         instruction.oninput=()=>group.instruction=instruction.value;card.append(instruction);
         const members=el('div');members.className='writing-group-members';
+        const selected=fields.filter(f=>Object.hasOwn(group.members,f.id));
+        card.append(el('p',`本组已关联 ${selected.length} 个字段`));
+        if(!selected.length)members.append(el('p','尚未关联字段，请展开下方“添加其他字段”选择。'));
+        const available=el('details');available.className='writing-group-available';
+        available.append(el('summary','添加其他字段'));
+        const candidates=el('div');candidates.className='writing-group-candidates';available.append(candidates);
         for(const field of fields.filter(f=>!readonly||Object.hasOwn(group.members,f.id))) {
           const row=el('div');const label=el('label');const check=el('input');check.type='checkbox';check.checked=Object.hasOwn(group.members,field.id);check.disabled=readonly;
           label.append(check,document.createTextNode(field.display_name||field.id));row.append(label);
@@ -22,10 +28,12 @@ window.WritingGroups = (() => {
           for(const [value,name] of Object.entries(choices)){const option=el('option',name);option.value=value;role.append(option);}
           role.value=current||'other';role.disabled=readonly||!check.checked;role.setAttribute('aria-label',(field.display_name||field.id)+'的组内角色');
           role.onchange=()=>{group.members[field.id]=role.value;};
-          check.onchange=()=>{if(check.checked)group.members[field.id]=role.value;else delete group.members[field.id];role.disabled=!check.checked;};row.append(role);
-          const locate=el('button','查看字段');locate.type='button';locate.className='btn ghost sm';locate.onclick=()=>onField?.(field);row.append(locate);members.append(row);
+          check.onchange=()=>{if(check.checked)group.members[field.id]=role.value;else delete group.members[field.id];draw();};row.append(role);
+          const locate=el('button','查看字段');locate.type='button';locate.className='btn ghost sm';locate.onclick=()=>onField?.(field);row.append(locate);
+          (check.checked?members:candidates).append(row);
         }
         card.append(members);
+        if(!readonly&&candidates.childNodes.length)card.append(available);
         if(!readonly){const remove=el('button','移除此组');remove.type='button';remove.className='btn ghost';remove.onclick=()=>{draft.splice(index,1);draw();};card.append(remove);}
         host.append(card);
       }

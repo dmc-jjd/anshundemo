@@ -81,3 +81,8 @@ class OutlookRepairState:
             'fact_ref': fact_ref, 'template_ref': template_ref,
             'status': 'writer_source_pending' if source_only else 'writer_validation_pending',
         }
+def split_outlook_fields(ids,texts,refs,fields):
+    """Keep optional trailing paragraphs empty instead of merging a list into field one."""
+    if not ids or len(texts)>len(ids):return None
+    if any(not fields[key].get('optional') for key in ids[len(texts):]):return None
+    return {key:{'value':texts[index] if index<len(texts) else '', 'source_refs':list(refs)} for index,key in enumerate(ids)}

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "templates": [
+    {
+      "template_ref": "template_version-4c7860e7b7e3d204c6d8",
+      "status": "adapted",
+      "adapted_at": "2026-11-19T10:39:31.035331+00:00",
+      "bundle_digest": "e31bea1adc45a0658a57f72fa6d841be2b92dcf8a671cb44976ca92ce6a39ad3"
+    }
+  ],
+  "generated_at": "2026-11-19T10:37:33.014092+00:00",
+  "bundle_digest": "e31bea1adc45a0658a57f72fa6d841be2b92dcf8a671cb44976ca92ce6a39ad3"
+}

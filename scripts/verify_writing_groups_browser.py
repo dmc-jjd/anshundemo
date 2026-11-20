@@ -113,6 +113,13 @@ def verify():
                 wait_for('window.savedGroups?.[0]?.label === "更新后的主题组"')
                 evaluate('[...document.querySelectorAll("button")].find(b=>b.textContent==="查看字段").click()')
                 assert evaluate('window.locatedField') == 'a'
+                evaluate('window.groupFields.push({id:"month",display_name:"标题月份",owner:"data"}); mountGroup()')
+                assert evaluate('document.querySelectorAll(".writing-group-members > div").length') == 2
+                assert evaluate('document.querySelector(".writing-group-available").open') is False
+                evaluate('const candidate=document.querySelector(".writing-group-candidates input[type=checkbox]"); candidate.checked=true;candidate.dispatchEvent(new Event("change"))')
+                assert evaluate('document.querySelectorAll(".writing-group-members > div").length') == 3
+                evaluate('const member=[...document.querySelectorAll(".writing-group-members > div")].find(r=>r.querySelector("label").textContent==="标题月份").querySelector("input");member.checked=false;member.dispatchEvent(new Event("change"))')
+                assert evaluate('document.querySelectorAll(".writing-group-members > div").length') == 2
                 evaluate('mountGroup(true)')
                 assert evaluate('[...document.querySelectorAll("input,textarea,select")].every(n=>n.disabled)')
                 assert evaluate('[...document.querySelectorAll("button")].every(b=>b.textContent!=="保存字段关联")')

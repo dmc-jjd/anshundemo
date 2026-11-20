@@ -139,7 +139,8 @@ def test_adaptation_digest_includes_package_writing_contract(tmp_path):
     assert package_digest(package)!=first
 
 
-def test_candidate_group_api_saves_and_rejects_missing_members(tmp_path,monkeypatch):
+@pytest.mark.parametrize('initial_rules',[{},None])
+def test_candidate_group_api_saves_and_rejects_missing_members(tmp_path,monkeypatch,initial_rules):
     from fastapi.testclient import TestClient
     import app.main as main
     from test_template_name_and_field_edit import _store,_create_task
@@ -153,6 +154,7 @@ def test_candidate_group_api_saves_and_rejects_missing_members(tmp_path,monkeypa
         import copy
         from app.structured_template import _schema
         definition=store.get_artifact(state.metadata['structured_template_ref'])
+        definition['rules']=initial_rules
         new=copy.deepcopy(fs[0]);new['id']='related_background';new['owner']='writer'
         definition['fields'].append(new)
         definition['blocks'].append({'index':999,'kind':'paragraph','parts':[{'field':new['id']}]})

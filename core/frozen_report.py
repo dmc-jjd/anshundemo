@@ -23,10 +23,13 @@ class Calculation(BaseModel):
     metric:Literal['count','scaled_count','sentiment_count','sentiment_percentage','warning_percentage','peak_date',
                    'category_names','category_statistics','leading_category','platform_names','platform_statistics',
                    'platform_count','platform_source_detail','period_start','period_end','record_table',
-                   'county_statistics','report_month','report_year','next_month','issue_number','publish_month','publish_day','publish_year','top10','constant',
+                   'county_statistics','report_month','report_year','next_month','forecast_period','issue_number','publish_month','publish_day','publish_year','top10','constant',
                    'peak_count','source_statistics','filtered_record_count','distinct_source_count','distinct_organization_count','organization_names','selected_material_count','parameterized_table']
     scope:Literal['all_records','confirmed_events','warning_events','negative_warning_events']='all_records'
     sentiment:Literal['正面','中性','负面']|None=None
+    count_unit:Literal['events','records']='events'
+    missing_heat:str=Field(default='',max_length=20)
+    forecast_month_count:int=Field(default=2,ge=1,le=12)
     limit:int=Field(default=6,ge=1,le=20)
     precision:int=Field(default=2,ge=0,le=4)
     include_day_suffix:bool=False
@@ -48,10 +51,12 @@ class Calculation(BaseModel):
 
     @model_validator(mode='after')
     def validate_extension(self):
-        if self.deduplicate_selection and self.metric!='selected_material_count':raise ValueError('deduplicate_selection 仅供选题计数使用。')
-        if self.selection_title_terms and (self.metric!='selected_material_count' or any(not s.strip() for s in self.selection_title_terms)):
+        if self.count_unit!='events' and self.metric not in ('category_names','category_statistics','leading_category'):raise ValueError('count_unit 仅供类别统计使用。')
+        if self.missing_heat and self.metric!='record_table':raise ValueError('missing_heat 仅供记录表使用。')
+        if self.deduplicate_selection and self.metric not in ('selected_material_count','record_table'):raise ValueError('deduplicate_selection 仅供选题计数或记录表使用。')
+        if self.selection_title_terms and (self.metric not in ('selected_material_count','record_table') or any(not s.strip() for s in self.selection_title_terms)):
             raise ValueError('selection_title_terms 仅供 selected_material_count 使用且词项非空。')
-        if self.selection_terms and (self.metric!='selected_material_count' or any(not group or any(not s.strip() for s in group) for group in self.selection_terms)):
+        if self.selection_terms and (self.metric not in ('selected_material_count','record_table') or any(not group or any(not s.strip() for s in group) for group in self.selection_terms)):
             raise ValueError('selection_terms 仅供 selected_material_count 使用，条件组不能为空。')
         if self.organization_aliases and self.metric not in ('distinct_organization_count','organization_names'):
             raise ValueError('organization_aliases 仅供机构统计使用。')
@@ -89,6 +94,7 @@ CALCULATION_CATALOG={
  'county_statistics':'指定事件范围按冻结属地识别结果计数；跨区/不明单列，分母为该范围全部事件',
  'report_month':'任务报告统计月份', 'report_year':'任务报告统计年份',
  'next_month':'任务报告统计月份的下一个月，12 月之后为 1 月',
+ 'forecast_period':'统计月之后forecast_month_count个月的范围；同年返回11—12，跨年返回带年份月份的完整范围',
  'issue_number':'任务显式提供的期号，不从历史报告猜测',
  'publish_month':'任务显式成文日期的月份','publish_day':'任务显式成文日期的日','publish_year':'任务显式成文日期的年份',
  'top10':'冻结的负面且预警事件TOP10，事件内符合条件记录数，不是星级',
@@ -161,7 +167,13 @@ class FrozenReport:
     def warning_scope(self):
         rules=self.state.metadata.get('template_rules',{})
         return 'warning_events' if rules.get('first_warning_scope')=='warning' else 'confirmed_events'
-    def categories_for(self,scope='confirmed_events'):
+    def categories_for(self,scope='confirmed_events',count_unit='events'):
+        if count_unit not in ('events','records'):raise ValueError('invalid_category_count_unit')
+        if count_unit=='records':
+            rows=self.records_for(scope)
+            if self.classification_enabled and any(r['id'] not in self.categories for r in rows):
+                raise MissingReportInput('已确认原始记录缺少分类，不可用未分类补齐。')
+            return dict(sorted(Counter(self.categories.get(r['id'],'未分类') for r in rows).items(),key=lambda x:(-x[1],x[0])))
         counts=Counter()
         for g in self.events(scope):
             if self.record_mode and self.classification_enabled and any(rid not in self.categories for rid in g['member_ids']):
@@ -258,6 +270,12 @@ class FrozenReport:
         elif m.startswith('publish_'):
             if not p.get('publication_date'):raise MissingReportInput('缺少报告成文日期，请在报告参数中填写。')
             day=date.fromisoformat(p['publication_date']);value=str(getattr(day,{'publish_year':'year','publish_month':'month','publish_day':'day'}[m]))
+        elif m=='forecast_period':
+            if not p.get('report_month'):raise MissingReportInput('缺少报告统计月份。')
+            year,month=map(int,p['report_month'].split('-'))
+            periods=[divmod(year*12+month-1+offset,12) for offset in range(1,spec.forecast_month_count+1)]
+            start,end=periods[0],periods[-1]
+            value=(str(start[1]+1) if start==end else f'{start[1]+1}—{end[1]+1}') +'月' if start[0]==end[0] else f'{start[0]}年{start[1]+1}月—{end[0]}年{end[1]+1}月'
         elif m in ('report_month','report_year','next_month'):
             if not p.get('report_month'):raise MissingReportInput('缺少报告统计月份。')
             year,month=p['report_month'].split('-')
@@ -317,7 +335,14 @@ class FrozenReport:
         elif m=='record_table':
             level_rank={'中央':0,'央级':0,'全国':1,'省级':2,'市级':3,'区县级':4}
             unique=[];seen=set()
-            for row in self._scoped_records(spec):
+            rows=self._scoped_records(spec)
+            rows=[r for r in rows if all(any(term in ' '.join(str(r.get(k) or '') for k in ('title','summary')) for term in group) for group in spec.selection_terms)]
+            if spec.selection_title_terms:rows=[r for r in rows if any(term in str(r.get('title') or '') for term in spec.selection_title_terms)]
+            if spec.deduplicate_selection:
+                from .tools.dedup import group_by_representative
+                groups=group_by_representative(rows,spec.selection_dedup_threshold)['groups']
+                by_id={r['id']:r for r in rows};rows=[by_id[g['representative_id']] for g in groups]
+            for row in rows:
                 title=str(row.get('title') or '').strip()
                 if not title or title in seen:continue
                 seen.add(title);unique.append(row)
@@ -328,13 +353,13 @@ class FrozenReport:
             value=[]
             for index,row in enumerate(selected,1):
                 day=self._parse_published(row.get('published'))
-                heat=row.get('heat') or row.get('hot') or row.get('热度') or ''
+                heat=next((row[k] for k in ('heat','hot','热度') if row.get(k) is not None and str(row[k]).strip()),spec.missing_heat)
                 value.append([str(index),self._format_day(day,spec) if day else '',str(row.get('title') or ''),str(row.get('source') or ''),str(heat)])
         elif m in ('category_names','category_statistics','leading_category'):
-            counts=self.categories_for(spec.scope);denom=sum(counts.values())
+            counts=self.categories_for(spec.scope,spec.count_unit);denom=sum(counts.values());unit='条' if spec.count_unit=='records' or self.record_mode else '件'
             if not counts:raise MissingReportInput('缺少已确认的类别统计。')
             if m=='category_names':value='、'.join(list(counts)[:spec.limit])
-            elif m=='category_statistics':value='；'.join(f'{name}{n}件，占{pct(n,denom)}' for name,n in counts.items())
+            elif m=='category_statistics':value='；'.join(f'{name}{n}{unit}，占{pct(n,denom)}' for name,n in counts.items())
             else:
                 name,n=next(iter(counts.items()));value=f'{name}类信息占比约{pct(n,denom)}，占比较高'
         elif m=='county_statistics':
@@ -347,6 +372,12 @@ class FrozenReport:
         result={'value':value,'source_refs':[parameter_ref or self.fact_ref],'calculation':spec.model_dump(),'fact_ref':self.fact_ref}
         if selection is not None:result['selection']=selection
         return result
+    def scoped_summary(self,scope,count_unit='events'):
+        rows=self.records_for(scope);daily=self._daily_counts(rows)
+        return {'fact_ref':self.fact_ref,'report_parameters':self.parameters(),'scope':scope,'count_unit':count_unit,
+                'record_count':len(rows),'event_count':len(self.events(scope)) if scope!='all_records' else None,
+                'category_counts':self.categories_for(scope,count_unit) if scope!='all_records' else {},
+                'daily_count':daily,'peak_day':max(daily,key=daily.get) if daily else None}
     def summary(self):
         warning_rows=[r for r in self.records if self.warned(r)]
         warning_counts={name:sum(r.get('sentiment')==name for r in warning_rows) for name in ('正面','中性','负面')}
@@ -362,7 +393,8 @@ class FrozenReport:
                 'peak_day':self.metrics.get('peak_day'),'confirmed_event_count':len(self.statistical_units),
                 'warning_scope':self.warning_scope(),'warning_record_statistics':warning_stats,
                 'category_event_counts':self.categories_for() if self.statistical_units else {},
-                'county_event_counts':self.counties_for() if self.statistical_units else {},
+                'county_event_counts':self.counties_for() if self.refs.get('resolve_locality') and self.statistical_units else {},
+                'locality_status':'available' if self.refs.get('resolve_locality') else 'not_enabled',
                 'county_basis':'冻结属地识别的唯一候选；跨区及不明单列，不推测归属',
                 'writing_calculations':self.writing_contract.get('calculations',{}),
                 'top10':[{'rank':r['rank'],'summary':r['summary'],'negative_warning_count':r['negative_warning_count']} for r in self.facts.get('top10',[])]}
@@ -370,6 +402,11 @@ class FrozenReport:
 class MaterialQuery(BaseModel):
     model_config=ConfigDict(extra='forbid')
     focus:Literal['media','negative_events','all']='all'
+    scope:Literal['all_records','confirmed_events','warning_events','negative_warning_events']='all_records'
+    peak_scope:Literal['all_records','confirmed_events','warning_events','negative_warning_events']|None=None
+    selection_terms:list[list[str]]=Field(default_factory=list)
+    media_attributes:list[str]=Field(default_factory=list)
+    exclude_media_attributes:list[str]=Field(default_factory=list)
     date:str|None=None
     category:str|None=None
     keyword:str=''
@@ -382,9 +419,17 @@ class MaterialQuery(BaseModel):
 def query_materials(report,args):
     q=MaterialQuery.model_validate(args);positions={rid:g for g in report.statistical_units for rid in g['member_ids']}
     source_counts=Counter(r.get('source','') for r in report.records)
-    def is_media(r):return any(x in str(r.get('media_level','')) for x in ('中央','全国','省级','央级'))
+    def is_media(r):return (bool(q.media_attributes) and r.get('media_attribute') in q.media_attributes) or any(x in str(r.get('media_level','')) for x in ('中央','全国','省级','央级'))
     rows=[]
-    for r in report.records:
+    peak_date=None
+    if q.peak_scope:
+        daily=report._daily_counts(report.records_for(q.peak_scope))
+        peak_date=max(daily,key=daily.get) if daily else '__no_peak__'
+    for r in report.records_for(q.scope):
+        if peak_date and not str(r.get('published','')).startswith(peak_date):continue
+        if q.media_attributes and r.get('media_attribute') not in q.media_attributes:continue
+        if r.get('media_attribute') in q.exclude_media_attributes:continue
+        if not all(any(term in r['title']+' '+r.get('summary','') for term in group) for group in q.selection_terms):continue
         if q.focus=='media' and not is_media(r):continue
         if q.focus=='negative_events' and (r['id'] not in positions or r.get('sentiment')!='负面'):continue
         if q.date and not str(r.get('published','')).startswith(q.date):continue
@@ -393,6 +438,7 @@ def query_materials(report,args):
         if q.keyword and q.keyword not in r['title']+' '+r.get('summary',''):continue
         if any(word in r['title']+' '+r.get('summary','') for word in q.exclude_keywords):continue
         rows.append(r)
+    population={'record_count':len(rows),'sentiment_counts':dict(Counter(r.get('sentiment','未知') for r in rows)), 'scope':q.scope,'peak_date':peak_date}
     rows.sort(key=lambda r:(-int(is_media(r)),-len(positions.get(r['id'],{}).get('member_ids',[])),-source_counts[r.get('source','')],r['id']))
     # Avoid filling the packet with syndicated copies of one title.
     unique=[];seen=set();seen_events=set()
@@ -404,7 +450,7 @@ def query_materials(report,args):
         if event_id:seen_events.add(event_id)
         seen.add(key);unique.append(r)
     selected=unique[q.offset:q.offset+q.limit]
-    return {'fact_ref':report.fact_ref,'total':len(unique),'offset':q.offset,'next_offset':q.offset+len(selected) if q.offset+len(selected)<len(unique) else None,
+    return {'fact_ref':report.fact_ref,'population':population,'total':len(unique),'offset':q.offset,'next_offset':q.offset+len(selected) if q.offset+len(selected)<len(unique) else None,
             'items':[{'ref':r['id'],'title':r['title'],'summary':r.get('summary','')[:500],'source':r.get('source',''),
                       'published':r.get('published',''),'media_level':r.get('media_level',''),'sentiment':r.get('sentiment',''),
                       'theme':report.categories.get(r['id'],''),'event_id':positions.get(r['id'],{}).get('id')} for r in selected]}

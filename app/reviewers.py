@@ -156,7 +156,11 @@ def payload_for(store,state,role):
         machine['monthly_recommendations']['rule']=get_prompt('writer.outlook_field',profile)
         machine['monthly_recommendations']['execution_periods']=history['window']['periods']
     layout=[]
+    from core.structured_template import block_is_omitted
+    omitted={p['field'] for b in template.get('blocks',[]) if block_is_omitted(b,draft['slot_values']) for p in b['parts'] if p.get('field')}
+    machine={k:v for k,v in machine.items() if k not in omitted}
     for block in template.get('blocks',[]):
+        if block_is_omitted(block,draft['slot_values']):continue
         if not any(part.get('field') in machine for part in block['parts']):continue
         rendered=''.join(part.get('text',text(fields[part['field']]['value']) if part.get('field') in fields and part['field'] not in {key for key,val in fields.items() if 'human_edit' in val['source_refs']} else '[已人工确认字段]') for part in block['parts'])
         layout.append({'index':block['index'],'kind':block['kind'],'parts':block['parts'],'rendered_text':rendered})
@@ -175,6 +179,9 @@ def payload_for(store,state,role):
     if role=='content_reviewer':
         payload['style']={'metrics':style.get('metrics',{}),'semantic_candidates':style.get('semantic_candidates',[]),'project_findings':style.get('project_findings',[])}
         payload['skill']={**skill_context(),'application':get_prompt('style.application',profile)}
+    from .writing_pipeline.category_coverage import context_for
+    payload['field_statistics']={f['id']:context_for(report,f) for f in template.get('fields',[]) if f.get('category_coverage_scope')}
+    payload['scoped_writing_contexts']=[{'members':g['members'],'context':report.scoped_summary(g['context_scope'],g.get('count_unit','events')) if g.get('include_statistics',True) else {'report_parameters':report.parameters()}} for g in report.writing_contract.get('groups',[]) if g.get('context_scope')]
     return draft,fields,machine,payload,style
 
 async def run_reviewer(deps,task_id,role,phase=None):

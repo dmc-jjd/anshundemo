@@ -29,7 +29,7 @@ from .writing_pipeline import calculations as _calculations
 KNOWN=_calculations.KNOWN
 
 def compact_field(field):
-    return {k:field[k] for k in ('id','display_name','owner','kind','semantic','rule','format','binding') if k in field}
+    return {k:field[k] for k in ('id','display_name','owner','kind','semantic','rule','format','binding','optional','missing_policy','category_coverage_scope','count_unit') if k in field}
 
 def field_prompt_fingerprint(field,profile,package=None):
     kind=second_role(field,package=package)
@@ -269,9 +269,18 @@ async def write_structured_preview(deps,task_id,agents=None):
             continue
         allowed.update(x['ref'] for x in evidence['items'])
         current_evidence_refs.update(x['ref'] for x in evidence['items'])
+        from .writing_pipeline.category_coverage import context_for,validate_coverage
+        coverage={key:context_for(report,fields[key]) for key in ids if fields[key].get('category_coverage_scope')}
+        for context in coverage.values():
+            for row in context['rows']:
+                evidence['items'].extend(row['materials'])
+                allowed.update(item['ref'] for item in row['materials'])
+                current_evidence_refs.update(item['ref'] for item in row['materials'])
         subset={**template['writer_schema'],'properties':{key:template['writer_schema']['properties'][key] for key in ids}}
         subset=copy.deepcopy(subset)
         subset.pop('required',None)
+        for key,context in coverage.items():
+            subset['properties'][key]['properties']['value'].update(minItems=len(context['rows']),maxItems=len(context['rows']))
         from .section_two import analysis_length_limits
         for key in ids:
             minimum,maximum=analysis_length_limits(package, fields.get(key))
@@ -287,8 +296,22 @@ async def write_structured_preview(deps,task_id,agents=None):
             'report_context':report.summary(),'fields':[compact_field(fields[key]) for key in ids],
             'calculated_data_fields':{key:answer for key,answer in values.items() if fields[key]['owner']=='data'},
             'evidence':evidence['items']+[{'ref':report.fact_ref,'type':'confirmed_statistics','data':report.summary()}]}
+        if coverage:
+            payload['category_coverage']=coverage
+            first=next(iter(coverage.values()))
+            context=report.scoped_summary(first['scope'],first['count_unit'])
+            payload['report_context']=context
+            payload['evidence']=evidence['items']+[{'ref':report.fact_ref,'type':'scoped_statistics','data':context}]
+            payload['instruction']+='\ncategory_coverage列出本期全部非零类别及程序计算的条数和占比。每类恰好一个数组条目，按所给顺序、以类别名称开头，逐项使用给定统计和该类材料，不截断、不合并、不编造举例；不要加编号，编号由导出程序连续生成。'
         if joint:
             payload['writing_groups']=joint
+            scoped=[g for g in joint if g.get('context_scope')]
+            if scoped:
+                context=report.scoped_summary(scoped[0]['context_scope'],scoped[0].get('count_unit','events')) if scoped[0].get('include_statistics',True) else {'report_parameters':report.parameters(),'material_population':evidence['population']}
+                payload['report_context']=context
+                member_ids={k for g in joint for k in g['members']}
+                payload['calculated_data_fields']={k:v for k,v in payload['calculated_data_fields'].items() if k in member_ids}
+                payload['evidence']=evidence['items']+[{'ref':report.fact_ref,'type':'scoped_statistics','data':context}]
             payload['instruction']+='\n本次为关联组写作：共同确定一个主题或案例，遵守 writing_groups 中成员角色和材料范围；所有 remaining_fields 一次完整返回，不另选其他主题。existing_values 为已写或人工保留的上下文，不得改写。背景只讲该主题的触发条件，不复制全月统计。'
             if any('topic' in g['members'].values() for g in joint):
                 payload['report_context']={'report_parameters':report.parameters()}
@@ -369,8 +392,10 @@ async def write_structured_preview(deps,task_id,agents=None):
                         rendered=[entry['text'] for entry in valid_items]
                         refs=sorted({ref for entry in valid_items for ref in entry['refs']})
                         split_ids=[key for key in ids if key in outlook_group] if outlook_group else []
-                        if split_ids and len(split_ids)==len(rendered):
-                            answer.values={key:{'value':text,'source_refs':refs} for key,text in zip(split_ids,rendered)}
+                        from .writing_pipeline.outlook_repair import split_outlook_fields
+                        split_values=split_outlook_fields(split_ids,rendered,refs,fields)
+                        if split_values is not None:
+                            answer.values=split_values
                         else:
                             answer.values={ids[0]:{'value':rendered,'source_refs':refs}}
                         outlook_repair=None
@@ -388,6 +413,7 @@ async def write_structured_preview(deps,task_id,agents=None):
                     try:
                         validate_values(template,{key:value},allowed,writer_only=True)
                         validate_selection(key,value,calculation_contexts)
+                        validate_coverage(value['value'],coverage.get(key))
                         if section_role=='analysis' and isinstance(value.get('value'),str):
                             minimum,maximum=analysis_length_limits(package, fields.get(key))
                             length=len(value['value'])

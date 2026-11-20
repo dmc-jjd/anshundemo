@@ -51,7 +51,7 @@ def chart_payload(report,kind,style=None):
     _artifact,_,key=binding.partition('.')
     try:
         if _artifact=='theme_clusters':
-            values=report.categories_for(scope if scope!='all_records' else 'confirmed_events')
+            values=report.categories_for(scope if scope!='all_records' else 'confirmed_events',chart.get('count_unit','events'))
         elif _artifact=='locality':
             values=report.counties_for(scope if scope!='all_records' else 'confirmed_events')
         elif _artifact=='metrics':

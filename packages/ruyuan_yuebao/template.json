@@ -325,14 +325,27 @@
       "b48_risk_tip_3": "outlook",
       "b49_risk_tip_4": "outlook",
       "b50_risk_tip_5": "outlook",
-      "b31_positive_event_analysis": "general"
+      "b31_positive_event_analysis": "general",
+      "b46_risk1": "outlook",
+      "b47_risk2": "outlook",
+      "b48_risk3": "outlook",
+      "b49_risk4": "outlook",
+      "b50_risk5": "outlook",
+      "positive_case_title": "general",
+      "positive_case_facts": "general",
+      "positive_case_advice": "general"
     },
     "outlook_fields": [
       "b46_risk_tip_1",
       "b47_risk_tip_2",
       "b48_risk_tip_3",
       "b49_risk_tip_4",
-      "b50_risk_tip_5"
+      "b50_risk_tip_5",
+      "b46_risk1",
+      "b47_risk2",
+      "b48_risk3",
+      "b49_risk4",
+      "b50_risk5"
     ],
     "outlook_item_count": {
       "min": 4,

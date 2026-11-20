@@ -20,6 +20,21 @@ from .template_draft import DraftError, append_selection, undo_selection, view
 
 router = APIRouter(include_in_schema=False)
 
+class TemplateRevisionRequest(BaseModel):
+    expected_revision:int
+    name:str
+    reason:str
+    request_key:str
+
+@router.post('/api/templates/{task_id}/revision')
+def derive_template_revision(task_id:str,req:TemplateRevisionRequest):
+    from . import main
+    from .template_revision import derive
+    main.get_task(task_id)
+    store=main.store.store_for(main.store.package_of(task_id)) if hasattr(main.store,'store_for') else main.store
+    try:return derive(store,task_id,**req.model_dump())
+    except ValueError as exc:raise HTTPException(409,str(exc))
+
 
 class DraftCustomDefinition(BaseModel):
     # 卡片内小表单：显示名/语义必填，owner 只允许 writer/data；data_note 仅 data 型可填、可留空。

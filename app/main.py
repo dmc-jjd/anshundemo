@@ -522,7 +522,11 @@ def template_definition(task_id:str):
     from core.writing_contracts import resolve as writing_contract
     try:contract=writing_contract(definition,store.package_of(task_id) if hasattr(store,'package_of') else state.package,ref)
     except (ValueError,TypeError) as exc:raise HTTPException(422,'writing_contract_invalid: '+str(exc))
+    from .template_agent_review import status_for
+    agent_review=status_for(definition,questions,state.metadata)
+    definition={**definition,'agent_review_status':agent_review}
     return {'revision':state.revision,'artifact_ref':ref,'definition':definition,
+            'agent_review_status':agent_review,
             'writing_contract':contract,
             'model_review_validated':bool(state.metadata.get('template_validation_ref')),
             'local_definition':store.get_artifact(state.metadata['local_template_ref']) if state.metadata.get('local_template_ref') else None,
@@ -569,6 +573,32 @@ class TemplateDefinitionPatch(BaseModel):
     rules:dict|None=None
     chart_styles:dict[str,str]|None=None
     writing_groups:list[dict]|None=None
+    structural_changes:dict|None=None
+
+class TemplateAgentDisposition(BaseModel):
+    kind:str
+    id:str
+    status:str
+    note:str=Field(min_length=1,max_length=4000)
+    evidence:str=Field(default='',max_length=8000)
+    answer:str=Field(default='',max_length=4000)
+
+class TemplateAgentReviewPatch(BaseModel):
+    expected_revision:int
+    entries:list[TemplateAgentDisposition]=Field(min_length=1,max_length=100)
+
+@app.put('/api/templates/{task_id}/agent-review')
+def save_template_agent_review(task_id:str,req:TemplateAgentReviewPatch):
+    state=get_task(task_id)
+    if state.kind!='template':raise HTTPException(409,'not_template_task')
+    if state.metadata.get('confirmed_template_ref'):raise HTTPException(409,'immutable_confirmed_template')
+    if state.revision!=req.expected_revision:raise HTTPException(409,'stale_template_revision')
+    view=template_definition(task_id)
+    from .template_agent_review import record_dispositions
+    try:record_dispositions(view['definition'],view['questions'],state.metadata,[entry.model_dump() for entry in req.entries])
+    except ValueError as exc:raise HTTPException(422,str(exc)) from exc
+    store.put_task(state,state.revision)
+    return template_definition(task_id)
 
 @app.put('/api/templates/{task_id}/definition')
 def revise_template_definition(task_id:str,req:TemplateDefinitionPatch):
